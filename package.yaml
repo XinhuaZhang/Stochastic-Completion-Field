@@ -1,0 +1,84 @@
+name:                Stochastic-Completion-Field
+version:             0.1.0.0
+github:              "XinhuaZhang/Stochastic-Completion-Field"
+license:             BSD3
+author:              "Xinhua Zhang"
+maintainer:          "xinhua@unm.edu"
+copyright:           "Copyright: (c) 2019 Xinhua Zhang"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Computer Vision
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/XinhuaZhang/Stochastic-Completion-Field#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- array >= 0.5.3.0 && < 0.6.0.0
+- binary >= 0.8.6.0 && < 0.9.0.0
+- conduit >= 1.3.1 && < 1.4.0
+- containers >= 0.6.0.1 && < 0.7.0.0
+- deepseq >= 1.4.3.0 && < 1.5.0.0
+- directory >= 1.3.3.0 && < 1.4.0.0
+- dlist >= 0.8.0.5 && < 1.0
+- filepath >= 1.4.2.1 && < 1.5.0.0
+- JuicyPixels >= 3.3.3 && < 4.0.0
+- hashable >= 1.2.7.0 && < 1.3.0.0
+- hmatrix >= 0.19.0.0 && < 0.20.0.0
+- monad-parallel >= 0.7.2.3 && < 0.8.0.0
+- mwc-random >= 0.14.0.0 && < 0.15.0.0
+- parallel >= 3.2.2.0 && < 4.0.0.0
+- random >= 1.1 && < 2.0
+- repa >= 3.4.1.4 && < 3.5.0.0
+- resourcet >= 1.2.2
+- statistics >= 0.15.0.0 && < 0.16.0.0
+- text >= 1.2.3.1 && < 1.3.0.0
+- unordered-containers >= 0.2.9.0 && < 0.3.0.0
+- vector >= 0.12.0.2 && < 0.13.0.0
+
+library:
+  source-dirs: src
+
+executables:
+  PlotGreensFunctionR2S1-exe:
+    main:                PlotGreensFunctionR2S1.hs
+    source-dirs:         app/FokkerPlanckMonteCarlo
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is PlotGreensFunctionR2S1
+    dependencies:
+    - Stochastic-Completion-Field
+  PlotGreensFunctionR2S1RP-exe:
+    main:                PlotGreensFunctionR2S1RP.hs
+    source-dirs:         app/FokkerPlanckMonteCarlo
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is PlotGreensFunctionR2S1RP
+    dependencies:
+    - Stochastic-Completion-Field
+
+# tests:
+#   Stochastic-Completion-Field-test:
+#     main:                Spec.hs
+#     source-dirs:         test
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - Stochastic-Completion-Field
