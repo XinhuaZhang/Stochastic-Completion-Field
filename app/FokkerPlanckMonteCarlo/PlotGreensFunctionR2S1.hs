@@ -47,7 +47,12 @@ main = do
       init
   let arr' =
         computeS .
-        reduceContrast 10 . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS $
+        reduceContrast 10 .
+        R.extend (Z :. (1 :: Int) :. All :. All) .
+        R.sumS .
+        R.backpermute
+          (Z :. numPoint :. numPoint :. numOrientation)
+          (\(Z :. i :. j :. k) -> (Z :. k :. i :. j)) $
         arr
       folderPath = "output/app/PlotGreensFunctionR2S1"
   createDirectoryIfMissing True folderPath

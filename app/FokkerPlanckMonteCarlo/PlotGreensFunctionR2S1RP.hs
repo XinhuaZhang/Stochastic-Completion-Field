@@ -37,7 +37,7 @@ main = do
       init = read initStr :: (Double, Double, Double, Double, Double, Double)
       numTrail = read numTrailStr :: Int
       numThread = read numThreadStr :: Int
-  arr <-
+  arr'' <-
     solveMonteCarloR2S1RP
       numThread
       numTrail
@@ -51,7 +51,12 @@ main = do
       tao
       len
       init
-  let arr' =
+  let arr =
+        R.backpermute
+          (Z :. numPoint :. numPoint :. numOrientation :. numScale)
+          (\(Z :. i :. j :. k :. l) -> (Z :. k :. l :. i :. j))
+          arr''
+      arr' =
         computeS .
         reduceContrast 10 .
         R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . R.sumS $
@@ -60,12 +65,12 @@ main = do
   createDirectoryIfMissing True (folderPath </> "GreensR2S1RP")
   plotImageRepa (folderPath </> "GreensR2S1RP.png") . ImageRepa 8 $ arr'
   MP.mapM_
-     (\i ->
-        plotImageRepa
-          (folderPath </> "GreensR2S1RP/" L.++ (show $ i + 1) L.++ ".png") .
-        ImageRepa 8 .
-        computeS .
-        reduceContrast 50 .
-        R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . R.slice arr $
-        (Z :. All :. All :. All :. i))
-     [0 .. numScale - 1]
+    (\i ->
+       plotImageRepa
+         (folderPath </> "GreensR2S1RP/" L.++ (show $ i + 1) L.++ ".png") .
+       ImageRepa 8 .
+       computeS .
+       reduceContrast 50 .
+       R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . R.slice arr $
+       (Z :. All :. All :. All :. i))
+    [0 .. numScale - 1]
