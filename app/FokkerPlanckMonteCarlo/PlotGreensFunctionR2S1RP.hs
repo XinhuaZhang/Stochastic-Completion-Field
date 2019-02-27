@@ -9,6 +9,7 @@ import           Image.IO
 import           System.Directory
 import           System.Environment
 import           System.FilePath
+import           Utils.Array
 
 {-# INLINE reduceContrast #-}
 reduceContrast
@@ -51,11 +52,7 @@ main = do
       tao
       len
       init
-  let arr =
-        R.backpermute
-          (Z :. numPoint :. numPoint :. numOrientation :. numScale)
-          (\(Z :. i :. j :. k :. l) -> (Z :. k :. l :. i :. j))
-          arr''
+  let arr = rotate4D . rotate4D $  arr''
       arr' =
         computeS .
         reduceContrast 10 .

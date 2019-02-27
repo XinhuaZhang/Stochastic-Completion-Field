@@ -8,6 +8,7 @@ import           Image.IO
 import           System.Directory
 import           System.Environment
 import           System.FilePath
+import           Utils.Array
 
 {-# INLINE reduceContrast #-}
 reduceContrast
@@ -47,13 +48,11 @@ main = do
       init
   let arr' =
         computeS .
-        reduceContrast 10 .
+        -- reduceContrast 10 .
         R.extend (Z :. (1 :: Int) :. All :. All) .
         R.sumS .
-        R.backpermute
-          (Z :. numPoint :. numPoint :. numOrientation)
-          (\(Z :. i :. j :. k) -> (Z :. k :. i :. j)) $
+        rotate3D $
         arr
       folderPath = "output/app/PlotGreensFunctionR2S1"
   createDirectoryIfMissing True folderPath
-  plotImageRepa (folderPath </> "GreensR2S1.png") . ImageRepa 8 $ arr'
+  plotImageRepaComplex (folderPath </> "GreensR2S1.png") . ImageRepa 8 $ arr'

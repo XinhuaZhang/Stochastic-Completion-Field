@@ -4,7 +4,7 @@ module FokkerPlanck.MonteCarlo
   , solveMonteCarloR2S1
   , solveMonteCarloR2S1RP
   , solveMonteCarloR2S1T0
-  , solveMonteCarloR2S1T0T
+  , solveMonteCarloR2Z1T0
   ) where
 
 import           Array.UnboxedArray              as UA
@@ -24,6 +24,7 @@ import           Statistics.Distribution.Normal
 import           Statistics.Distribution.Uniform
 import           System.Random
 import           System.Random.MWC
+import           Types
 import           Utils.Coordinates
 import           Utils.Parallel
 
@@ -78,11 +79,11 @@ generatePath randomGen thetaDist' scaleDist' maxScale tao numSteps xRange yRange
     go n z@(!x, !y, !theta, !scale, theta0, scale0) xs = do
       deltaTheta <-
         case thetaDist' of
-          Nothing -> return 0
+          Nothing        -> return 0
           Just thetaDist -> genContVar thetaDist randomGen
       deltaScale <-
         case scaleDist' of
-          Nothing -> return 0
+          Nothing        -> return 0
           Just scaleDist -> genContVar scaleDist randomGen
       let (newScale, flag) = scalePlus maxScale scale deltaScale
           newTheta =
@@ -132,7 +133,7 @@ solveMonteCarloR2S1 ::
   -> Double
   -> Int
   -> ParticleIndex
-  -> IO (R.Array U DIM3 Double)
+  -> IO R2S1Array
 solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao numSteps (_, _, _, _, t0, _) = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
@@ -171,7 +172,7 @@ solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao nu
   print $ L.length zs
   return .
     fromUnboxed (Z :. numOrientations :. xLen :. yLen) .
-    VU.map (\x -> fromIntegral x / totalNum) $
+    VU.map (\x -> fromIntegral x / totalNum :+ 0) $
     totalNumVec
 
 -- R2S1RP
@@ -225,7 +226,7 @@ solveMonteCarloR2S1RP ::
   -> Double
   -> Int
   -> ParticleIndex
-  -> IO (R.Array U DIM4 Double)
+  -> IO R2S1RPArray
 solveMonteCarloR2S1RP numGen numTrails xLen yLen numOrientations numScales thetaSigma scaleSigma maxScale tao numSteps (_, _, _, _, t0, s0) = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
@@ -286,7 +287,7 @@ countR2S1T0 (xMin, xMax) (yMin, yMax) numOrientations freqs xs =
           (\freq i ->
              DL.map
                (\(x, y, t, _, t0, _) ->
-                  ( (floor (t / deltaTheta), round x, round y, i)
+                  ( (i, floor (t / deltaTheta), round x, round y)
                   , exp (0 :+ (freq * t0)))) .
              DL.concat $
              xs)
@@ -297,12 +298,12 @@ countR2S1T0 (xMin, xMax) (yMin, yMax) numOrientations freqs xs =
         UA.accum
           (+)
           0
-          ( (0, xMin, yMin, 1)
-          , (numOrientations - 1, xMax, yMax, L.length freqs))
+          ( (1, 0, xMin, yMin)
+          , (L.length freqs, numOrientations - 1, xMax, yMax))
           ys
    in (numTrajectories, toUnboxedVector arr)
 
--- (Z :. numOrientations :. xLen :. yLen :. (L.length freqs))
+-- (Z :. (L.length freqs) :. numOrientations  :. xLen :. yLen )
 solveMonteCarloR2S1T0 ::
      Int
   -> Int
@@ -314,7 +315,7 @@ solveMonteCarloR2S1T0 ::
   -> Int
   -> [Double]
   -> ParticleIndex
-  -> IO (R.Array U DIM4 (Complex Double))
+  -> IO R2S1T0Array
 solveMonteCarloR2S1T0 numGen numTrails xLen yLen numOrientations thetaSigma tao numSteps theta0freqs _ = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
@@ -357,21 +358,21 @@ solveMonteCarloR2S1T0 numGen numTrails xLen yLen numOrientations thetaSigma tao 
   print totalNum
   print $ L.length zs
   return .
-    fromUnboxed (Z :. numOrientations :. xLen :. yLen :. (L.length theta0freqs)) .
+    fromUnboxed (Z :. (L.length theta0freqs) :. numOrientations :. xLen :. yLen) .
     VU.map (\x -> x / totalNum) $
     totalNumVec
 
 
 -- R2S1 both \theta_0 and \theta are represented in the frequency domain
-{-# INLINE countR2S1T0T #-}
-countR2S1T0T ::
+{-# INLINE countR2Z1T0 #-}
+countR2Z1T0 ::
      (Int, Int)
   -> (Int, Int)
   -> [Double]
   -> [Double]
   -> [DList ParticleIndex]
   -> (Int, VU.Vector (Complex Double))
-countR2S1T0T (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
+countR2Z1T0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
   let ys =
         DL.toList .
         DL.concat .
@@ -379,7 +380,7 @@ countR2S1T0T (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
           (\((t0f, i), (tf, j)) ->
              DL.map
                (\(x, y, t, _, t0, _) ->
-                  ((j, round x, round y, i), exp (0 :+ (t0f * t0 + tf * t)))) .
+                  ((j, i, round x, round y), exp (0 :+ (t0f * t0 + tf * t)))) .
              DL.concat $
              xs) $
         [(t0f, tf) | t0f <- (L.zip t0Freqs [1 ..]), tf <- (L.zip tFreqs [1 ..])]
@@ -388,12 +389,12 @@ countR2S1T0T (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
         UA.accum
           (+)
           0
-          ((1, xMin, yMin, 1), (L.length tFreqs, xMax, yMax, L.length t0Freqs))
+          ((1, 1, xMin, yMin), (L.length tFreqs, L.length t0Freqs, xMax, yMax))
           ys
    in (numTrajectories, toUnboxedVector arr)
 
--- (Z :. (L.length thetaFreqs) :. xLen :. yLen :. (L.length theta0freqs)) 
-solveMonteCarloR2S1T0T ::
+-- (Z :. (L.length thetafreqs) :. (L.length theta0Freqs) :. xLen :. yLen )
+solveMonteCarloR2Z1T0 ::
      Int
   -> Int
   -> Int
@@ -404,8 +405,8 @@ solveMonteCarloR2S1T0T ::
   -> [Double]
   -> [Double]
   -> ParticleIndex
-  -> IO (R.Array U DIM4 (Complex Double))
-solveMonteCarloR2S1T0T numGen numTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs _ = do
+  -> IO R2Z1T0Array
+solveMonteCarloR2Z1T0 numGen numTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs _ = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
       xRange =
@@ -438,13 +439,14 @@ solveMonteCarloR2S1T0T numGen numTrails xLen yLen thetaSigma tao numSteps theta0
       gens
   let (ys, zs) =
         L.unzip $
-        parMap rdeepseq (countR2S1T0T xRange yRange theta0Freqs thetaFreqs) xs
+        parMap rdeepseq (countR2Z1T0 xRange yRange theta0Freqs thetaFreqs) xs
       totalNum = fromIntegral $ L.sum ys
       totalNumVec = L.foldl1' (VU.zipWith (+)) zs
   print totalNum
   print $ L.length zs
   return .
+    RepaArray .
     fromUnboxed
-      (Z :. (L.length thetaFreqs) :. xLen :. yLen :. (L.length theta0Freqs)) .
+      (Z :. (L.length thetaFreqs) :. (L.length theta0Freqs) :. xLen :. yLen) .
     VU.map (\x -> x / totalNum) $
     totalNumVec

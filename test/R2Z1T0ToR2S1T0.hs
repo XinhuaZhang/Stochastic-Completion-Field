@@ -1,14 +1,16 @@
 {-# LANGUAGE FlexibleContexts #-}
-module PlotGreensFunctionR2S1T0T where
+module R2Z1T0ToR2S1T0 where
 
-import           Control.Monad.Parallel  as MP
-import           Data.Array.Repa         as R
-import           Data.List               as L
+import           Control.Monad.Parallel    as MP
+import           Data.Array.Repa           as R
+import           Data.List                 as L
+import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
 import           Image.IO
 import           System.Directory
 import           System.Environment
 import           System.FilePath
+import           Utils.Array
 
 main = do
   args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:theta0FreqsStr:thetaFreqsStr:numThreadStr:_) <-
@@ -24,8 +26,8 @@ main = do
       theta0Freqs = read theta0FreqsStr :: [Double]
       thetaFreqs = read thetaFreqsStr :: [Double]
       numThread = read numThreadStr :: Int
-  arr <-
-    solveMonteCarloR2S1T0T
+  arrR2Z1T0 <-
+    solveMonteCarloR2Z1T0
       numThread
       numTrail
       numPoint
@@ -36,22 +38,20 @@ main = do
       theta0Freqs
       thetaFreqs
       init
-  let arr3d =
-        R.backpermute
-          (Z :. numPoint :. numPoint :. (L.length thetaFreqs))
-          (\(Z :. i :. j :. k) -> (Z :. k :. i :. j)) .
-        R.slice arr $
-        (Z :. All :. All :. All :. (L.length theta0Freqs - 1))
+  let arr = r2z1t0Tor2s1t0 numOrientation thetaFreqs arrR2Z1T0
+      arr3d =
+        rotate3D . R.slice arr $
+        (Z :. All :. (L.length theta0Freqs - 1) :. All :. All)
       arr' =
         computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS $ arr3d
-      folderPath = "output/app/PlotGreensFunctionR2S1T0T"
-  createDirectoryIfMissing True (folderPath </> "GreensR2S1T0T")
-  plotImageRepaComplex (folderPath </> "GreensR2S1T0T.png") . ImageRepa 8 $ arr'
+      folderPath = "output/test/R2Z1T0ToR2S1T0"
+  createDirectoryIfMissing True (folderPath </> "GreensR2S1T0")
+  plotImageRepaComplex (folderPath </> "GreensR2S1T0.png") . ImageRepa 8 $ arr'
   MP.mapM_
     (\i ->
        plotImageRepaComplex
-         (folderPath </> "GreensR2S1T0T" </> show (i + 1) L.++ ".png") .
+         (folderPath </> "GreensR2S1T0" </> show (i + 1) L.++ ".png") .
        ImageRepa 8 .
        computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice arr3d $
        (Z :. All :. All :. i))
-    [0 .. (L.length thetaFreqs) - 1]
+    [0 .. numOrientation - 1]

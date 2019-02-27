@@ -98,8 +98,8 @@ executables:
     - -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
-  PlotGreensFunctionR2S1T0T-exe:
-    main:                PlotGreensFunctionR2S1T0T.hs
+  PlotGreensFunctionR2Z1T0-exe:
+    main:                PlotGreensFunctionR2Z1T0.hs
     source-dirs:         app/FokkerPlanckMonteCarlo
     ghc-options:
     - -threaded
@@ -107,7 +107,7 @@ executables:
     - -with-rtsopts=-N
     - -O2
     - -j4
-    - -main-is PlotGreensFunctionR2S1T0T
+    - -main-is PlotGreensFunctionR2Z1T0
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
@@ -116,13 +116,46 @@ executables:
     dependencies:
     - Stochastic-Completion-Field
 
-# tests:
-#   Stochastic-Completion-Field-test:
-#     main:                Spec.hs
-#     source-dirs:         test
-#     ghc-options:
-#     - -threaded
-#     - -rtsopts
-#     - -with-rtsopts=-N
-#     dependencies:
-#     - Stochastic-Completion-Field
+tests:
+  R2Z1T0ToR2S1T0-test:
+    main:                R2Z1T0ToR2S1T0.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is R2Z1T0ToR2S1T0
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z1T0-test:
+    main:                STCR2Z1T0.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z1T0
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
