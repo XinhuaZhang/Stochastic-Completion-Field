@@ -73,9 +73,17 @@ main = do
   -- Completion Filed
   completionFiled <-
     timeReversalConvolveR2Z1 plan thetaFreqs sourceR2Z1 sinkR2Z1
+<<<<<<< HEAD
   completionFiledR2 <-
     R.sumP . R.map magnitude . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
     completionFiled
   plotImageRepa (folderPath </> "Completion.png") .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFiledR2
+=======
+  completionFiled' <-
+    R.sumP . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $ completionFiled
+  plotImageRepaComplex (folderPath </> "Completion.png") .
+    ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
+    completionFiled'
+>>>>>>> d81a0388ee0c24ad24d738ebd6edc5f3e899b0fb
