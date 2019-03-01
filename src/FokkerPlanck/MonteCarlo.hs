@@ -1,10 +1,12 @@
 {-# LANGUAGE BangPatterns #-}
 module FokkerPlanck.MonteCarlo
   ( module FokkerPlanck.Types
+  , module FokkerPlanck.Histogram
   , solveMonteCarloR2S1
   , solveMonteCarloR2S1RP
   , solveMonteCarloR2S1T0
   , solveMonteCarloR2Z1T0
+  , solveMonteCarloR2Z2T0S0
   ) where
 
 import           Array.UnboxedArray              as UA
@@ -13,17 +15,20 @@ import           Control.Monad                   as M
 import           Control.Monad.Parallel          as MP
 import           Data.Array                      as Arr
 import           Data.Array.Repa                 as R
+import           Data.Binary                     (encodeFile)
 import           Data.Complex
 import           Data.DList                      as DL
 import           Data.Ix
 import           Data.List                       as L
 import           Data.Vector.Unboxed             as VU
+import           FokkerPlanck.Histogram
 import           FokkerPlanck.Types
 import           Statistics.Distribution
 import           Statistics.Distribution.Normal
 import           Statistics.Distribution.Uniform
 import           System.Random
 import           System.Random.MWC
+import           Text.Printf
 import           Types
 import           Utils.Coordinates
 import           Utils.Parallel
@@ -85,8 +90,8 @@ generatePath randomGen thetaDist' scaleDist' maxScale tao numSteps xRange yRange
         case scaleDist' of
           Nothing        -> return 0
           Just scaleDist -> genContVar scaleDist randomGen
-      let (newScale, flag) = scalePlus maxScale scale deltaScale
-          newTheta =
+      let (!newScale, flag) = scalePlus maxScale scale deltaScale
+          !newTheta =
             if flag
               then (theta `thetaPlus` (deltaTheta + pi))
               else (theta `thetaPlus` deltaTheta)
@@ -110,7 +115,7 @@ countR2S1 ::
   -> (Int, Int)
   -> Int
   -> [DList ParticleIndex]
-  -> (Int, VU.Vector Int)
+  -> Histogram Int
 countR2S1 (xMin, xMax) (yMin, yMax) numOrientations xs =
   let !deltaTheta = 2 * pi / (fromIntegral numOrientations)
       ys =
@@ -121,7 +126,10 @@ countR2S1 (xMin, xMax) (yMin, yMax) numOrientations xs =
       numTrajectories = L.length ys
       arr =
         UA.accum (+) 0 ((0, xMin, yMin), (numOrientations - 1, xMax, yMax)) ys
-   in (numTrajectories, toUnboxedVector arr)
+   in Histogram
+        [(yMax - yMin + 1), (xMax - xMin + 1), numOrientations]
+        numTrajectories
+        (toUnboxedVector arr)
 
 solveMonteCarloR2S1 ::
      Int
@@ -164,16 +172,9 @@ solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao nu
               yRange
               (0, 0, t0, 1, t0, 1)))
       gens
-  let (ys, zs) =
-        L.unzip $ parMap rdeepseq (countR2S1 xRange yRange numOrientations) xs
-      totalNum = fromIntegral $ L.sum ys :: Double
-      totalNumVec = L.foldl1' (VU.zipWith (+)) zs
-  print totalNum
-  print $ L.length zs
-  return .
-    fromUnboxed (Z :. numOrientations :. xLen :. yLen) .
-    VU.map (\x -> fromIntegral x / totalNum :+ 0) $
-    totalNumVec
+  let ys = parMap rdeepseq (countR2S1 xRange yRange numOrientations) xs
+      histogram = L.foldl1' addHistogram ys
+  return . getNormalizedHistogramArr . mapHistogram (\x -> fromIntegral x :+ 0) $ histogram
 
 -- R2S1RP
 
@@ -185,7 +186,7 @@ countR2S1RP ::
   -> Int
   -> Double
   -> [DList ParticleIndex]
-  -> (Int, VU.Vector Int)
+  -> Histogram Int
 countR2S1RP (xMin, xMax) (yMin, yMax) numOrientations numScales maxScale xs =
   let !deltaTheta = 2 * pi / (fromIntegral numOrientations)
       !deltaScale = maxScale / (fromIntegral numScales)
@@ -210,7 +211,10 @@ countR2S1RP (xMin, xMax) (yMin, yMax) numOrientations numScales maxScale xs =
                 , y)
               , 1))) $
         ys
-   in (numTrajectories, toUnboxedVector arr)
+   in Histogram
+        [(yMax - yMin + 1), (xMax - xMin + 1), numScales, numOrientations]
+        numTrajectories
+        (toUnboxedVector arr)
 
 -- -- total number of trails = numGen * numTrails
 solveMonteCarloR2S1RP ::
@@ -257,18 +261,13 @@ solveMonteCarloR2S1RP numGen numTrails xLen yLen numOrientations numScales theta
               yRange
               (0, 0, t0, s0, t0, s0)))
       gens
-  let (ys, zs) =
-        L.unzip $
+  let ys =
         parMap
           rdeepseq
           (countR2S1RP xRange yRange numOrientations numScales maxScale)
           xs
-      totalNum = fromIntegral $ L.sum ys
-      totalNumVec = L.foldl1' (VU.zipWith (+)) zs
-  return .
-    fromUnboxed (Z :. numOrientations :. numScales :. xLen :. yLen) .
-    VU.map (\x -> fromIntegral x / totalNum) $
-    totalNumVec
+      histogram = L.foldl1' addHistogram ys
+  return . getNormalizedHistogramArr . mapHistogram fromIntegral $ histogram
 
 -- R2S1 \theta_0 is represented in the frequency domain
 {-# INLINE countR2S1T0 #-}
@@ -278,7 +277,7 @@ countR2S1T0 ::
   -> Int
   -> [Double]
   -> [DList ParticleIndex]
-  -> (Int, VU.Vector (Complex Double))
+  -> Histogram (Complex Double)
 countR2S1T0 (xMin, xMax) (yMin, yMax) numOrientations freqs xs =
   let !deltaTheta = 2 * pi / (fromIntegral numOrientations)
       ys =
@@ -301,7 +300,14 @@ countR2S1T0 (xMin, xMax) (yMin, yMax) numOrientations freqs xs =
           ( (1, 0, xMin, yMin)
           , (L.length freqs, numOrientations - 1, xMax, yMax))
           ys
-   in (numTrajectories, toUnboxedVector arr)
+   in Histogram
+        [ (yMax - yMin + 1)
+        , (xMax - xMin + 1)
+        , numOrientations
+        , (L.length freqs)
+        ]
+        numTrajectories
+        (toUnboxedVector arr)
 
 -- (Z :. (L.length freqs) :. numOrientations  :. xLen :. yLen )
 solveMonteCarloR2S1T0 ::
@@ -347,21 +353,13 @@ solveMonteCarloR2S1T0 numGen numTrails xLen yLen numOrientations thetaSigma tao 
                  yRange
                  (0, 0, t0, 1, t0, 1)))
       gens
-  let (ys, zs) =
-        L.unzip $
+  let ys =
         parMap
           rdeepseq
           (countR2S1T0 xRange yRange numOrientations theta0freqs)
           xs
-      totalNum = fromIntegral $ L.sum ys
-      totalNumVec = L.foldl1' (VU.zipWith (+)) zs
-  print totalNum
-  print $ L.length zs
-  return .
-    fromUnboxed (Z :. (L.length theta0freqs) :. numOrientations :. xLen :. yLen) .
-    VU.map (\x -> x / totalNum) $
-    totalNumVec
-
+      histogram = L.foldl1' addHistogram ys
+  return . getNormalizedHistogramArr $ histogram
 
 -- R2S1 both \theta_0 and \theta are represented in the frequency domain
 {-# INLINE countR2Z1T0 #-}
@@ -371,7 +369,7 @@ countR2Z1T0 ::
   -> [Double]
   -> [Double]
   -> [DList ParticleIndex]
-  -> (Int, VU.Vector (Complex Double))
+  -> Histogram (Complex Double)
 countR2Z1T0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
   let ys =
         DL.toList .
@@ -391,11 +389,19 @@ countR2Z1T0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
           0
           ((1, 1, xMin, yMin), (L.length tFreqs, L.length t0Freqs, xMax, yMax))
           ys
-   in (numTrajectories, toUnboxedVector arr)
+   in Histogram
+        [ (yMax - yMin + 1)
+        , (xMax - xMin + 1)
+        , (L.length t0Freqs)
+        , (L.length tFreqs)
+        ]
+        numTrajectories
+        (toUnboxedVector arr)
 
 -- (Z :. (L.length thetafreqs) :. (L.length theta0Freqs) :. xLen :. yLen )
 solveMonteCarloR2Z1T0 ::
      Int
+  -> Int
   -> Int
   -> Int
   -> Int
@@ -406,7 +412,7 @@ solveMonteCarloR2Z1T0 ::
   -> [Double]
   -> ParticleIndex
   -> IO R2Z1T0Array
-solveMonteCarloR2Z1T0 numGen numTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs _ = do
+solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs _ = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
       xRange =
@@ -420,33 +426,256 @@ solveMonteCarloR2Z1T0 numGen numTrails xLen yLen thetaSigma tao numSteps theta0F
           else (-yShift, yShift - 1)
       thetaDist = normalDistrE 0 thetaSigma
       scaleDist = normalDistrE 0 0
-  xs <-
-    MP.mapM
-      (\gen ->
-         M.replicateM
-           (div numTrails numGen)
-           (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
-               generatePath
-                 gen
-                 thetaDist
-                 scaleDist
-                 10
-                 tao
-                 numSteps
+      numMonteCarlo = div numTrails maxTrails
+      numLeft = mod numTrails maxTrails
+  histograms <-
+    M.replicateM
+      numMonteCarlo
+      (do xs <-
+            MP.mapM
+              (\gen ->
+                 M.replicateM
+                   (div maxTrails numGen)
+                   (do t0 <-
+                         genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                       generatePath
+                         gen
+                         thetaDist
+                         scaleDist
+                         10
+                         tao
+                         numSteps
+                         xRange
+                         yRange
+                         (0, 0, t0, 1, t0, 1)))
+              gens
+          let ys =
+                parMap
+                  rdeepseq
+                  (countR2Z1T0 xRange yRange theta0Freqs thetaFreqs)
+                  xs
+              !histogram = L.foldl1' addHistogram ys
+          return histogram)
+  if numLeft > 0
+    then do
+      xs <-
+        MP.mapM
+          (\gen ->
+             M.replicateM
+               (div numLeft numGen)
+               (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                   generatePath
+                     gen
+                     thetaDist
+                     scaleDist
+                     10
+                     tao
+                     numSteps
+                     xRange
+                     yRange
+                     (0, 0, t0, 1, t0, 1)))
+          gens
+      let ys =
+            parMap
+              rdeepseq
+              (countR2Z1T0 xRange yRange theta0Freqs thetaFreqs)
+              xs
+          !histogram' = L.foldl1' addHistogram ys
+          !histogram = L.foldl1' addHistogram (histogram' : histograms)
+      return . getNormalizedHistogramArr $ histogram
+    else let !histogram = L.foldl1' addHistogram histograms
+          in return . getNormalizedHistogramArr $ histogram
+
+
+-- R2S1RP \theta_0, \theta, s0 and s are represented in the frequency domain
+{-# INLINE countR2Z2T0S0 #-}
+countR2Z2T0S0 ::
+     (Int, Int)
+  -> (Int, Int)
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [DList ParticleIndex]
+  -> Histogram (Complex Double)
+countR2Z2T0S0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs s0Freqs sFreqs xs =
+  let !maxR = sqrt . fromIntegral $ xMax ^ 2 + yMax ^ 2
+      ys =
+        DL.toList .
+        DL.concat .
+        L.map
+          (\((t0f, i), (tf, j), (s0f, k), (sf, l)) ->
+             DL.map
+               (\(x, y, t, s, t0, s0) ->
+                  let !s' =
+                        if s == 0
+                          then 0
+                          else log s
+                      !s0' =
+                        if s0 == 0
+                          then 0
+                          else log s0
+                      !v =
+                        exp
+                          (0 :+
+                           (t0f * t0 + tf * t + s0f * (2 * pi * s0' / log maxR) +
+                            sf * (2 * pi * s' / log maxR)))
+                      !x' = round x
+                      !y' = round y
+                   in ((j, l, i, k, x', y'), v)) .
+             DL.concat $
+             xs) $
+        [ (t0f, tf, s0f, sf)
+        | t0f <- (L.zip t0Freqs [1 ..])
+        , tf <- (L.zip tFreqs [1 ..])
+        , s0f <- (L.zip s0Freqs [1 ..])
+        , sf <- (L.zip sFreqs [1 ..])
+        ]
+      numTrajectories = L.length ys
+      arr =
+        UA.accum
+          (+)
+          0
+          ( (1, 1, 1, 1, xMin, yMin)
+          , ( L.length tFreqs
+            , L.length sFreqs
+            , L.length t0Freqs
+            , L.length s0Freqs
+            , xMax
+            , yMax))
+          ys
+   in Histogram
+        [ (yMax - yMin + 1)
+        , (xMax - xMin + 1)
+        , (L.length s0Freqs)
+        , (L.length t0Freqs)
+        , (L.length sFreqs)
+        , (L.length tFreqs)
+        ]
+        numTrajectories
+        (toUnboxedVector arr)
+
+
+-- (Z :. (L.length thetafreqs) :. (L.length scaleFreqs) :. (L.length theta0Freqs) :. (L.length scale0Freqs) :. xLen :. yLen )
+solveMonteCarloR2Z2T0S0 ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Int
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> FilePath
+  -> Histogram (Complex Double)
+  -> IO R2Z2T0S0Array
+solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSigma maxScale tao numSteps theta0Freqs thetaFreqs scale0Freqs scaleFreqs filePath hist = do
+  let !xShift = div xLen 2
+      xRange =
+        if odd xLen
+          then (-xShift, xShift)
+          else (-xShift, xShift - 1)
+      !yShift = div yLen 2
+      yRange =
+        if odd yLen
+          then (-yShift, yShift)
+          else (-yShift, yShift - 1)
+      thetaDist = normalDistrE 0 thetaSigma
+      scaleDist = normalDistrE 0 scaleSigma
+      numMonteCarlo = div numTrails maxTrails
+      numLeft = mod numTrails maxTrails
+  printf
+    "%d trails, maximum %d each batch, %d batch in total.\n"
+    numTrails
+    maxTrails
+    (numMonteCarlo +
+     if numLeft > 0
+       then 1
+       else 0)
+  gensList <-
+    M.replicateM numMonteCarlo (M.replicateM numGen createSystemRandom)
+  histogram <-
+    M.foldM
+      (\h gens -> do
+         xs <-
+           MP.mapM
+             (\gen ->
+                M.replicateM
+                  (div maxTrails numGen)
+                  (do t0 <-
+                        genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                      s0 <-
+                        genContVar (uniformDistr 0 (maxScale)) gen :: IO Double
+                      generatePath
+                        gen
+                        thetaDist
+                        scaleDist
+                        maxScale
+                        tao
+                        numSteps
+                        xRange
+                        yRange
+                        (0, 0, t0, s0, t0, s0)))
+             gens
+         let ys =
+               parMap
+                 rdeepseq
+                 (countR2Z2T0S0
+                    xRange
+                    yRange
+                    theta0Freqs
+                    thetaFreqs
+                    scale0Freqs
+                    scaleFreqs)
+                 xs
+         return . L.foldl' addHistogram h $ ys)
+      hist
+      gensList
+  if numLeft > 0
+    then do
+      gens <- M.replicateM numGen createSystemRandom
+      xs <-
+        MP.mapM
+          (\gen ->
+             M.replicateM
+               (div numLeft numGen)
+               (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                   s0 <- genContVar (uniformDistr 0 maxScale) gen :: IO Double
+                   generatePath
+                     gen
+                     thetaDist
+                     scaleDist
+                     maxScale
+                     tao
+                     numSteps
+                     xRange
+                     yRange
+                     (0, 0, t0, s0, t0, s0)))
+          gens
+      let ys =
+            parMap
+              rdeepseq
+              (countR2Z2T0S0
                  xRange
                  yRange
-                 (0, 0, t0, 1, t0, 1)))
-      gens
-  let (ys, zs) =
-        L.unzip $
-        parMap rdeepseq (countR2Z1T0 xRange yRange theta0Freqs thetaFreqs) xs
-      totalNum = fromIntegral $ L.sum ys
-      totalNumVec = L.foldl1' (VU.zipWith (+)) zs
-  print totalNum
-  print $ L.length zs
-  return .
-    RepaArray .
-    fromUnboxed
-      (Z :. (L.length thetaFreqs) :. (L.length theta0Freqs) :. xLen :. yLen) .
-    VU.map (\x -> x / totalNum) $
-    totalNumVec
+                 theta0Freqs
+                 thetaFreqs
+                 scale0Freqs
+                 scaleFreqs)
+              xs
+          histogram' = L.foldl' addHistogram histogram ys
+          newHist =
+            if numMonteCarlo > 0
+              then histogram'
+              else addHistogram hist histogram'
+      unless (L.null filePath) (encodeFile filePath newHist)
+      return . getNormalizedHistogramArr $ newHist
+    else do
+      unless (L.null filePath) (encodeFile filePath histogram)
+      return . getNormalizedHistogramArr $ histogram

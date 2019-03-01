@@ -16,7 +16,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:theta0FreqsStr:thetaFreqsStr:initDistStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:initDistStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -26,6 +26,7 @@ main = do
       len = read lenStr :: Int
       init = read initStr :: (Double, Double, Double, Double, Double, Double)
       numTrail = read numTrailStr :: Int
+      maxTrail = read maxTrailStr :: Int
       theta0Freq = read theta0FreqsStr :: Double
       theta0Freqs = [-theta0Freq .. theta0Freq]
       thetaFreq = read thetaFreqsStr :: Double
@@ -39,6 +40,7 @@ main = do
     solveMonteCarloR2Z1T0
       numThread
       numTrail
+      maxTrail
       numPoint
       numPoint
       sigma
@@ -55,7 +57,7 @@ main = do
     computeInitialDistributionR2T0 plan numPoint numPoint theta0Freqs sinkDist
   arrR2Z1T0F <- dftR2Z1T0 plan . makeFilterR2Z1T0 $ arrR2Z1T0
   -- Source field
-  (RepaArray sourceArr) <- convolveR2T0 plan arrR2Z1T0F sourceDistArr
+  sourceArr <- convolveR2T0 plan arrR2Z1T0F sourceDistArr
   sourceR2Z1 <- R.sumP . rotateR2Z1T0Array $ sourceArr
   sourceField <-
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
@@ -63,7 +65,7 @@ main = do
     sourceR2Z1
   plotImageRepaComplex (folderPath </> "Source.png") . ImageRepa 8 $ sourceField
   -- Sink field
-  (RepaArray sinkArr) <- convolveR2T0 plan arrR2Z1T0F sinkDistArr
+  sinkArr <- convolveR2T0 plan arrR2Z1T0F sinkDistArr
   sinkR2Z1 <- R.sumP . rotateR2Z1T0Array $ sinkArr
   sinkField <-
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
@@ -73,17 +75,9 @@ main = do
   -- Completion Filed
   completionFiled <-
     timeReversalConvolveR2Z1 plan thetaFreqs sourceR2Z1 sinkR2Z1
-<<<<<<< HEAD
   completionFiledR2 <-
     R.sumP . R.map magnitude . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
     completionFiled
   plotImageRepa (folderPath </> "Completion.png") .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFiledR2
-=======
-  completionFiled' <-
-    R.sumP . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $ completionFiled
-  plotImageRepaComplex (folderPath </> "Completion.png") .
-    ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
-    completionFiled'
->>>>>>> d81a0388ee0c24ad24d738ebd6edc5f3e899b0fb

@@ -13,7 +13,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:theta0FreqsStr:thetaFreqsStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -23,13 +23,15 @@ main = do
       len = read lenStr :: Int
       init = read initStr :: (Double, Double, Double, Double, Double, Double)
       numTrail = read numTrailStr :: Int
+      maxTrail = read maxTrailStr :: Int
       theta0Freqs = read theta0FreqsStr :: [Double]
       thetaFreqs = read thetaFreqsStr :: [Double]
       numThread = read numThreadStr :: Int
-  (RepaArray arr) <-
+  arr <-
     solveMonteCarloR2Z1T0
       numThread
       numTrail
+      maxTrail
       numPoint
       numPoint
       sigma

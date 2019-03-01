@@ -24,8 +24,8 @@ import           GHC.Float
 -- x = cols = width
 -- y = rows = height
 data ImageRepa a = ImageRepa
-  { imageDepth   :: Int
-  , imageContent :: (R.Array U DIM3 a) -- nf x cols x rows
+  { imageDepth   :: !Int
+  , imageContent :: !(R.Array U DIM3 a) -- nf x cols x rows
   }
 
 readImagePathList :: FilePath -> IO [String]

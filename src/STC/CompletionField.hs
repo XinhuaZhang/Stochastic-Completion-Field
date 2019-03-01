@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+
 module STC.CompletionField where
 
 import           Array.UnboxedArray   as AU
@@ -13,7 +14,7 @@ import           System.Random
 import           Types
 
 makeR2Z1T0Plan :: DFTPlan -> R2Z1T0Array -> IO DFTPlan
-makeR2Z1T0Plan oldPlan (RepaArray arr) = do
+makeR2Z1T0Plan oldPlan arr = do
   let (Z :. numThetaFreqs :. numTheta0Freqs :. xLen :. yLen) = extent arr
   lock <- getFFTWLock
   vecTemp1 <-
@@ -43,7 +44,6 @@ makeR2Z1T0Plan oldPlan (RepaArray arr) = do
              dft1dGPlan lock plan [numTheta0Freqs, xLen, yLen] [1, 2] vecTemp3 >>= \(plan, vec) ->
                idft1dGPlan lock plan [numTheta0Freqs, xLen, yLen] [1, 2] vec)
 
-
 computeInitialDistributionR2T0 ::
      DFTPlan -> Int -> Int -> [Double] -> [R2S1RPPoint] -> IO R2T0Array
 computeInitialDistributionR2T0 plan xLen yLen theta0Freqs xs =
@@ -69,18 +69,16 @@ computeInitialDistributionR2T0 plan xLen yLen theta0Freqs xs =
                   ((x, y), exp (0 :+ (-1) * t0f * (theta / 180 * pi)))) $
              xs) $
         theta0Freqs
-   in fmap
-        (RepaArray .
-         fromUnboxed (Z :. numTheta0Freqs :. xLen :. yLen) . VS.convert) .
+   in fmap (fromUnboxed (Z :. numTheta0Freqs :. xLen :. yLen) . VS.convert) .
       dftExecute plan (DFTPlanID DFT1DG [numTheta0Freqs, xLen, yLen] [1, 2]) .
       VS.convert $
       vec
-      
+
 {-# INLINE makeFilterR2Z1T0 #-}
 makeFilterR2Z1T0 :: R2Z1T0Array -> R2Z1T0Array
-makeFilterR2Z1T0 (RepaArray arr) =
+makeFilterR2Z1T0 arr =
   let (Z :. _ :. _ :. rows :. cols) = extent arr
-   in RepaArray . computeS $
+   in computeS $
       R.backpermute
         (extent arr)
         (\(Z :. k :. l :. i :. j) ->
@@ -96,7 +94,7 @@ makeFilterR2Z1T0 (RepaArray arr) =
                    else j - halfCols
             in (Z :. k :. l :. x :. y))
         arr
-        
+
 {-# INLINE makeFilterR2Z1 #-}
 makeFilterR2Z1 ::
      (R.Source s (Complex Double))
@@ -117,9 +115,9 @@ makeFilterR2Z1 arr =
 
 {-# INLINE dftR2Z1T0 #-}
 dftR2Z1T0 :: DFTPlan -> R2Z1T0Array -> IO R2Z1T0Array
-dftR2Z1T0 plan (RepaArray arr) = do
+dftR2Z1T0 plan arr = do
   let (Z :. numThetaFreqs :. numTheta0Freqs :. xLen :. yLen) = extent arr
-  fmap (RepaArray . fromUnboxed (extent arr) . VS.convert) .
+  fmap (fromUnboxed (extent arr) . VS.convert) .
     dftExecute
       plan
       (DFTPlanID DFT1DG [numThetaFreqs, numTheta0Freqs, xLen, yLen] [2, 3]) .
@@ -128,7 +126,7 @@ dftR2Z1T0 plan (RepaArray arr) = do
 
 {-# INLINE convolveR2T0 #-}
 convolveR2T0 :: DFTPlan -> R2Z1T0Array -> R2T0Array -> IO R2Z1T0Array
-convolveR2T0 plan (RepaArray filterF) (RepaArray initialDistributionF) = do
+convolveR2T0 plan filterF initialDistributionF = do
   let (Z :. numThetaFreqs :. numTheta0Freqs :. xLen :. yLen) = extent filterF
       arrF =
         computeS $
@@ -138,7 +136,7 @@ convolveR2T0 plan (RepaArray filterF) (RepaArray initialDistributionF) = do
           const
           (\f1 f2 idx@(Z :. tf :. t0f :. x :. y) ->
              f1 idx * f2 (Z :. t0f :. x :. y))
-  fmap (RepaArray . fromUnboxed (extent filterF) . VS.convert) .
+  fmap (fromUnboxed (extent filterF) . VS.convert) .
     dftExecute
       plan
       (DFTPlanID IDFT1DG [numThetaFreqs, numTheta0Freqs, xLen, yLen] [2, 3]) .
@@ -157,14 +155,14 @@ timeReverseR2Z1 freqs arr =
     (fromListUnboxed (Z :. (L.length freqs)) freqs)
     const
     (\f1 f2 idx@(Z :. k :. i :. j) -> f1 idx * (exp (0 :+ f2 (Z :. k) * pi)))
-    
+
 {-# INLINE timeReversalConvolveR2Z1 #-}
 timeReversalConvolveR2Z1 ::
      DFTPlan
   -> [Double]
   -> R.Array U DIM3 (Complex Double)
   -> R.Array U DIM3 (Complex Double)
-  -> IO (R.Array U DIM3 (Complex Double)) 
+  -> IO (R.Array U DIM3 (Complex Double))
 timeReversalConvolveR2Z1 plan thetaFreqs arr1 arr2 = do
   let (Z :. numThetaFreqs :. xLen :. yLen) = extent arr1
   vec1F <-
