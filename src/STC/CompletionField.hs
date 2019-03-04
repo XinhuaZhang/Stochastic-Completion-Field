@@ -22,7 +22,7 @@ makeR2Z1T0Plan oldPlan arr = do
     M.replicateM (numThetaFreqs * xLen * yLen * numTheta0Freqs) randomIO :: IO (VS.Vector (Complex Double))
   vecTemp2 <-
     (VS.fromList . L.map (\x -> x :+ 0)) <$>
-    M.replicateM (numThetaFreqs * xLen * yLen * numTheta0Freqs) randomIO :: IO (VS.Vector (Complex Double))
+    M.replicateM (numThetaFreqs * xLen * yLen) randomIO :: IO (VS.Vector (Complex Double))
   vecTemp3 <-
     (VS.fromList . L.map (\x -> x :+ 0)) <$>
     M.replicateM (xLen * yLen * numTheta0Freqs) randomIO :: IO (VS.Vector (Complex Double))
@@ -177,3 +177,218 @@ timeReversalConvolveR2Z1 plan thetaFreqs arr1 arr2 = do
   fmap (fromUnboxed (extent arr1) . VS.convert) .
     dftExecute plan (DFTPlanID IDFT1DG [numThetaFreqs, xLen, yLen] [0]) $
     VS.zipWith (*) vec1F vec2F
+
+--- R2Z2T0S0 
+
+makeR2Z2T0S0Plan :: DFTPlan -> R2Z2T0S0Array -> IO DFTPlan
+makeR2Z2T0S0Plan oldPlan arr = do
+  let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
+        extent arr
+  lock <- getFFTWLock
+  vecTemp1 <-
+    (VS.fromList . L.map (\x -> x :+ 0)) <$>
+    M.replicateM
+      (numThetaFreqs * numScaleFreqs * xLen * yLen * numTheta0Freqs *
+       numScale0Freqs)
+      randomIO :: IO (VS.Vector (Complex Double))
+  vecTemp2 <-
+    (VS.fromList . L.map (\x -> x :+ 0)) <$>
+    M.replicateM (numThetaFreqs * numScaleFreqs * xLen * yLen) randomIO :: IO (VS.Vector (Complex Double))
+  vecTemp3 <-
+    (VS.fromList . L.map (\x -> x :+ 0)) <$>
+    M.replicateM (xLen * yLen * numTheta0Freqs * numScale0Freqs) randomIO :: IO (VS.Vector (Complex Double))
+  fst <$>
+    (dft1dGPlan
+       lock
+       oldPlan
+       [ numThetaFreqs
+       , numScaleFreqs
+       , numTheta0Freqs
+       , numScale0Freqs
+       , xLen
+       , yLen
+       ]
+       [4, 5]
+       vecTemp1 >>= \(plan, vec) ->
+       idft1dGPlan
+         lock
+         plan
+         [ numThetaFreqs
+         , numScaleFreqs
+         , numTheta0Freqs
+         , numScale0Freqs
+         , xLen
+         , yLen
+         ]
+         [4, 5]
+         vec >>= \(plan, _) ->
+         dft1dGPlan
+           lock
+           plan
+           [numThetaFreqs, numScaleFreqs, xLen, yLen]
+           [0, 1]
+           vecTemp2 >>= \(plan, vec) ->
+           idft1dGPlan
+             lock
+             plan
+             [numThetaFreqs, numScaleFreqs, xLen, yLen]
+             [0, 1]
+             vec >>= \(plan, _) ->
+             dft1dGPlan
+               lock
+               plan
+               [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+               [2, 3]
+               vecTemp3 >>= \(plan, vec) ->
+               idft1dGPlan
+                 lock
+                 plan
+                 [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+                 [2, 3]
+                 vec)
+
+computeInitialDistributionR2T0S0 ::
+     DFTPlan
+  -> Int
+  -> Int
+  -> [Double]
+  -> [Double]
+  -> [R2S1RPPoint]
+  -> IO R2T0S0Array
+computeInitialDistributionR2T0S0 plan xLen yLen theta0Freqs scale0Freqs xs =
+  let numTheta0Freqs = L.length theta0Freqs
+      numScale0Freqs = L.length scale0Freqs
+      xShift = div xLen 2
+      (xMin, xMax) =
+        if odd xLen
+          then (-xShift, xShift)
+          else (-xShift, xShift - 1)
+      yShift = div yLen 2
+      (yMin, yMax) =
+        if odd yLen
+          then (-yShift, yShift)
+          else (-yShift, yShift - 1)
+      maxR = sqrt . fromIntegral $ xMax ^ 2 + yMax ^ 2
+      vec =
+        VU.concat .
+        L.map
+          (\(t0f, s0f) ->
+             toUnboxedVector .
+             AU.accum (+) 0 ((xMin, yMin), (xMax, yMax)) .
+             L.map
+               (\(R2S1RPPoint (x, y, theta, scale')) ->
+                  let scale =
+                        if scale' == 0
+                          then 0
+                          else log scale'
+                   in ( (x, y)
+                      , exp
+                          (0 :+
+                           (-1) *
+                           (t0f * (theta / 180 * pi) +
+                            s0f * 2 * pi * scale / log maxR)))) $
+             xs) $
+        [(t0f, s0f) | t0f <- theta0Freqs, s0f <- scale0Freqs]
+   in fmap
+        (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
+         VS.convert) .
+      dftExecute
+        plan
+        (DFTPlanID DFT1DG [numTheta0Freqs, numScale0Freqs, xLen, yLen] [2, 3]) .
+      VS.convert $
+      vec
+
+{-# INLINE makeFilterR2Z2T0S0 #-}
+makeFilterR2Z2T0S0 :: R2Z2T0S0Array -> R2Z2T0S0Array
+makeFilterR2Z2T0S0 arr =
+  let (Z :. _ :. _ :. _ :. _ :. rows :. cols) = extent arr
+   in computeS $
+      R.backpermute
+        (extent arr)
+        (\(Z :. a :. b :. k :. l :. i :. j) ->
+           let halfRows = div rows 2
+               halfCols = div cols 2
+               x =
+                 if i < halfRows
+                   then i + halfRows
+                   else i - halfRows
+               y =
+                 if j < halfCols
+                   then j + halfCols
+                   else j - halfCols
+            in (Z :. a :. b :. k :. l :. x :. y))
+        arr
+
+
+{-# INLINE makeFilterR2Z2 #-}
+makeFilterR2Z2 ::
+     (R.Source s (Complex Double))
+  => R.Array s DIM4 (Complex Double)
+  -> R.Array D DIM4 (Complex Double)
+makeFilterR2Z2 arr =
+  let (Z :. numThetaFreqs :. numScaleFreqs :. _ :. _) = extent arr
+   in R.backpermute
+        (extent arr)
+        (\(Z :. i :. j :. k :. l) ->
+           let halfNumThetaFreqs = div numThetaFreqs 2
+               halfNumScaleFreqs = div numScaleFreqs 2
+               x =
+                 if i < halfNumThetaFreqs
+                   then i + halfNumThetaFreqs
+                   else i - halfNumThetaFreqs
+               y =
+                 if j < halfNumScaleFreqs
+                   then j + halfNumScaleFreqs
+                   else j - halfNumScaleFreqs
+            in (Z :. x :. y :. k :. l))
+        arr
+
+{-# INLINE dftR2Z2T0S0 #-}
+dftR2Z2T0S0 :: DFTPlan -> R2Z2T0S0Array -> IO R2Z2T0S0Array
+dftR2Z2T0S0 plan arr = do
+  let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
+        extent arr
+  fmap (fromUnboxed (extent arr) . VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID
+         DFT1DG
+         [ numThetaFreqs
+         , numScaleFreqs
+         , numTheta0Freqs
+         , numScale0Freqs
+         , xLen
+         , yLen
+         ]
+         [4, 5]) .
+    VS.convert . toUnboxed $
+    arr
+
+{-# INLINE convolveR2T0S0 #-}
+convolveR2T0S0 :: DFTPlan -> R2Z2T0S0Array -> R2T0S0Array -> IO R2Z2T0S0Array
+convolveR2T0S0 plan filterF initialDistributionF = do
+  let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
+        extent filterF
+      arrF =
+        computeS $
+        R.traverse2
+          filterF
+          initialDistributionF
+          const
+          (\f1 f2 idx@(Z :. tf :. sf :. t0f :. s0f :. x :. y) ->
+             f1 idx * f2 (Z :. t0f :. s0f :. x :. y))
+  fmap (fromUnboxed (extent filterF) . VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID
+         IDFT1DG
+         [ numThetaFreqs
+         , numScaleFreqs
+         , numTheta0Freqs
+         , numScale0Freqs
+         , xLen
+         , yLen
+         ]
+         [4, 5]) .
+    VS.convert . toUnboxed $
+    arrF

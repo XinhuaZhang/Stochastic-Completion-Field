@@ -634,7 +634,7 @@ solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSig
                     scale0Freqs
                     scaleFreqs)
                  xs
-         return . L.foldl' addHistogram h $ ys)
+         return $! L.foldl' addHistogram h ys)
       hist
       gensList
   if numLeft > 0
