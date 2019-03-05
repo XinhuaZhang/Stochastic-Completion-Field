@@ -38,3 +38,13 @@ rotateR2Z1T0Array arr =
         (Z :. k :. i :. j :. l)
         (\(Z :. a :. b :. c :. d) -> (Z :. a :. d :. b :. c))
         arr
+        
+
+{-# INLINE rotateR2Z2T0S0Array #-}
+rotateR2Z2T0S0Array :: (R.Source s e) => R.Array s DIM6 e -> R.Array D DIM6 e
+rotateR2Z2T0S0Array arr =
+  let (Z :. k :. l :. m :. n :. i :. j) = extent arr
+  in R.backpermute
+       (Z :. k :. l :. i :. j :. m :. n)
+       (\(Z :. a :. b :. c :. d :. e :. f) -> (Z :. a :. b :. e :. f :. c :. d))
+       arr

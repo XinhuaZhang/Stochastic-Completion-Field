@@ -392,3 +392,43 @@ convolveR2T0S0 plan filterF initialDistributionF = do
          [4, 5]) .
     VS.convert . toUnboxed $
     arrF
+
+{-# INLINE timeReverseR2Z2 #-}
+timeReverseR2Z2 ::
+     (R.Source s (Complex Double))
+  => [Double]
+  -> [Double]
+  -> R.Array s DIM4 (Complex Double)
+  -> R.Array D DIM4 (Complex Double)
+timeReverseR2Z2 thetaFreqs scaleFreqs arr =
+  R.traverse3
+    arr
+    (fromListUnboxed (Z :. (L.length thetaFreqs)) thetaFreqs)
+    (fromListUnboxed (Z :. (L.length scaleFreqs)) scaleFreqs)
+    (\a _ _ -> a)
+    (\f1 f2 f3 idx@(Z :. k :. l :. _ :. _) ->
+       f1 idx * (exp (0 :+ (f2 (Z :. k) + f3 (Z :. l)) * pi)))
+       
+{-# INLINE timeReversalConvolveR2Z2 #-}
+timeReversalConvolveR2Z2 ::
+     DFTPlan
+  -> [Double]
+  -> [Double]
+  -> R.Array U DIM4 (Complex Double)
+  -> R.Array U DIM4 (Complex Double)
+  -> IO (R.Array U DIM4 (Complex Double))
+timeReversalConvolveR2Z2 plan thetaFreqs scaleFreqs arr1 arr2 = do
+  let (Z :. numThetaFreqs :. numscaleFreqs :. xLen :. yLen) = extent arr1
+  vec1F <-
+    dftExecute plan (DFTPlanID DFT1DG [numThetaFreqs, xLen, yLen] [0]) .
+    VU.convert . toUnboxed $
+    arr1
+  vec2F <-
+    dftExecute plan (DFTPlanID DFT1DG [numThetaFreqs, xLen, yLen] [0]) .
+    VU.convert .
+    toUnboxed .
+    computeS . makeFilterR2Z2 . timeReverseR2Z2 thetaFreqs scaleFreqs $
+    arr2
+  fmap (fromUnboxed (extent arr1) . VS.convert) .
+    dftExecute plan (DFTPlanID IDFT1DG [numThetaFreqs, xLen, yLen] [0]) $
+    VS.zipWith (*) vec1F vec2F

@@ -22,8 +22,6 @@ type R2Z1Array   = Array U DIM3 (Complex Double) -- (Z :. (L.length thetafreqs) 
 
 type R2T0S0Array   = Array U DIM4 (Complex Double) -- (Z :. (L.length theta0freqs) :. (L.length scale0freqs)  :. xLen :. yLen)
 
-
-
 data R2S1RPPoint =
   R2S1RPPoint (Int, Int, Double, Double)
   deriving (Show, Read)
