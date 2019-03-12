@@ -6,6 +6,7 @@ import           Data.Array.Repa         as R
 import           Data.Binary             (decodeFile)
 import           Data.List               as L
 import           FokkerPlanck.MonteCarlo
+import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           System.Directory
 import           System.Environment
@@ -14,7 +15,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFileName:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFileName:alphaStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -35,6 +36,7 @@ main = do
       thetaFreqs = [-thetaFreq .. thetaFreq]
       scale0Freqs = [-scale0Freq .. scale0Freq]
       scaleFreqs = [-scaleFreq .. scaleFreq]
+      alpha = read alphaStr :: Double
       numThread = read numThreadStr :: Int
       folderPath = "output/app/PlotGreensFunctionR2Z2T0S0"
       histPath = folderPath </> histFileName

@@ -193,3 +193,95 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
+  STCR2Z1T0Image-test:
+    main:                STCR2Z1T0Image.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z1T0Image
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0-test:
+    main:                STCR2Z2T0S0.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0Image-test:
+    main:                STCR2Z2T0S0Image.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0Image
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  Resize-test:
+    main:                Resize.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is Resize
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    dependencies:
+    - Stochastic-Completion-Field

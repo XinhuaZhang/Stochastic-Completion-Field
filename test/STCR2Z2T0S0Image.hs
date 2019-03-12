@@ -1,4 +1,4 @@
-module STCR2Z2T0S0 where
+module STCR2Z2T0S0Image where
 
 import           Control.Monad             as M
 import           Data.Array.Repa           as R
@@ -6,6 +6,7 @@ import           Data.Binary
 import           Data.Complex
 import           Data.List                 as L
 import           DFT.Plan
+import           Filter.Pinwheel
 import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
@@ -18,7 +19,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:initDistStr:histFilePath:alphaStr:pinwheelFlagStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:alphaStr:pinwheelFlagStr:imagePath:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -36,7 +37,6 @@ main = do
       theta0Freqs = [-theta0Freq .. theta0Freq]
       thetaFreq = read thetaFreqsStr :: Double
       thetaFreqs = [-thetaFreq .. thetaFreq]
-      initDist = read initDistStr :: [R2S1RPPoint]
       scale0Freq = read scale0FreqsStr :: Double
       scaleFreq = read scaleFreqsStr :: Double
       scale0Freqs = [-scale0Freq .. scale0Freq]
@@ -44,20 +44,15 @@ main = do
       alpha = read alphaStr :: Double
       pinwheelFlag = read pinwheelFlagStr :: Bool
       numThread = read numThreadStr :: Int
-      sourceDist = L.take 1 initDist
-      sinkDist = L.drop 1 initDist
-      folderPath = "output/test/STCR2Z2T0S0"
+      pinwheelParams =
+        PinwheelParams numPoint numPoint alpha maxScale theta0Freqs scale0Freqs
+      folderPath = "output/test/STCR2Z2T0S0Image"
+  createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   arrR2Z2T0S0 <-
     if pinwheelFlag
-      then computeR2Z2T0S0Array
-             numPoint
-             numPoint
-             alpha
-             thetaFreqs
-             scaleFreqs
-             theta0Freqs
-             scale0Freqs
+      then error
+             "Using pinwheels to construct the Green's function has not been implemented yet."
       else if flag
              then getNormalizedHistogramArr <$> decodeFile histFilePath
              else solveMonteCarloR2Z2T0S0
@@ -85,27 +80,19 @@ main = do
                        , L.length thetaFreqs
                        ]
                        0)
-  createDirectoryIfMissing True folderPath
-  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
-  sourceDistArr <-
-    computeInitialDistributionR2T0S0
-      plan
-      numPoint
-      numPoint
-      theta0Freqs
-      scale0Freqs
-      sourceDist
-  sinkDistArr <-
-    computeInitialDistributionR2T0S0
-      plan
-      numPoint
-      numPoint
-      theta0Freqs
-      scale0Freqs
-      sinkDist
+  
+  (ImageRepa _ img) <- readImageRepa imagePath False
+  plan0 <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  (plan1, imgF) <- makeImagePlan plan0 img
+  (plan, filterF, filterPIF) <- pinwheelFilter plan1 pinwheelParams
   arrR2Z2T0S0F <- dftR2Z2T0S0 plan . makeFilterR2Z2T0S0 $ arrR2Z2T0S0
+  let initialDistF =
+        computeS $
+        frequencyDomainMultiply
+          filterF
+          (R.slice imgF (Z :. (0 :: Int) :. All :. All))
   -- Source field
-  sourceArr <- convolveR2T0S0 plan arrR2Z2T0S0F sourceDistArr
+  sourceArr <- convolveR2T0S0 plan arrR2Z2T0S0F initialDistF
   sourceR2Z2 <- R.sumP . R.sumS . rotateR2Z2T0S0Array $ sourceArr
   sourceField <-
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
@@ -115,20 +102,9 @@ main = do
     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
     sourceR2Z2
   plotImageRepaComplex (folderPath </> "Source.png") . ImageRepa 8 $ sourceField
-  -- Sink field
-  sinkArr <- convolveR2T0S0 plan arrR2Z2T0S0F sinkDistArr
-  sinkR2Z2 <- R.sumP . R.sumS . rotateR2Z2T0S0Array $ sinkArr
-  sinkField <-
-    fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
-    R.sumP .
-    R.sumS .
-    rotate4D .
-    rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
-    sinkR2Z2
-  plotImageRepaComplex (folderPath </> "Sink.png") . ImageRepa 8 $ sinkField
   -- Completion Filed
   completionFiled <-
-    timeReversalConvolveR2Z2 plan thetaFreqs scaleFreqs sourceR2Z2 sinkR2Z2
+    timeReversalConvolveR2Z2 plan thetaFreqs scaleFreqs sourceR2Z2 sourceR2Z2 
   completionFiledR2 <-
     R.sumP .
     R.sumS .

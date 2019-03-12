@@ -7,6 +7,7 @@ import           Data.Binary               (decodeFile)
 import           Data.List                 as L
 import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
+import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           System.Directory
 import           System.Environment
@@ -14,7 +15,7 @@ import           System.FilePath
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histPath:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histPath:alphaStr:pinwheelFlagStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -36,44 +37,54 @@ main = do
       thetaFreqs = [-thetaFreq .. thetaFreq]
       scale0Freqs = [-scale0Freq .. scale0Freq]
       scaleFreqs = [-scaleFreq .. scaleFreq]
+      alpha = read alphaStr :: Double
+      pinwheelFlag = read pinwheelFlagStr :: Bool
       numThread = read numThreadStr :: Int
       folderPath = "output/test/R2Z2T0S0ToR2S1RPT0S0"
   flag <- doesFileExist histPath
   arrR2Z2T0S0 <-
-    if flag
-      then getNormalizedHistogramArr <$> decodeFile histPath
-      else solveMonteCarloR2Z2T0S0
-             numThread
-             numTrail
-             maxTrail
+    if pinwheelFlag
+      then computeR2Z2T0S0Array
              numPoint
              numPoint
-             thetaSigma
-             scaleSigma
-             maxScale
-             tao
-             len
-             theta0Freqs
+             alpha
              thetaFreqs
-             scale0Freqs
              scaleFreqs
-             histPath
-             (emptyHistogram
-                [ numPoint
-                , numPoint
-                , L.length scale0Freqs
-                , L.length theta0Freqs
-                , L.length scaleFreqs
-                , L.length thetaFreqs
-                ]
-                0)
+             theta0Freqs
+             scale0Freqs
+      else if flag
+             then getNormalizedHistogramArr <$> decodeFile histPath
+             else solveMonteCarloR2Z2T0S0
+                    numThread
+                    numTrail
+                    maxTrail
+                    numPoint
+                    numPoint
+                    thetaSigma
+                    scaleSigma
+                    maxScale
+                    tao
+                    len
+                    theta0Freqs
+                    thetaFreqs
+                    scale0Freqs
+                    scaleFreqs
+                    histPath
+                    (emptyHistogram
+                       [ numPoint
+                       , numPoint
+                       , L.length scale0Freqs
+                       , L.length theta0Freqs
+                       , L.length scaleFreqs
+                       , L.length thetaFreqs
+                       ]
+                       0)
   let arr =
         r2z2t0s0Tor2s1rpt0s0
           numOrientation
           thetaFreqs
           numScale
           scaleFreqs
-          maxScale
           arrR2Z2T0S0
       arr4d =
         R.slice arr $

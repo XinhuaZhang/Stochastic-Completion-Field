@@ -10,6 +10,7 @@ module DFT.Plan
   , getFFTWLock
   , getDFTPlan
   , emptyPlan
+  , checkPlanID
   , dftExecuteWithPlan
   , dftExecuteBatch
   , dftExecuteBatchP
@@ -80,6 +81,13 @@ getFFTWLock = newMVar ()
 {-# INLINE emptyPlan #-}
 emptyPlan :: DFTPlan
 emptyPlan = HM.empty
+
+{-# INLINE checkPlanID #-}
+checkPlanID :: DFTPlan -> DFTPlanID -> Bool
+checkPlanID plan planID =
+  case HM.lookup planID plan of
+    Nothing -> False
+    Just p -> True
 
 {-# INLINE getDFTPlan #-}
 getDFTPlan :: DFTPlan -> DFTPlanID -> Plan

@@ -410,9 +410,10 @@ solveMonteCarloR2Z1T0 ::
   -> Int
   -> [Double]
   -> [Double]
-  -> ParticleIndex
+  -> FilePath
+  -> Histogram (Complex Double)
   -> IO R2Z1T0Array
-solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs _ = do
+solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs filePath hist = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
       xRange =
@@ -455,7 +456,7 @@ solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSte
                   (countR2Z1T0 xRange yRange theta0Freqs thetaFreqs)
                   xs
               !histogram = L.foldl1' addHistogram ys
-          return histogram)
+          return $! histogram)
   if numLeft > 0
     then do
       xs <-
@@ -480,11 +481,15 @@ solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSte
               rdeepseq
               (countR2Z1T0 xRange yRange theta0Freqs thetaFreqs)
               xs
-          !histogram' = L.foldl1' addHistogram ys
-          !histogram = L.foldl1' addHistogram (histogram' : histograms)
+          histogram' = L.foldl1' addHistogram ys
+          histogram = L.foldl' addHistogram histogram' histograms
+          !newHist = addHistogram histogram hist
+      unless (L.null filePath) (encodeFile filePath newHist)
+      return . getNormalizedHistogramArr $ newHist
+    else do
+      let !histogram = L.foldl' addHistogram hist histograms
+      unless (L.null filePath) (encodeFile filePath histogram)
       return . getNormalizedHistogramArr $ histogram
-    else let !histogram = L.foldl1' addHistogram histograms
-          in return . getNormalizedHistogramArr $ histogram
 
 
 -- R2S1RP \theta_0, \theta, s0 and s are represented in the frequency domain
@@ -499,7 +504,8 @@ countR2Z2T0S0 ::
   -> [DList ParticleIndex]
   -> Histogram (Complex Double)
 countR2Z2T0S0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs s0Freqs sFreqs xs =
-  let !maxR = sqrt . fromIntegral $ xMax ^ 2 + yMax ^ 2
+  let -- !maxR = sqrt . fromIntegral $ xMax ^ 2 + yMax ^ 2
+      !maxR = sqrt . fromIntegral $ (xMax - xMin + 1) ^ 2 + (yMax - yMin + 1) ^ 2
       ys =
         DL.toList .
         DL.concat .

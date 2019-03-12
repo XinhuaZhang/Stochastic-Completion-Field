@@ -5,6 +5,7 @@ import           Control.Monad.Parallel  as MP
 import           Data.Array.Repa         as R
 import           Data.List               as L
 import           FokkerPlanck.MonteCarlo
+import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           System.Directory
 import           System.Environment
@@ -27,6 +28,7 @@ main = do
       theta0Freqs = read theta0FreqsStr :: [Double]
       thetaFreqs = read thetaFreqsStr :: [Double]
       numThread = read numThreadStr :: Int
+      -- computeR2Z1T0Array numPoint numPoint (-1) thetaFreqs theta0Freqs
   arr <-
     solveMonteCarloR2Z1T0
       numThread

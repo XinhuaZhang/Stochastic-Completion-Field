@@ -2,16 +2,22 @@
 
 module STC.CompletionField where
 
-import           Array.UnboxedArray   as AU
-import           Control.Monad        as M
-import           Data.Array.Repa      as R
+import           Array.UnboxedArray        as AU
+import           Control.Monad             as M
+import           Data.Array.Repa           as R
 import           Data.Complex
-import           Data.List            as L
-import           Data.Vector.Storable as VS
-import           Data.Vector.Unboxed  as VU
+import           Data.List                 as L
+import           Data.Vector.Storable      as VS
+import           Data.Vector.Unboxed       as VU
 import           DFT.Plan
+import           FokkerPlanck.DomainChange (r2z1Tor2s1)
+import           Image.IO                  (ImageRepa (..), plotImageRepa,
+                                            plotImageRepaComplex)
+import           Image.Transform           (normalizeValueRange)
+import           System.FilePath           ((</>))
 import           System.Random
 import           Types
+import           Utils.Array
 
 makeR2Z1T0Plan :: DFTPlan -> R2Z1T0Array -> IO DFTPlan
 makeR2Z1T0Plan oldPlan arr = do
@@ -268,7 +274,7 @@ computeInitialDistributionR2T0S0 plan xLen yLen theta0Freqs scale0Freqs xs =
         if odd yLen
           then (-yShift, yShift)
           else (-yShift, yShift - 1)
-      maxR = sqrt . fromIntegral $ xMax ^ 2 + yMax ^ 2
+      maxR = sqrt . fromIntegral $ xShift ^ 2 + yShift ^ 2
       vec =
         VU.concat .
         L.map
@@ -401,14 +407,13 @@ timeReverseR2Z2 ::
   -> R.Array s DIM4 (Complex Double)
   -> R.Array D DIM4 (Complex Double)
 timeReverseR2Z2 thetaFreqs scaleFreqs arr =
-  R.traverse3
+  R.traverse2
     arr
     (fromListUnboxed (Z :. (L.length thetaFreqs)) thetaFreqs)
-    (fromListUnboxed (Z :. (L.length scaleFreqs)) scaleFreqs)
-    (\a _ _ -> a)
-    (\f1 f2 f3 idx@(Z :. k :. l :. _ :. _) ->
-       f1 idx * (exp (0 :+ (f2 (Z :. k) + f3 (Z :. l)) * pi)))
-       
+    const
+    (\f1 f2 idx@(Z :. k :. l :. _ :. _) ->
+       f1 idx * (exp (0 :+ f2 (Z :. k) * pi)))
+
 {-# INLINE timeReversalConvolveR2Z2 #-}
 timeReversalConvolveR2Z2 ::
      DFTPlan
@@ -418,17 +423,173 @@ timeReversalConvolveR2Z2 ::
   -> R.Array U DIM4 (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
 timeReversalConvolveR2Z2 plan thetaFreqs scaleFreqs arr1 arr2 = do
-  let (Z :. numThetaFreqs :. numscaleFreqs :. xLen :. yLen) = extent arr1
+  let (Z :. numThetaFreqs :. numScaleFreqs :. xLen :. yLen) = extent arr1
   vec1F <-
-    dftExecute plan (DFTPlanID DFT1DG [numThetaFreqs, xLen, yLen] [0]) .
+    dftExecute
+      plan
+      (DFTPlanID DFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [0, 1]) .
     VU.convert . toUnboxed $
     arr1
   vec2F <-
-    dftExecute plan (DFTPlanID DFT1DG [numThetaFreqs, xLen, yLen] [0]) .
+    dftExecute
+      plan
+      (DFTPlanID DFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [0, 1]) .
     VU.convert .
     toUnboxed .
     computeS . makeFilterR2Z2 . timeReverseR2Z2 thetaFreqs scaleFreqs $
     arr2
   fmap (fromUnboxed (extent arr1) . VS.convert) .
-    dftExecute plan (DFTPlanID IDFT1DG [numThetaFreqs, xLen, yLen] [0]) $
+    dftExecute
+      plan
+      (DFTPlanID IDFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [0, 1]) $
     VS.zipWith (*) vec1F vec2F
+
+makeImagePlan ::
+     DFTPlan
+  -> R.Array U DIM3 Double
+  -> IO (DFTPlan, R.Array U DIM3 (Complex Double))
+makeImagePlan plan arr = do
+  let (Z :. channels :. cols :. rows) = extent arr
+  lock <- getFFTWLock
+  fmap (\(a, b) -> (a, fromUnboxed (extent arr) . VS.convert $ b)) .
+    dft1dGPlan lock plan [channels, cols, rows] [1, 2] .
+    VU.convert . VU.map (:+ 0) . toUnboxed $
+    arr
+
+{-# INLINE normalizeMagnitude3D #-}
+normalizeMagnitude3D ::
+     (R.Source r (Complex Double))
+  => R.Array r DIM3 (Complex Double)
+  -> R.Array D DIM3 (Complex Double)
+normalizeMagnitude3D arr =
+  let norm =
+        R.map sqrt . R.sumS . R.map (\x -> (magnitude x) ^ 2) . rotate3D $ arr
+   in R.traverse2
+        arr
+        norm
+        const
+        (\f1 f2 idx@(Z :. k :. i :. j) ->
+           if f2 (Z :. i :. j) == 0
+             then 0
+             else f1 idx / (f2 (Z :. i :. j) :+ 0))
+
+-- {-# INLINE normalizeMagnitudeR2Z1 #-}
+-- normalizeMagnitudeR2Z1 :: R2T0Array -> R.Array D DIM3 (Complex Double)
+-- normalizeMagnitudeR2Z1 arr =
+--   let s = R.sumAllS . R.map (\x -> (magnitude x) ^ 2) $ arr
+--    in R.map (/ ((sqrt s) :+ 0)) arr
+   
+{-# INLINE normalizeMagnitudeR2Z1 #-}
+normalizeMagnitudeR2Z1 :: R2T0Array -> R.Array D DIM3 (Complex Double)
+normalizeMagnitudeR2Z1 arr =
+  let s =
+        VU.maximum .
+        toUnboxed . R.sumS . R.map (\x -> (magnitude x) ^ 2) . rotate3D $
+        arr
+   in R.map (/ ((sqrt s) :+ 0)) arr
+
+eigenVectorR2Z1Source ::
+     DFTPlan
+  -> FilePath
+  -> Int
+  -> [Double]
+  -> R2Z1T0Array
+  -> Int
+  -> R2T0Array
+  -> R2T0Array
+  -> IO R2T0Array
+eigenVectorR2Z1Source plan folderPath numOrientation thetaFreqs filter n bias input = do
+  let (Z :. numThetaFreq :. cols :. rows) = extent input
+      maxV =
+        VU.maximum .
+        VU.map magnitude . toUnboxed . r2z1Tor2s1 numOrientation thetaFreqs $
+        input
+  initialDistF <-
+    fmap (fromUnboxed (Z :. numThetaFreq :. cols :. rows) . VS.convert) .
+    dftExecute plan (DFTPlanID DFT1DG [numThetaFreq, cols, rows] [1, 2]) .
+    VU.convert .
+    toUnboxed . computeS . R.zipWith (*) bias . R.map (/ (maxV :+ 0)) $
+    input
+  -- Source field
+  sourceArr <- convolveR2T0 plan filter initialDistF
+  sourceR2Z1 <- R.sumP . rotateR2Z1T0Array $ sourceArr
+  sourceField <-
+    fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
+    R.sumP . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
+    sourceR2Z1
+  plotImageRepaComplex
+    (folderPath </> "Source" L.++ "_" L.++ show n L.++ ".png") .
+    ImageRepa 8 $
+    sourceField
+  return sourceR2Z1
+  
+
+eigenVectorR2Z1Sink ::
+     DFTPlan
+  -> FilePath
+  -> Int
+  -> [Double]
+  -> R2Z1T0Array
+  -> Int
+  -> R2T0Array
+  -> R2T0Array
+  -> IO R2T0Array
+eigenVectorR2Z1Sink plan folderPath numOrientation thetaFreqs filter n bias input = do
+  let (Z :. numThetaFreq :. cols :. rows) = extent input
+      maxV =
+        VU.maximum .
+        VU.map magnitude . toUnboxed . r2z1Tor2s1 numOrientation thetaFreqs $
+        input
+  initialDistF <-
+    fmap (fromUnboxed (Z :. numThetaFreq :. cols :. rows) . VS.convert) .
+    dftExecute plan (DFTPlanID DFT1DG [numThetaFreq, cols, rows] [1, 2]) .
+    VU.convert .
+    toUnboxed . computeS . R.zipWith (*) bias . R.map (/ (maxV :+ 0)) $
+    input
+  -- Sink field
+  sinkArr <- convolveR2T0 plan filter initialDistF
+  sinkR2Z1 <- R.sumP . rotateR2Z1T0Array $ sinkArr
+  sinkField <-
+    fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
+    R.sumP . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
+    sinkR2Z1
+  plotImageRepaComplex (folderPath </> "Sink" L.++ "_" L.++ show n L.++ ".png") .
+    ImageRepa 8 $
+    sinkField
+  return sinkR2Z1
+
+
+completionFieldR2Z1 ::
+     DFTPlan -> FilePath -> Int -> [Double]  -> R2T0Array -> R2T0Array -> IO R2T0Array
+completionFieldR2Z1 plan folderPath numOrientation thetaFreqs source sink = do
+  completionFiled <- timeReversalConvolveR2Z1 plan thetaFreqs source sink
+  completionFiledR2 <-
+    R.sumP . R.map magnitude . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
+    completionFiled
+  plotImageRepa (folderPath </> "Completion.png") .
+    ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
+    completionFiledR2
+  let avg = R.sumAllS completionFiledR2 / (fromIntegral $ rows * cols)
+      (Z :. cols :. rows) = extent completionFiledR2
+  plotImageRepa (folderPath </> "Completion_normalized.png") .
+    ImageRepa 8 .
+    computeS . R.extend (Z :. (1 :: Int) :. All :. All) . reduceContrast $
+    completionFiledR2
+  return completionFiled
+
+
+{-# INLINE reduceContrast #-}
+reduceContrast ::
+     (R.Source s Double, Shape sh)
+  => Array s sh Double
+  -> Array D sh Double
+reduceContrast arr =
+  let avg =
+        (R.sumAllS arr) /
+        (fromIntegral . L.product . listOfShape . extent $ arr)
+   in R.map
+        (\y ->
+           if y >= avg
+             then avg
+             else y)
+        arr

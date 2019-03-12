@@ -14,11 +14,11 @@ Theta0Freqs=3
 ThetaFreqs=3
 Scale0Freqs=5
 ScaleFreqs=5
-InitDist="[R2S1RPPoint(15,10,150,1),R2S1RPPoint(-15,10,30,1)]"
 HistFileName=${Size}_${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${Theta0Freqs}_${ThetaFreqs}_${Scale0Freqs}_${ScaleFreqs}.dat
 HistPath=output/app/PlotGreensFunctionR2Z2T0S0/${HistFileName}
 Alpha=-2
-PinwheelFlag=True
+PinwheelFlag=False
+ImagePath=output/test/Resize/out.png
 Threads=16
 
-time stack test :STCR2Z2T0S0-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao} ${Length} ${Init} ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${InitDist} ${HistPath} ${Alpha} ${PinwheelFlag} ${Threads} +RTS -N${Threads} -s -RTS"
+time stack test :STCR2Z2T0S0Image-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao} ${Length} ${Init} ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${Alpha} ${PinwheelFlag} ${ImagePath} ${Threads} +RTS -N${Threads} -s -RTS"

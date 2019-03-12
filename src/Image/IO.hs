@@ -293,8 +293,28 @@ complexImageToColorImage img@(ImageRepa depth arr) =
         arr
    in ImageRepa 8 . fromUnboxed (Z :. (3 :: Int) :. cols :. rows) . VU.concat $
       [r, g, b]
+      
+{-# INLINE normalizeComplexImage #-}
+normalizeComplexImage ::
+     ImageRepa (Complex Double) -> ImageRepa (Complex Double)
+normalizeComplexImage (ImageRepa depth img) =
+  let maxV = VU.maximum magVec
+      minV = VU.minimum magVec
+      maxVal = 2 ^ depth
+      minVal = 0
+      magVec = VU.map magnitude . toUnboxed $ img
+   in if maxV == minV
+        then (ImageRepa depth img)
+        else ImageRepa depth .
+             fromUnboxed (extent img) .
+             VU.zipWith (\a b -> mkPolar b (phase a)) (toUnboxed img) .
+             VU.map
+               (\x -> (x - minV) / (maxV - minV) * (maxVal - minVal) + minVal) $
+             magVec
+             
 
 {-# INLINE plotImageRepaComplex #-}
 plotImageRepaComplex :: FilePath -> ImageRepa (Complex Double) -> IO ()
 plotImageRepaComplex filePath img =
-  plotImageRepa filePath . complexImageToColorImage $ img
+  plotImageRepa filePath . complexImageToColorImage . normalizeComplexImage $
+  img

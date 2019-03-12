@@ -2,11 +2,13 @@ module STCR2Z1T0 where
 
 import           Control.Monad             as M
 import           Data.Array.Repa           as R
+import           Data.Binary               (decodeFile)
 import           Data.Complex
 import           Data.List                 as L
 import           DFT.Plan
 import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
+import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           STC.CompletionField
 import           System.Directory
@@ -16,7 +18,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:initDistStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:lenStr:initStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:initDistStr:histFilePath:alphaStr:pinwheelFlagStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -32,23 +34,37 @@ main = do
       thetaFreq = read thetaFreqsStr :: Double
       thetaFreqs = [-thetaFreq .. thetaFreq]
       initDist = read initDistStr :: [R2S1RPPoint]
+      alpha = read alphaStr :: Double
+      pinwheelFlag = read pinwheelFlagStr :: Bool
       numThread = read numThreadStr :: Int
       sourceDist = L.take 1 initDist
       sinkDist = L.drop 1 initDist
       folderPath = "output/test/STCR2Z1T0"
+  flag <- doesFileExist histFilePath
   arrR2Z1T0 <-
-    solveMonteCarloR2Z1T0
-      numThread
-      numTrail
-      maxTrail
-      numPoint
-      numPoint
-      sigma
-      tao
-      len
-      theta0Freqs
-      thetaFreqs
-      init
+    if pinwheelFlag
+      then computeR2Z1T0Array numPoint numPoint alpha thetaFreqs theta0Freqs
+      else if flag
+             then getNormalizedHistogramArr <$> decodeFile histFilePath
+             else solveMonteCarloR2Z1T0
+                    numThread
+                    numTrail
+                    maxTrail
+                    numPoint
+                    numPoint
+                    sigma
+                    tao
+                    len
+                    theta0Freqs
+                    thetaFreqs
+                    histFilePath
+                    (emptyHistogram
+                       [ numPoint
+                       , numPoint
+                       , L.length theta0Freqs
+                       , L.length thetaFreqs
+                       ]
+                       0)
   createDirectoryIfMissing True folderPath
   plan <- makeR2Z1T0Plan emptyPlan arrR2Z1T0
   sourceDistArr <-

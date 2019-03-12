@@ -6,6 +6,7 @@ import           Data.Array.Repa           as R
 import           Data.List                 as L
 import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
+import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           System.Directory
 import           System.Environment
@@ -27,19 +28,19 @@ main = do
       theta0Freqs = read theta0FreqsStr :: [Double]
       thetaFreqs = read thetaFreqsStr :: [Double]
       numThread = read numThreadStr :: Int
-  arrR2Z1T0 <-
-    solveMonteCarloR2Z1T0
-      numThread
-      numTrail
-      maxTrail
-      numPoint
-      numPoint
-      sigma
-      tao
-      len
-      theta0Freqs
-      thetaFreqs
-      init
+  arrR2Z1T0 <- computeR2Z1T0Array numPoint numPoint (-1) thetaFreqs theta0Freqs
+    -- solveMonteCarloR2Z1T0
+    --   numThread
+    --   numTrail
+    --   maxTrail
+    --   numPoint
+    --   numPoint
+    --   sigma
+    --   tao
+    --   len
+    --   theta0Freqs
+    --   thetaFreqs
+    --   init
   let arr = r2z1t0Tor2s1t0 numOrientation thetaFreqs arrR2Z1T0
       arr3d =
         rotate3D . R.slice arr $

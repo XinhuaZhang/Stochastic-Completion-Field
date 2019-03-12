@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 module Utils.Array where
 
 import           Data.Array.Repa as R
@@ -10,6 +11,16 @@ rotate3D arr =
    in R.backpermute
         (Z :. i :. j :. k)
         (\(Z :. a :. b :. c) -> (Z :. c :. a :. b))
+        arr
+        
+
+{-# INLINE rotate3DR #-}
+rotate3DR :: (R.Source s e) => R.Array s DIM3 e -> R.Array D DIM3 e  
+rotate3DR arr =
+  let (Z :. i :. j :. k) = extent arr
+   in R.backpermute
+        (Z :. k :. i :. j)
+        (\(Z :. a :. b :. c) -> (Z :. b :. c :. a))
         arr
 
 {-# INLINE rotate4D #-}
