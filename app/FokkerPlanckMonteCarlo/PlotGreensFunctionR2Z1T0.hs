@@ -41,7 +41,10 @@ main = do
       len
       theta0Freqs
       thetaFreqs
-      init
+      ""
+      (emptyHistogram
+         [numPoint, numPoint, L.length theta0Freqs, L.length thetaFreqs]
+         0)
   let arr3d =
         rotate3D . R.slice arr $
         (Z :. All :. (L.length theta0Freqs - 1) :. All :. All)
