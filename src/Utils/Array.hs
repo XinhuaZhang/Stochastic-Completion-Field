@@ -50,6 +50,7 @@ rotateR2Z1T0Array arr =
         (\(Z :. a :. b :. c :. d) -> (Z :. a :. d :. b :. c))
         arr
         
+        
 
 {-# INLINE rotateR2Z2T0S0Array #-}
 rotateR2Z2T0S0Array :: (R.Source s e) => R.Array s DIM6 e -> R.Array D DIM6 e

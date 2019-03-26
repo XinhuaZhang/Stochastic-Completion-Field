@@ -171,7 +171,7 @@ tests:
     - Stochastic-Completion-Field
   STCR2Z1T0-test:
     main:                STCR2Z1T0.hs
-    source-dirs:         test
+    source-dirs:         test/STCR2Z1T0
     ghc-options:
     - -threaded
     - -rtsopts
@@ -182,8 +182,33 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    # - -fllvm
+    # - -optlo-O
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z1T0_1-test:
+    main:                STCR2Z1T0_1.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z1T0_1
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -196,7 +221,7 @@ tests:
     - Stochastic-Completion-Field
   STCR2Z1T0Image-test:
     main:                STCR2Z1T0Image.hs
-    source-dirs:         test
+    source-dirs:         test/STCR2Z1T0Image
     ghc-options:
     - -threaded
     - -rtsopts
@@ -204,6 +229,31 @@ tests:
     - -O2
     - -j4
     - -main-is STCR2Z1T0Image
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z1T0PointSet-test:
+    main:                STCR2Z1T0PointSet.hs
+    source-dirs:         test/STCR2Z1T0PointSet
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z1T0PointSet
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
@@ -301,6 +351,26 @@ tests:
     - -funfolding-keeness-factor1000
     # - -fllvm
     # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  EquivarianceDiagram-test:
+    main:                EquivarianceDiagram.hs
+    source-dirs:         test/EquivarianceDiagram
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is EquivarianceDiagram
     extra-libraries:
     - stdc++
     - lapack

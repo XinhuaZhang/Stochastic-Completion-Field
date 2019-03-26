@@ -407,13 +407,14 @@ solveMonteCarloR2Z1T0 ::
   -> Int
   -> Double
   -> Double
+  -> Double
   -> Int
   -> [Double]
   -> [Double]
   -> FilePath
   -> Histogram (Complex Double)
   -> IO R2Z1T0Array
-solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSteps theta0Freqs thetaFreqs filePath hist = do
+solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao initialScale numSteps theta0Freqs thetaFreqs filePath hist = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
       xRange =
@@ -443,12 +444,12 @@ solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSte
                          gen
                          thetaDist
                          scaleDist
-                         10
+                         initialScale
                          tao
                          numSteps
                          xRange
                          yRange
-                         (0, 0, t0, 1, t0, 1)))
+                         (0, 0, t0, initialScale, t0, initialScale)))
               gens
           let ys =
                 parMap
@@ -469,12 +470,12 @@ solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao numSte
                      gen
                      thetaDist
                      scaleDist
-                     10
+                     initialScale
                      tao
                      numSteps
                      xRange
                      yRange
-                     (0, 0, t0, 1, t0, 1)))
+                     (0, 0, t0, initialScale, t0, initialScale)))
           gens
       let ys =
             parMap

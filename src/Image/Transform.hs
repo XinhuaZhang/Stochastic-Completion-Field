@@ -75,12 +75,7 @@ cropUnsafe start len =
     (shapeOfList . L.zipWith (+) start . listOfShape)
 
 {-# INLINE pad #-}
-pad ::
-     (Real e, Source s e, Shape sh)
-  => [Int]
-  -> e
-  -> R.Array s sh e
-  -> R.Array D sh e
+pad :: (Source s e, Shape sh) => [Int] -> e -> R.Array s sh e -> R.Array D sh e
 pad newDims padVal arr
   | L.all (== 0) diff = delay arr
   | otherwise =

@@ -45,7 +45,7 @@ pinwheelPI af rf maxR alpha x y
     exp (0 :+ ((af) * theta)) 
   where
     r = (sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int))
-    theta = pi / 2 + angleFunctionRad (fromIntegral x) (fromIntegral y)  
+    theta = pi  + angleFunctionRad (fromIntegral x) (fromIntegral y)  
 
 pinwheelFilter ::
      DFTPlan

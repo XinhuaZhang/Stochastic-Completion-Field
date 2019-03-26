@@ -47,6 +47,28 @@ r2z1Tor2s1 numOrientations freqs arr =
    in fromListUnboxed (Z :. numOrientations :. xLen :. yLen) .
       NL.toList . flatten $
       mat1 NL.<> mat2
+      
+
+{-# INLINE r2s1tor2z1 #-}
+r2s1tor2z1 ::
+     (Source s (Complex Double))
+  => [Double]
+  -> R.Array s DIM3 (Complex Double)
+  -> R.Array U DIM3 (Complex Double)
+r2s1tor2z1 freqs arr =
+  let (Z :. numOrientations :. xLen :. yLen) = extent arr
+      deltaTheta = 2 * pi / (fromIntegral numOrientations)
+      numFreqs = L.length freqs
+      mat1 =
+        (numFreqs >< numOrientations) . R.toList $
+        R.traverse
+          (fromListUnboxed (Z :. numFreqs) freqs)
+          (const (Z :. numFreqs :. numOrientations))
+          (\f (Z :. i :. j) ->
+             exp (0 :+ (deltaTheta * fromIntegral j) * f (Z :. i)))
+      mat2 = (numOrientations >< (xLen * yLen)) . R.toList $ arr
+   in fromListUnboxed (Z :. numFreqs :. xLen :. yLen) . NL.toList . flatten $
+      mat1 NL.<> mat2
 
 
 {-# INLINE r2z2t0s0Tor2s1rpt0s0 #-}
