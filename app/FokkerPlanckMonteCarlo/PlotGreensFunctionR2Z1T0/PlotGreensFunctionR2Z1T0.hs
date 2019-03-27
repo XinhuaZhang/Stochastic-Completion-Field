@@ -38,6 +38,7 @@ main = do
       numPoint
       sigma
       tao
+      1
       len
       theta0Freqs
       thetaFreqs

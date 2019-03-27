@@ -23,7 +23,9 @@ dependencies:
 - base >= 4.7 && < 5
 - array >= 0.5.3.0 && < 0.6.0.0
 - binary >= 0.8.6.0 && < 0.9.0.0
+- bytestring >= 0.10.8.2 &&  < 0.11
 - conduit >= 1.3.1 && < 1.4.0
+- conduit-extra >= 1.3.1 && < 1.4.0
 - containers >= 0.6.0.1 && < 0.7.0.0
 - deepseq >= 1.4.3.0 && < 1.5.0.0
 - directory >= 1.3.3.0 && < 1.4.0.0
@@ -50,7 +52,7 @@ library:
 executables:
   PlotGreensFunctionR2S1-exe:
     main:                PlotGreensFunctionR2S1.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo
+    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1
     ghc-options:
     - -threaded
     - -rtsopts
@@ -67,7 +69,7 @@ executables:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2S1RP-exe:
     main:                PlotGreensFunctionR2S1RP.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo
+    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1RP
     ghc-options:
     - -threaded
     - -rtsopts
@@ -84,7 +86,7 @@ executables:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2S1T0-exe:
     main:                PlotGreensFunctionR2S1T0.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo
+    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1T0
     ghc-options:
     - -threaded
     - -rtsopts
@@ -101,7 +103,7 @@ executables:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2Z1T0-exe:
     main:                PlotGreensFunctionR2Z1T0.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo
+    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2Z1T0
     ghc-options:
     - -threaded
     - -rtsopts
@@ -118,7 +120,7 @@ executables:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2Z2T0S0-exe:
     main:                PlotGreensFunctionR2Z2T0S0.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo
+    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2Z2T0S0
     ghc-options:
     - -threaded
     - -rtsopts
@@ -182,8 +184,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O
+    - -fllvm
+    - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -254,6 +256,31 @@ tests:
     - -O2
     - -j4
     - -main-is STCR2Z1T0PointSet
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z1T0ImageSparseCode-test:
+    main:                STCR2Z1T0ImageSparseCode.hs
+    source-dirs:         test/STCR2Z1T0ImageSparseCode
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z1T0ImageSparseCode
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
