@@ -11,6 +11,8 @@ type R2S1RPArray = Array U DIM4 Double            -- (Z :. numOrientations :. nu
 type R2S1T0Array = Array U DIM4 (Complex Double)  -- (Z :. numOrientations :. (L.length theta0freqs)  :. xLen :. yLen )
 type R2Z1T0Array = Array U DIM4 (Complex Double) -- (Z :. (L.length thetafreqs) :. (L.length theta0Freqs) :. xLen :. yLen )
 
+type R2Z1T0RadialArray = Array U DIM3 Double -- (Z :. (L.length thetafreqs) :. (L.length theta0Freqs) :. rLen)
+
 
 type R2S1RPT0S0Array = Array U DIM6 (Complex Double) 
 -- (Z :. numOrientations :. numScales :. (L.length theta0freqs) :. (L.length scale0freqs)  :. xLen :. yLen )

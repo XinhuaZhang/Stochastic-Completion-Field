@@ -21,7 +21,11 @@ import           Text.Printf
 import           Types
 import           Utils.Array
 
-makeR2Z1T0Plan :: DFTPlan -> R2Z1T0Array -> IO DFTPlan
+makeR2Z1T0Plan ::
+     (R.Source r (Complex Double))
+  => DFTPlan
+  -> R.Array r DIM4 (Complex Double)
+  -> IO DFTPlan
 makeR2Z1T0Plan oldPlan arr = do
   let (Z :. numThetaFreqs :. numTheta0Freqs :. xLen :. yLen) = extent arr
   lock <- getFFTWLock
@@ -136,16 +140,21 @@ makeFilterR2Z1T0 arr =
 
 {-# INLINE convolveR2T0 #-}
 convolveR2T0 :: DFTPlan -> R2Z1T0Array -> R2T0Array -> IO R2Z1T0Array
-convolveR2T0 plan filterF initialDistributionF = do
+convolveR2T0 plan filterF initialDistribution = do
   let (Z :. numThetaFreqs :. numTheta0Freqs :. xLen :. yLen) = extent filterF
-      arrF =
-        computeS $
-        R.traverse2
-          filterF
-          initialDistributionF
-          const
-          (\f1 f2 idx@(Z :. tf :. t0f :. x :. y) ->
-             (f1 idx) * (conjugate $ f2 (Z :. t0f :. x :. y)))
+  initialDistributionF <-
+    fmap (fromUnboxed (Z :. numTheta0Freqs :. xLen :. yLen) . VS.convert) .
+    dftExecute plan (DFTPlanID DFT1DG [numTheta0Freqs, xLen, yLen] [1, 2]) .
+    VU.convert . toUnboxed $
+    initialDistribution
+  arrF <-
+    computeP $
+    R.traverse2
+      filterF
+      initialDistributionF
+      const
+      (\f1 f2 idx@(Z :. tf :. t0f :. x :. y) ->
+         (f1 idx) * (conjugate $ f2 (Z :. t0f :. x :. y)))
   fmap (fromUnboxed (extent filterF) . VS.convert) .
     dftExecute
       plan
@@ -189,7 +198,11 @@ timeReversalConvolveR2Z1 plan thetaFreqs arr1 arr2 = do
 
 --- R2Z2T0S0 
 
-makeR2Z2T0S0Plan :: DFTPlan -> R2Z2T0S0Array -> IO DFTPlan
+makeR2Z2T0S0Plan ::
+     (R.Source r (Complex Double))
+  => DFTPlan
+  -> R.Array r DIM6 (Complex Double)
+  -> IO DFTPlan
 makeR2Z2T0S0Plan oldPlan arr = do
   let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
         extent arr
@@ -298,17 +311,21 @@ computeInitialDistributionR2T0S0 plan xLen yLen theta0Freqs scale0Freqs xs =
                             s0f * 2 * pi * scale / log maxR)))) $
              xs) $
         [(t0f, s0f) | t0f <- theta0Freqs, s0f <- scale0Freqs]
-   in fmap
-        (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
-         VS.convert) .
-      dftExecute
-        plan
-        (DFTPlanID DFT1DG [numTheta0Freqs, numScale0Freqs, xLen, yLen] [2, 3]) .
-      VS.convert $
-      vec
+   in -- fmap
+      --   (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
+      --    VS.convert) .
+      -- dftExecute
+      --   plan
+      --   (DFTPlanID DFT1DG [numTheta0Freqs, numScale0Freqs, xLen, yLen] [2, 3]) .
+      -- VS.convert $
+      -- vec
+      return $ fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) vec
 
 {-# INLINE makeFilterR2Z2T0S0 #-}
-makeFilterR2Z2T0S0 :: R2Z2T0S0Array -> R2Z2T0S0Array
+makeFilterR2Z2T0S0 ::
+     (R.Source r (Complex Double))
+  => R.Array r DIM6 (Complex Double)
+  -> R2Z2T0S0Array
 makeFilterR2Z2T0S0 arr =
   let (Z :. _ :. _ :. _ :. _ :. rows :. cols) = extent arr
    in computeS $
@@ -378,14 +395,14 @@ convolveR2T0S0 :: DFTPlan -> R2Z2T0S0Array -> R2T0S0Array -> IO R2Z2T0S0Array
 convolveR2T0S0 plan filterF initialDistributionF = do
   let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
         extent filterF
-      arrF =
-        computeS $
-        R.traverse2
-          filterF
-          initialDistributionF
-          const
-          (\f1 f2 idx@(Z :. tf :. sf :. t0f :. s0f :. x :. y) ->
-             f1 idx * f2 (Z :. t0f :. s0f :. x :. y))
+  arrF <-
+    computeP $
+    R.traverse2
+      filterF
+      initialDistributionF
+      const
+      (\f1 f2 idx@(Z :. tf :. sf :. t0f :. s0f :. x :. y) ->
+         f1 idx * (conjugate $ f2 (Z :. t0f :. s0f :. x :. y)))
   fmap (fromUnboxed (extent filterF) . VS.convert) .
     dftExecute
       plan
@@ -434,13 +451,11 @@ timeReversalConvolveR2Z2 plan thetaFreqs scaleFreqs arr1 arr2 = do
     VU.convert . toUnboxed $
     arr1
   vec2F <-
-    dftExecute
-      plan
-      (DFTPlanID DFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [0, 1]) .
-    VU.convert .
-    toUnboxed .
-    computeS . makeFilterR2Z2 . timeReverseR2Z2 thetaFreqs scaleFreqs $
-    arr2
+    (computeP . makeFilterR2Z2 . timeReverseR2Z2 thetaFreqs scaleFreqs $ arr2) >>=
+    (dftExecute
+       plan
+       (DFTPlanID DFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [0, 1]) .
+     VU.convert . toUnboxed)
   fmap (fromUnboxed (extent arr1) . VS.convert) .
     dftExecute
       plan
@@ -465,13 +480,16 @@ makeImagePlan plan arr = do
 normalizeR2Z1 ::
      Int -> [Double] -> R2T0Array -> R.Array D DIM3 (Complex Double)
 normalizeR2Z1 numOrientation thetaFreqs arr =
-  let norm =
-        VU.maximumBy (\x y -> compare (magnitude x) (magnitude y)) .
-        toUnboxed . r2z1Tor2s1 numOrientation thetaFreqs $
-        arr
-      arr1 = R.map (/ norm) arr
+  let -- norm =
+      --   VU.maximumBy (\x y -> compare (magnitude x) (magnitude y)) .
+      --   toUnboxed -- . r2z1Tor2s1 numOrientation thetaFreqs
+      --   $
+      --   arr
+      norm = R.sumAllS arr
+      -- norm = VU.sum . VU.map magnitude . toUnboxed . r2z1Tor2s1 numOrientation thetaFreqs  $ arr
+      arr1 = R.map (/ (norm)) arr
       s = sqrt . R.sumAllS . R.map (\x -> (magnitude x) ^ 2) $ arr1
-   in R.map (/ (s :+ 0)) arr1
+   in arr1 -- R.map (/ (s :+ 0)) arr1
 
 {-# INLINE eigenVectorR2Z1 #-}
 eigenVectorR2Z1 ::
@@ -489,29 +507,26 @@ eigenVectorR2Z1 ::
   -> IO R2Z1T0Array
 eigenVectorR2Z1 plan folderPath numOrientation thetaFreqs filter n writeFlag name bias inputR2Z1T0 = do
   let (Z :. numThetaFreq :. _ :. cols :. rows) = extent inputR2Z1T0
-      inputR2Z1 = R.sumS . rotateR2Z1T0Array $ inputR2Z1T0
-  initialDistF <-
-    fmap (fromUnboxed (Z :. numThetaFreq :. cols :. rows) . VS.convert) .
-    dftExecute plan (DFTPlanID DFT1DG [numThetaFreq, cols, rows] [1, 2]) .
-    VU.convert .
-    toUnboxed .
-    computeS .
-    normalizeR2Z1 numOrientation thetaFreqs .
-    computeS . R.zipWith (*) (R.map (\x -> (magnitude x) :+ 0) bias) $
+  inputR2Z1 <- R.sumP . rotateR2Z1T0Array $ inputR2Z1T0
+  initialDist <-
+    computeP .
+    R.zipWith (*) (R.map (\x -> (magnitude x) :+ 0) bias) .
+    normalizeR2Z1 numOrientation thetaFreqs $
     inputR2Z1
-  sourceArr <- convolveR2T0 plan filter initialDistF
+  sourceArr <- convolveR2T0 plan filter initialDist
   when
     writeFlag
-    (let sourceR2Z1 = R.sumS . rotateR2Z1T0Array $ sourceArr
-         sourceField =
-           computeS .
-           R.extend (Z :. (1 :: Int) :. All :. All) .
-           R.sumS . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
-           sourceR2Z1
-      in plotImageRepaComplex
-           (folderPath </> name L.++ "_" L.++ show n L.++ ".png") .
-         ImageRepa 8 $
-         sourceField)
+    (let
+      in do sourceR2Z1 <- R.sumP . rotateR2Z1T0Array $ sourceArr
+            sourceField <-
+              computeP .
+              R.extend (Z :. (1 :: Int) :. All :. All) .
+              R.sumS . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
+              sourceR2Z1
+            plotImageRepaComplex
+              (folderPath </> name L.++ "_" L.++ show n L.++ ".png") .
+              ImageRepa 8 $
+              sourceField)
   return sourceArr
 
 -- eigensink is computed from eigensource
@@ -521,17 +536,19 @@ powerMethod1 ::
   -> FilePath
   -> Int
   -> Int
+  -> Int
   -> [Double]
   -> [Double]
   -> R2Z1T0Array
   -> Int
   -> Bool
+  -> String
+  -> Double
   -> R.Array s1 DIM3 (Complex Double)
-  -> IO ()
-powerMethod1 plan folderPath numPoint numOrientation thetaFreqs theta0Freqs filter numIteration writeFlag bias = do
+  -> IO (R.Array D DIM3 (Complex Double))
+powerMethod1 plan folderPath cols rows numOrientation thetaFreqs theta0Freqs filter numIteration writeFlag idStr threshold bias = do
   filterF <- dftR2Z1T0 plan . computeS . makeFilterR2Z1T0 $ filter
-  eigenVecSource <-
-    initializeEigenVectorR2Z1 numPoint numPoint thetaFreqs theta0Freqs
+  eigenVecSource <- initializeEigenVectorR2Z1 cols rows thetaFreqs theta0Freqs
   sourceR2Z1T0 <-
     M.foldM
       (\input n ->
@@ -548,22 +565,66 @@ powerMethod1 plan folderPath numPoint numOrientation thetaFreqs theta0Freqs filt
            input)
       eigenVecSource
       [1 .. numIteration]
-  let sinkR2Z1T0 = computeSinkFromSource thetaFreqs sourceR2Z1T0
-      sourceR2Z1 = R.sumS . rotateR2Z1T0Array $ sourceR2Z1T0
-      sinkR2Z1 = R.sumS . rotateR2Z1T0Array $ sinkR2Z1T0
-  completionFieldR2S1
-    plan
-    folderPath
-    numOrientation
-    thetaFreqs
-    sourceR2Z1
-    sinkR2Z1 
+  let sinkR2Z1T0 =
+        computeSinkFromSourceR2Z1T0 thetaFreqs theta0Freqs sourceR2Z1T0
+  sourceR2Z1 <- R.sumP . rotateR2Z1T0Array $ sourceR2Z1T0
+  sinkR2Z1 <- R.sumP . rotateR2Z1T0Array $ sinkR2Z1T0
+  completionFieldR2 <-
+    completionFieldR2S1
+      plan
+      folderPath
+      idStr
+      numOrientation
+      thetaFreqs
+      sourceR2Z1
+      sinkR2Z1
+  let avg = threshold * (VU.maximum . toUnboxed . computeS $ completionFieldR2)
+  return . R.traverse2 bias completionFieldR2 const $ \fb fc idx@(Z :. _ :. i :. j) ->
+    if fc (Z :. i :. j) > avg
+      then 0
+      else fb idx  
+
+powerMethod1' ::
+     (R.Source s1 (Complex Double))
+  => DFTPlan
+  -> FilePath
+  -> Int
+  -> Int
+  -> Int
+  -> [Double]
+  -> [Double]
+  -> R2Z1T0Array
+  -> Int
+  -> Bool
+  -> Double
+  -> R.Array s1 DIM3 (Complex Double)
+  -> IO ()
+powerMethod1' plan folderPath cols rows numOrientation thetaFreqs theta0Freqs filter numIteration writeFlag threshold bias = do
+  M.foldM_
+    (\b i ->
+       powerMethod1
+         plan
+         folderPath
+         cols
+         rows
+         numOrientation
+         thetaFreqs
+         theta0Freqs
+         filter
+         numIteration
+         writeFlag
+         (printf "_%d" i)
+         threshold
+         b)
+    (delay bias)
+    [1 .. numIteration]
 
 -- eigensource and eigensink are computed seperately
 powerMethod2 ::
      (R.Source s1 (Complex Double))
   => DFTPlan
   -> FilePath
+  -> Int
   -> Int
   -> Int
   -> [Double]
@@ -573,50 +634,55 @@ powerMethod2 ::
   -> Bool
   -> R.Array s1 DIM3 (Complex Double)
   -> IO ()
-powerMethod2 plan folderPath numPoint numOrientation thetaFreqs theta0Freqs filter numIteration writeFlag bias = do
-  MP.bindM2
-    (completionFieldR2Z1 plan folderPath numOrientation thetaFreqs)
-    (do filterF <- dftR2Z1T0 plan . computeS . makeFilterR2Z1T0 $ filter
-        eigenVecSource <-
-          initializeEigenVectorR2Z1 numPoint numPoint thetaFreqs theta0Freqs
-        (R.sumS . rotateR2Z1T0Array) <$>
-          M.foldM
-            (\input n ->
-               eigenVectorR2Z1
-                 plan
-                 folderPath
-                 numOrientation
-                 thetaFreqs
-                 filterF
-                 n
-                 writeFlag
-                 "Source"
-                 bias
-                 input)
-            eigenVecSource
-            [1 .. numIteration])
-    (do filterTRF <-
-          dftR2Z1T0 plan .
-          computeS . makeFilterR2Z1T0 . timeReverseR2Z1T0 thetaFreqs theta0Freqs $
-          filter
-        eigenVecSink <-
-          initializeEigenVectorR2Z1 numPoint numPoint thetaFreqs theta0Freqs
-        (R.sumS . rotateR2Z1T0Array) <$>
-          M.foldM
-            (\input n ->
-               eigenVectorR2Z1
-                 plan
-                 folderPath
-                 numOrientation
-                 thetaFreqs
-                 filterTRF
-                 n
-                 writeFlag
-                 "Sink"
-                 bias
-                 input)
-            eigenVecSink
-            [1 .. numIteration])
+powerMethod2 plan folderPath cols rows numOrientation thetaFreqs theta0Freqs filter numIteration writeFlag bias = do
+  filterF <- dftR2Z1T0 plan . computeS . makeFilterR2Z1T0 $ filter
+  eigenVecSource <- initializeEigenVectorR2Z1 cols rows thetaFreqs theta0Freqs
+  sourceR2Z1 <-
+    M.foldM
+      (\input n ->
+         eigenVectorR2Z1
+           plan
+           folderPath
+           numOrientation
+           thetaFreqs
+           filterF
+           n
+           writeFlag
+           "Source"
+           bias
+           input)
+      eigenVecSource
+      [1 .. numIteration] >>=
+    (R.sumP . rotateR2Z1T0Array)
+  filterTRF <-
+    dftR2Z1T0 plan .
+    computeS . makeFilterR2Z1T0 . timeReverseR2Z1T0 thetaFreqs theta0Freqs $
+    filter
+  eigenVecSink <- initializeEigenVectorR2Z1 cols rows thetaFreqs theta0Freqs
+  sinkR2Z1 <-
+    M.foldM
+      (\input n ->
+         eigenVectorR2Z1
+           plan
+           folderPath
+           numOrientation
+           thetaFreqs
+           filterTRF
+           n
+           writeFlag
+           "Sink"
+           bias
+           input)
+      eigenVecSink
+      [1 .. numIteration] >>=
+    (R.sumP . rotateR2Z1T0Array)
+  completionFieldR2Z1
+    plan
+    folderPath
+    numOrientation
+    thetaFreqs
+    sourceR2Z1
+    sinkR2Z1
 
 {-# INLINE timeReversal #-}
 
@@ -651,23 +717,31 @@ completionFieldR2Z1 plan folderPath numOrientation thetaFreqs source sink = do
     completionFiledR2
 
 completionFieldR2S1 ::
-     DFTPlan -> FilePath -> Int -> [Double]  -> R2T0Array -> R2T0Array -> IO ()
-completionFieldR2S1 plan folderPath numOrientation thetaFreqs source sink = do
+     DFTPlan
+  -> FilePath
+  -> String
+  -> Int
+  -> [Double]
+  -> R2T0Array
+  -> R2T0Array
+  -> IO (R.Array D DIM2 Double)
+completionFieldR2S1 plan folderPath idStr numOrientation thetaFreqs source sink = do
   let completionFiled =
         R.zipWith
           (*)
           (r2z1Tor2s1 numOrientation thetaFreqs $ source)
           (r2z1Tor2s1 numOrientation thetaFreqs $ sink)
-      completionFiledR2 = R.sumS . rotate3D $ completionFiled
-  plotImageRepaComplex (folderPath </> "CompletioR2S1.png") .
+  completionFiledR2 <- R.sumP . rotate3D $ completionFiled
+  plotImageRepaComplex (folderPath </> printf "CompletioR2S1%s.png" idStr) .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFiledR2
-  plotImageRepa (folderPath </> "CompletionR2S1_normalized.png") .
+  plotImageRepa (folderPath </> printf "CompletionR2S1_normalized%s.png" idStr) .
     ImageRepa 8 .
     computeS .
     R.extend (Z :. (1 :: Int) :. All :. All) .
     R.map log . normalizeValueRange (1, 256) . computeS . R.map magnitude $
     completionFiledR2
+  return . R.map magnitude $ completionFiledR2
 
 completionFieldR2Z1' ::
      DFTPlan -> FilePath -> Int -> [Double]  -> R2T0Array -> R2T0Array -> IO R2T0Array
@@ -793,15 +867,34 @@ initializeEigenVectorR2Z1 xLen yLen thetaFreqs theta0Freqs = do
     exp (0 :+ (-1) * fFreq (Z :. k) * fTheta (Z :. i :. j))
 
 
-{-# INLINE computeSinkFromSource #-}
-computeSinkFromSource ::  [Double] -> R2Z1T0Array -> R2Z1T0Array
-computeSinkFromSource thetaFreqs sourceArr =
-  computeUnboxedS $
+{-# INLINE computeSinkFromSourceR2Z1T0 #-}
+computeSinkFromSourceR2Z1T0 ::
+     (R.Source r (Complex Double))
+  => [Double]
+  -> [Double]
+  -> R.Array r DIM4 (Complex Double)
+  -> R.Array D DIM4 (Complex Double)
+computeSinkFromSourceR2Z1T0 thetaFreqs theta0Freqs sourceArr =
   R.traverse3
     sourceArr
     (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
-    (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
+    (fromListUnboxed (Z :. L.length theta0Freqs) theta0Freqs)
     (\a _ _ -> a) $ \f1 f2 f3 idx@(Z :. k :. l :. i :. j) ->
+    f1 idx * exp (0 :+ (f2 (Z :. k) + f3 (Z :. l)) * pi)
+    
+{-# INLINE computeSinkFromSourceR2Z2T0S0 #-}
+computeSinkFromSourceR2Z2T0S0 ::
+     (R.Source r (Complex Double))
+  => [Double]
+  -> [Double]
+  -> R.Array r DIM6 (Complex Double)
+  -> R.Array D DIM6 (Complex Double)
+computeSinkFromSourceR2Z2T0S0 thetaFreqs theta0Freqs sourceArr =
+  R.traverse3
+    sourceArr
+    (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
+    (fromListUnboxed (Z :. L.length theta0Freqs) theta0Freqs)
+    (\a _ _ -> a) $ \f1 f2 f3 idx@(Z :. k :. _ :. l :. _ :. i :. j) ->
     f1 idx * exp (0 :+ (f2 (Z :. k) + f3 (Z :. l)) * pi)
 
 {-# INLINE dropPixel #-}

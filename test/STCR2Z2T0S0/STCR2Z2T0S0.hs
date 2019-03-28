@@ -1,6 +1,7 @@
 module STCR2Z2T0S0 where
 
 import           Control.Monad             as M
+import           Control.Monad.Parallel    as MP
 import           Data.Array.Repa           as R
 import           Data.Binary
 import           Data.Complex
@@ -48,44 +49,66 @@ main = do
       sinkDist = L.drop 1 initDist
       folderPath = "output/test/STCR2Z2T0S0"
   flag <- doesFileExist histFilePath
+  radialArr <-
+    if flag
+      then R.map magnitude . getNormalizedHistogramArr <$>
+           decodeFile histFilePath
+      else do
+        putStrLn "Couldn't find a Green's function data. Start simulation..."
+        solveMonteCarloR2Z2T0S0Radial
+          numThread
+          numTrail
+          maxTrail
+          numPoint
+          numPoint
+          thetaSigma
+          scaleSigma
+          maxScale
+          tao
+          theta0Freqs
+          thetaFreqs
+          scale0Freqs
+          scaleFreqs
+          histFilePath
+          (emptyHistogram
+             [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
+             , L.length scale0Freqs
+             , L.length theta0Freqs
+             , L.length scaleFreqs
+             , L.length thetaFreqs
+             ]
+             0)
   arrR2Z2T0S0 <-
-    if pinwheelFlag
-      then computeR2Z2T0S0Array
-             numPoint
-             numPoint
-             alpha
-             thetaFreqs
-             scaleFreqs
-             theta0Freqs
-             scale0Freqs
-      else if flag
-             then getNormalizedHistogramArr <$> decodeFile histFilePath
-             else solveMonteCarloR2Z2T0S0
-                    numThread
-                    numTrail
-                    maxTrail
-                    numPoint
-                    numPoint
-                    thetaSigma
-                    scaleSigma
-                    maxScale
-                    tao
-                    len
-                    theta0Freqs
-                    thetaFreqs
-                    scale0Freqs
-                    scaleFreqs
-                    histFilePath
-                    (emptyHistogram
-                       [ numPoint
-                       , numPoint
-                       , L.length scale0Freqs
-                       , L.length theta0Freqs
-                       , L.length scaleFreqs
-                       , L.length thetaFreqs
-                       ]
-                       0)
+    computeUnboxedP $
+    computeR2Z2T0S0ArrayRadial
+      radialArr
+      numPoint
+      numPoint
+      1
+      maxScale
+      thetaFreqs
+      scaleFreqs
+      theta0Freqs
+      scale0Freqs
+  let arr4d =
+        R.slice
+          arrR2Z2T0S0
+          (Z :. All :. All :. (L.length theta0Freqs - 1) :.
+           (L.length scale0Freqs - 1) :.
+           All :.
+           All)
   createDirectoryIfMissing True folderPath
+  MP.mapM_
+    (\(i, j) ->
+       plotImageRepaComplex
+         (folderPath </> show (i + 1) L.++ "_" L.++ show (j + 1) L.++ ".png") .
+       ImageRepa 8 .
+       computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice arr4d $
+       (Z :. i :. j :. All :. All))
+    [ (i, j)
+    | i <- [0 .. (L.length thetaFreqs) - 1]
+    , j <- [0 .. (L.length scaleFreqs) - 1]
+    ]
   plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
   sourceDistArr <-
     computeInitialDistributionR2T0S0
@@ -116,7 +139,8 @@ main = do
     sourceR2Z2
   plotImageRepaComplex (folderPath </> "Source.png") . ImageRepa 8 $ sourceField
   -- Sink field
-  sinkArr <- convolveR2T0S0 plan arrR2Z2T0S0F sinkDistArr
+  -- sinkArr <- convolveR2T0S0 plan arrR2Z2T0S0F sinkDistArr
+  let sinkArr = computeSinkFromSourceR2Z2T0S0 thetaFreqs theta0Freqs sourceArr
   sinkR2Z2 <- R.sumP . R.sumS . rotateR2Z2T0S0Array $ sinkArr
   sinkField <-
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
@@ -132,10 +156,9 @@ main = do
   completionFiledR2 <-
     R.sumP .
     R.sumS .
-    R.map magnitude .
     rotate4D .
     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
     completionFiled
-  plotImageRepa (folderPath </> "Completion.png") .
+  plotImageRepaComplex (folderPath </> "Completion.png") .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFiledR2

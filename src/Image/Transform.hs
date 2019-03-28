@@ -254,3 +254,45 @@ resize25D newSize@(newNx, newNy) bound arr =
     (Z :. nf' :. nx' :. ny') = extent arr
     ratioX = fromIntegral nx' / fromIntegral newNx
     ratioY = fromIntegral ny' / fromIntegral newNy
+    
+
+{-# INLINE rescale2D #-}
+rescale2D ::
+     (Source s Double)
+  => Double
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array U DIM2 Double
+rescale2D scale bound arr =
+  normalizeValueRange bound $
+  bicubicInterpolation
+    (\(i, j) -> (fromIntegral i / scale, fromIntegral j / scale))
+    (round $ scale * fromIntegral nx', round $ scale * fromIntegral ny')
+    arr
+  where
+    (Z :. nx' :. ny') = extent arr
+
+{-# INLINE rescale25D #-}
+rescale25D ::
+     (Source s Double)
+  => Double
+  -> (Double, Double)
+  -> R.Array s DIM3 Double
+  -> R.Array U DIM3 Double
+rescale25D scale bound arr =
+  normalizeValueRange bound .
+  fromUnboxed (Z :. nf' :. newNx :. newNy) .
+  VU.concat .
+  L.map
+    (\i ->
+       toUnboxed .
+       bicubicInterpolation
+         (\(i, j) -> (fromIntegral i / scale, fromIntegral j / scale))
+         (newNx, newNy) .
+       R.slice arr $
+       (Z :. i :. R.All :. R.All)) $
+  [0 .. nf' - 1]
+  where
+    (Z :. nf' :. nx' :. ny') = extent arr
+    newNx = round $ scale * fromIntegral nx'
+    newNy = round $ scale * fromIntegral ny'

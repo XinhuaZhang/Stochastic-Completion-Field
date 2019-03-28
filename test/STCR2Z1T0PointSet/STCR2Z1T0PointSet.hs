@@ -1,9 +1,12 @@
 module STCR2Z1T0PointSet where
 
-import           Data.Binary                  (decodeFile)
-import           Data.List                    as L
+import           Data.Array.Repa         as R
+import           Data.Binary             (decodeFile)
+import           Data.Complex
+import           Data.List               as L
 import           DFT.Plan
 import           FokkerPlanck.MonteCarlo
+import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           STC.CompletionField
 import           System.Directory
@@ -35,59 +38,45 @@ main = do
       folderPath = "output/test/STCR2Z1T0PointSet"
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
+  radialArr <-
+    if flag
+      then R.map magnitude . getNormalizedHistogramArr <$>
+           decodeFile histFilePath
+      else do
+        putStrLn "Couldn't find a Green's function data. Start simulation..."
+        solveMonteCarloR2Z1T0Radial
+          numThread
+          numTrail
+          maxTrail
+          numPoint
+          numPoint
+          sigma
+          tao
+          1
+          theta0Freqs
+          thetaFreqs
+          histFilePath
+          (emptyHistogram
+             [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
+             , L.length theta0Freqs
+             , L.length thetaFreqs
+             ]
+             0)
   arrR2Z1T0 <-
-    if pinwheelFlag
-      then error
-             "Using pinwheels to construct the Green's function has not been implemented yet."
-          --computeR2Z1T0Array numPoint numPoint alpha thetaFreqs theta0Freqs
-      else if flag
-              -- getNormalizedHistogramArr <$> decodeFile histFilePath
-              {-h <-  decodeFile histFilePath
-              solveMonteCarloR2Z1T0
-                numThread
-                numTrail
-                maxTrail
-                numPoint
-                numPoint
-                sigma
-                tao
-                initialScale
-                len
-                theta0Freqs
-                thetaFreqs
-                histFilePath
-                h-}
-             then do
-               getNormalizedHistogramArr <$> decodeFile histFilePath
-             else do
-               print
-                 "Couldn't find a Green's function data. Start simulation...\n"
-               solveMonteCarloR2Z1T0
-                 numThread
-                 numTrail
-                 maxTrail
-                 numPoint
-                 numPoint
-                 sigma
-                 tao
-                 initialScale
-                 len
-                 theta0Freqs
-                 thetaFreqs
-                 histFilePath
-                 (emptyHistogram
-                    [ numPoint
-                    , numPoint
-                    , L.length theta0Freqs
-                    , L.length thetaFreqs
-                    ]
-                    0)
+    computeUnboxedP $
+    computeR2Z1T0ArrayRadial
+      radialArr
+      numPoint
+      numPoint
+      1
+      thetaFreqs
+      theta0Freqs
   plan <- makeR2Z1T0Plan emptyPlan arrR2Z1T0
   let n = 30
       m = round $ (fromIntegral n) * (sqrt 2) / 2
-      a = 10
-      b = -10
-      c = 10
+      a = 30
+      b = -30
+      c = 30
       a' = round $ (fromIntegral a) * (sqrt 2) / 2
       b' = round $ (fromIntegral b) * (sqrt 2) / 2
       c' = round $ (fromIntegral c) * (sqrt 2) / 2
@@ -105,7 +94,7 @@ main = do
        [R2S1RPPoint (i, 0, 180, 1) | i <- [a,a + b .. c]] L.++
        [R2S1RPPoint (0, i, 0, 1) | i <- [-a,-(a + b) .. -c]] L.++
        [R2S1RPPoint (i, 0, 180, 1) | i <- [-a,-(a + b) .. -c]] L.++
-       [R2S1RPPoint (0, i, 0, 1) | i <- [a,a + b .. c]])
+       [R2S1RPPoint (0, i, 0, 1) | i <- [a,a + b .. c]] L.++ [R2S1RPPoint (3, 5, 0, 0)])
        -- [ R2S1RPPoint (n, 0, 0, 1)
        -- , R2S1RPPoint (0, n, 0, 1)
        -- , R2S1RPPoint (-n, 0, 0, 1)
@@ -119,10 +108,12 @@ main = do
     plan
     folderPath
     numPoint
+    numPoint
     numOrientation
     thetaFreqs
     theta0Freqs
     arrR2Z1T0
     numIteration
     writeSourceFlag
+    ""
     initialDistSource

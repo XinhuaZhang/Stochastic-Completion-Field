@@ -2,6 +2,7 @@
 module Filter.Pinwheel
   ( module Filter.Utils
   , PinwheelParams(..)
+  , pinwheel
   , pinwheelFilter
   , convolvePinwheel
   , frequencyDomainMultiply

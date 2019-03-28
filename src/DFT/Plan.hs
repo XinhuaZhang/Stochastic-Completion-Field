@@ -154,7 +154,7 @@ dftExecute ::
   -> IO (VS.Vector (Complex Double))
 dftExecute hashMap planID@(DFTPlanID t d i) vec =
   case HM.lookup planID hashMap of
-    Nothing -> error $ "dftExecute: couldn't find plan for ID " L.++ show planID
+    Nothing -> error $ "dftExecute: couldn't find plan for ID " L.++ show planID L.++ "/n" L.++ show (keys hashMap)
     Just plan -> dftExecuteWithPlan planID plan vec
 
 {-# INLINE dft2dG #-}
