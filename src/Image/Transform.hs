@@ -34,6 +34,26 @@ downsampleUnsafe factorList arr =
   where
     dList = listOfShape $ extent arr
     newSh = shapeOfList $ L.zipWith div dList factorList
+    
+{-# INLINE upsample #-}
+upsample ::
+     (Source s e, Shape sh, Num e) => [Int] -> R.Array s sh e -> R.Array D sh e
+upsample factorList arr
+  | L.all (== 1) factorList = delay arr
+  | L.any (< 1) factorList =
+    error $ "upsample: factor must be >= 1.\n" L.++ show factorList
+  | otherwise =
+    R.backpermuteDft
+      (fromFunction
+         (shapeOfList $ L.zipWith (*) (listOfShape . extent $ arr) factorList)
+         (const 0))
+      (\shape ->
+         if L.all (== 0) . L.zipWith (flip mod) factorList . listOfShape $ shape
+           then Just .
+                shapeOfList . L.zipWith (flip div) factorList . listOfShape $
+                shape
+           else Nothing)
+      arr
 
 {-# INLINE crop #-}
 crop ::
@@ -103,19 +123,18 @@ pad newDims padVal arr
 
 {-# INLINE normalizeValueRange #-}
 normalizeValueRange ::
-     (Shape sh, Num e, Fractional e, Ord e, Unbox e)
+     (Source r e, Shape sh, Num e, Fractional e, Ord e, Unbox e)
   => (e, e)
-  -> R.Array U sh e
-  -> R.Array U sh e
+  -> R.Array r sh e
+  -> R.Array D sh e
 normalizeValueRange (minVal, maxVal) arr
-  | maxV == minV = arr
+  | maxV == minV = delay arr
   | otherwise =
-    computeUnboxedS .
-    R.map (\x -> (x - minV) / (maxV - minV) * (maxVal - minVal) + minVal) $
-    arr
+    R.map (\x -> (x - minV) / (maxV - minV) * (maxVal - minVal) + minVal) $ arr
   where
-    minV = VU.minimum . toUnboxed $ arr
-    maxV = VU.maximum . toUnboxed $ arr
+    vec = computeUnboxedS . delay $ arr
+    minV = VU.minimum . toUnboxed $ vec
+    maxV = VU.maximum . toUnboxed $ vec
 
 {-# INLINE computeDerivativeS #-}
 computeDerivativeS ::
@@ -218,7 +237,7 @@ resize2D ::
   => (Int, Int)
   -> (Double, Double)
   -> R.Array s DIM2 Double
-  -> R.Array U DIM2 Double
+  -> R.Array D DIM2 Double
 resize2D newSize@(newNx, newNy) bound arr =
   normalizeValueRange bound $
   bicubicInterpolation
@@ -236,7 +255,7 @@ resize25D ::
   => (Int, Int)
   -> (Double, Double)
   -> R.Array s DIM3 Double
-  -> R.Array U DIM3 Double
+  -> R.Array D DIM3 Double
 resize25D newSize@(newNx, newNy) bound arr =
   normalizeValueRange bound .
   fromUnboxed (Z :. nf' :. newNx :. newNy) .
@@ -262,7 +281,7 @@ rescale2D ::
   => Double
   -> (Double, Double)
   -> R.Array s DIM2 Double
-  -> R.Array U DIM2 Double
+  -> R.Array D DIM2 Double
 rescale2D scale bound arr =
   normalizeValueRange bound $
   bicubicInterpolation
@@ -278,7 +297,7 @@ rescale25D ::
   => Double
   -> (Double, Double)
   -> R.Array s DIM3 Double
-  -> R.Array U DIM3 Double
+  -> R.Array D DIM3 Double
 rescale25D scale bound arr =
   normalizeValueRange bound .
   fromUnboxed (Z :. nf' :. newNx :. newNy) .
@@ -296,3 +315,49 @@ rescale25D scale bound arr =
     (Z :. nf' :. nx' :. ny') = extent arr
     newNx = round $ scale * fromIntegral nx'
     newNy = round $ scale * fromIntegral ny'
+
+{-# INLINE rotate2D #-}
+rotate2D ::
+     (Source s Double)
+  => Double
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array U DIM2 Double
+rotate2D theta (centerX, centerY) arr =
+  bicubicInterpolation
+    (\(i, j) ->
+       let i' = fromIntegral i - centerX
+           j' = fromIntegral j - centerY
+        in ( i' * cos theta - j' * sin theta + centerX
+           , i' * sin theta + j' * cos theta + centerY))
+    (nx', ny')
+    arr
+  where
+    (Z :. nx' :. ny') = extent arr
+
+
+{-# INLINE rotate25D #-}
+rotate25D ::
+     (Source s Double)
+  => Double
+  -> (Double, Double)
+  -> R.Array s DIM3 Double
+  -> R.Array U DIM3 Double
+rotate25D theta (centerX, centerY) arr =
+  fromUnboxed (Z :. nf' :. nx' :. ny') .
+  VU.concat .
+  L.map
+    (\i ->
+       toUnboxed .
+       bicubicInterpolation
+         (\(i, j) ->
+            let i' = fromIntegral i - centerX
+                j' = fromIntegral j - centerY
+             in ( i' * cos theta - j' * sin theta + centerX
+                , i' * sin theta + j' * cos theta + centerY))
+         (nx', ny') .
+       R.slice arr $
+       (Z :. i :. R.All :. R.All)) $
+  [0 .. nf' - 1]
+  where
+    (Z :. nf' :. nx' :. ny') = extent arr

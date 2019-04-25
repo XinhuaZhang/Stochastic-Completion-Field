@@ -223,13 +223,28 @@ plotImageRepa filePath img@(ImageRepa depth x) = do
       w =
         case nfp' of
           1 ->
-            ImageY8 $
+            -- ImageY8 $
+            -- generateImage
+            --   (\x y ->
+            --      let v =
+            --            fromIntegral . round $
+            --            normalizedImg R.! (Z :. 0 :. x :. y)
+            --       in v)
+            --   nxp'
+            --   nyp'
+            ImageRGB8 $
             generateImage
               (\x y ->
-                 let v =
+                 let r =
                        fromIntegral . round $
                        normalizedImg R.! (Z :. 0 :. x :. y)
-                  in v)
+                     g =
+                       fromIntegral . round $
+                       normalizedImg R.! (Z :. 0 :. x :. y)
+                     b =
+                       fromIntegral . round $
+                       normalizedImg R.! (Z :. 0 :. x :. y)
+                  in PixelRGB8 r g b)
               nxp'
               nyp'
           3 ->

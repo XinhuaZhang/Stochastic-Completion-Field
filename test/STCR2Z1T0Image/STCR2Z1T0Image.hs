@@ -50,91 +50,69 @@ main = do
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   (ImageRepa _ img'') <- readImageRepa imagePath False
-  let img' = rescale25D 0.5 (0, 255) . normalizeValueRange (0, 255) $ img''
+  let img'
+        -- resize25D (numPoint, numPoint) (0, 255) .
+        -- R.backpermute (Z :. nf :. numPoint :. numPoint) id .
+        -- upsample [4, 4, 1] . downsample [4, 4, 1] $
+       = img''
+      (Z :. nf :. _ :. _) = extent img''
       (Z :. _ :. cols :. rows) = extent img'
       pinwheelParams = PinwheelParams rows cols alpha (exp 1) theta0Freqs [0]
-  print . extent $ img'
-  arrR2Z1T0' <-
-    if pinwheelFlag
-      then error
-             "Using pinwheels to construct the Green's function has not been implemented yet."
-          --computeR2Z1T0Array numPoint numPoint alpha thetaFreqs theta0Freqs
-      else if flag
-              -- getNormalizedHistogramArr <$> decodeFile histFilePath
-              {-h <-  decodeFile histFilePath
-              solveMonteCarloR2Z1T0
-                numThread
-                numTrail
-                maxTrail
-                numPoint
-                numPoint
-                sigma
-                tao
-                initialScale
-                len
-                theta0Freqs
-                thetaFreqs
-                histFilePath
-                h-}
-             then do
-               getNormalizedHistogramArr <$> decodeFile histFilePath
-             else do
-               print
-                 "Couldn't find a Green's function data. Start simulation...\n"
-               solveMonteCarloR2Z1T0
-                 numThread
-                 numTrail
-                 maxTrail
-                 cols
-                 rows
-                 sigma
-                 tao
-                 initialScale
-                 len
-                 theta0Freqs
-                 thetaFreqs
-                 histFilePath
-                 (emptyHistogram
-                    [rows, cols, L.length theta0Freqs, L.length thetaFreqs]
-                    0)
-  let arrR2Z1T0
-        -- computeUnboxedS .
-        -- pad [numPoint, numPoint, L.length theta0Freqs, L.length thetaFreqs] 0 .
-        -- downsample [2, 2, 1, 1] $
-       = arrR2Z1T0'
-  let arr3d =
-        rotate3D . R.slice arrR2Z1T0 $
-        (Z :. All :. (L.length theta0Freqs - 1) :. All :. All)
-  MP.mapM_
-     (\i ->
-        plotImageRepaComplex
-          (folderPath </> "GreensR2Z1T0_" L.++ show (i + 1) L.++ ".png") .
-        ImageRepa 8 .
-        computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice arr3d $
-        (Z :. All :. All :. i))
-     [0 .. (L.length thetaFreqs) - 1]
-  plan0 <- makeR2Z1T0Plan emptyPlan arrR2Z1T0
-  (plan1, imgF) <- makeImagePlan plan0 img'
-  (plan2, filterF, filterPIF) <- pinwheelFilter plan1 pinwheelParams
-  (plan, gaussianFilterF) <-
-    gaussian2DFilter plan2 (Gaussian2DParams 1 rows cols)
+  radialArr <-
+    if flag
+      then R.map magnitude . getNormalizedHistogramArr <$>
+           decodeFile histFilePath
+      else do
+        putStrLn "Couldn't find a Green's function data. Start simulation..."
+        solveMonteCarloR2Z1T0Radial
+          numThread
+          numTrail
+          maxTrail
+          numPoint
+          numPoint
+          sigma
+          tao
+          1
+          theta0Freqs
+          thetaFreqs
+          histFilePath
+          (emptyHistogram
+             [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
+             , L.length theta0Freqs
+             , L.length thetaFreqs
+             ]
+             0)
+  arrR2Z1T0 <-
+    computeUnboxedP $
+    computeR2Z1T0ArrayRadial
+      radialArr
+      numPoint
+      numPoint
+      1.5
+      thetaFreqs
+      theta0Freqs
+  plan <- makeR2Z1T0Plan emptyPlan arrR2Z1T0
+  -- (plan1, imgF) <- makeImagePlan plan0 . computeS $ img'
+  -- (plan2, filterF, filterPIF) <- pinwheelFilter plan1 pinwheelParams
+  -- (plan, gaussianFilterF) <-
+  --   gaussian2DFilter plan2 (Gaussian2DParams 1 rows cols)
   -- -- img <- convolveGaussian2D plan gaussianFilterF . R.map (:+ 0) $ img'
   -- -- imgVec <- dropPixel (2 / 3) . toUnboxed . computeS . filterImage $ img'
   let img = R.map (:+ 0) img' -- = . fromUnboxed (extent img') $ imgVec
   plotImageRepa
     (folderPath </> "input.png") -- (ImageRepa 8 img)
     (ImageRepa 8 . computeS . R.map magnitude $ img)
-  convolvedImg' <-
-    convolvePinwheel
-      plan
-      filterPIF
-      (R.slice imgF (Z :. (0 :: Int) :. All :. All))
-  let convolvedImg =
-        computeS . R.slice convolvedImg' $
-        (Z :. All :. (0 :: Int) :. All :. All)
-  let (initialDistSource, initialDistSink) =
-        analyzeOrientation numOrientation theta0Freqs convolvedImg
-  powerMethod2
+  -- convolvedImg' <-
+  --   convolvePinwheel
+  --     plan
+  --     filterPIF
+  --     (R.slice imgF (Z :. (0 :: Int) :. All :. All))
+  -- let convolvedImg =
+  --       computeS . R.slice convolvedImg' $
+  --       (Z :. All :. (0 :: Int) :. All :. All)
+  -- let (initialDistSource, initialDistSink) =
+  --       analyzeOrientation numOrientation theta0Freqs convolvedImg
+  powerMethod1
     plan
     folderPath
     cols
@@ -145,4 +123,17 @@ main = do
     arrR2Z1T0
     numIteration
     writeSourceFlag
-    initialDistSource
+    ""
+    0.1
+    (R.traverse img (const (Z :. (L.length theta0Freqs) :. cols :. rows)) $ \f (Z :. _ :. i :. j) ->
+       if magnitude (f (Z :. (0 :: Int) :. i :. j)) > 0
+         then 1
+         else 0)
+    (R.traverse
+       img
+       (const
+          (Z :. (L.length thetaFreqs) :. (L.length theta0Freqs) :. cols :. rows)) $ \f (Z :. k :. _ :. i :. j) ->
+       if k == div (L.length thetaFreqs) 2
+         then f (Z :. (0 :: Int) :. i :. j) /
+              (fromIntegral $ L.length theta0Freqs)
+         else 0)

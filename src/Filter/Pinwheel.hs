@@ -30,11 +30,13 @@ pinwheel :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 pinwheel af rf maxR alpha x y
   | r == 0 = 0
   | otherwise =
-    (((r) :+ 0) ** (alpha :+ (rf * 2 * pi / (log maxR)))) *
-    exp (0 :+ ((af) * theta))
+    -- (r :+ 0) ** (alpha :+ 0) *
+    -- exp (0 :+ rf * ((log r) / (log maxR) * 2 * pi + 0.5 * pi)) *
+    -- exp (0 :+ af * theta)
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) * exp (0 :+ af * theta)
   where
-    r = (sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int))
-    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  
 
 
 {-# INLINE pinwheelPI #-}
@@ -56,7 +58,7 @@ pinwheelFilter plan (PinwheelParams rows cols alpha radialPeriod angularFreqs ra
   let numAngularFreq = L.length angularFreqs
       numRadialFreq = L.length radialFreqs
       filterVec =
-        VG.convert . toUnboxed . computeS . makeFilter $
+        VG.convert . toUnboxed . computeS . makeFilter2D $
         R.traverse2
           (fromListUnboxed (Z :. L.length angularFreqs) angularFreqs)
           (fromListUnboxed (Z :. L.length radialFreqs) radialFreqs)
@@ -68,10 +70,10 @@ pinwheelFilter plan (PinwheelParams rows cols alpha radialPeriod angularFreqs ra
                (f2 (Z :. rf))
                radialPeriod
                alpha
-               (i - div cols 2)
-               (j - div rows 2))
+               (i - center cols)
+               (j - center rows))
       filterPIVec =
-        VG.convert . toUnboxed . computeS . makeFilter $
+        VG.convert . toUnboxed . computeS . makeFilter2D $
         R.traverse2
           (fromListUnboxed (Z :. L.length angularFreqs) angularFreqs)
           (fromListUnboxed (Z :. L.length radialFreqs) radialFreqs)

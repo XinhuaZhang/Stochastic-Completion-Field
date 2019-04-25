@@ -9,6 +9,8 @@ module FokkerPlanck.MonteCarlo
   , solveMonteCarloR2Z2T0S0
   , solveMonteCarloR2Z1T0Radial
   , solveMonteCarloR2Z2T0S0Radial
+  , solveMonteCarloR2Z2T0S0Radial'
+  , solveMonteCarloR2Z2T0S0ReversalCornerRadial
   ) where
 
 import           Array.UnboxedArray              as UA
@@ -28,6 +30,7 @@ import           FokkerPlanck.Types
 import           Statistics.Distribution
 import           Statistics.Distribution.Normal
 import           Statistics.Distribution.Uniform
+import           Statistics.Distribution.Exponential
 import           System.Random
 import           System.Random.MWC
 import           Text.Printf
@@ -49,17 +52,18 @@ thetaPlus x y
 thetaCheck :: Double -> Double
 thetaCheck !theta =
   if theta < 0
-    then theta + 2 * pi
+    then thetaCheck $ theta + 2 * pi
     else if theta >= 2 * pi
-           then theta - 2 * pi
+           then thetaCheck $ theta - 2 * pi
            else theta
 
 {-# INLINE scalePlus #-}
 scalePlus :: Double -> Double -> Double -> (Double, Bool)
-scalePlus maxScale x y
-  | z < 0 = (-z, True)
-  | z >= maxScale = (maxScale, False)
-  | otherwise = (z, False)
+scalePlus maxScale x y = (z, False)
+  -- | z < 0 = (-z, True)
+  -- | z < 0 = (maxScale + z, False)
+  -- | z >= maxScale = (z - maxScale, False)
+  -- | otherwise = (z, False)
   where
     !z = x + y
 
@@ -71,34 +75,30 @@ generatePath ::
   -> Maybe d
   -> Double
   -> Double
-  -> Int
   -> (Int, Int)
   -> (Int, Int)
   -> ParticleIndex
   -> IO (DList ParticleIndex)
-generatePath randomGen thetaDist' scaleDist' maxScale tao numSteps xRange yRange init@(x', y', theta', scale', theta0', scale0') =
-  go
-    numSteps
-    (x', y', thetaCheck theta', scale', thetaCheck theta0', scale0')
-    DL.empty
+generatePath randomGen thetaDist' scaleDist' maxScale tao xRange yRange init@(x', y', theta', scale', theta0', scale0') =
+  go (x', y', thetaCheck theta', scale', thetaCheck theta0', scale0') DL.empty
   where
-    go 0 _ xs = return xs
-    go n z@(!x, !y, !theta, !scale, theta0, scale0) xs = do
+    go z@(!x, !y, !theta, !scale, theta0, scale0) xs = do
       deltaTheta <-
         case thetaDist' of
-          Nothing        -> return 0
+          Nothing -> return 0
           Just thetaDist -> genContVar thetaDist randomGen
       deltaScale <-
         case scaleDist' of
-          Nothing        -> return 0
+          Nothing -> return 0
           Just scaleDist -> genContVar scaleDist randomGen
       let (!newScale, flag) = scalePlus maxScale scale deltaScale
+          eScale = exp scale
           !newTheta =
             if flag
               then (theta `thetaPlus` (deltaTheta + pi))
               else (theta `thetaPlus` deltaTheta)
-          !newX = x + scale * cos theta
-          !newY = y + scale * sin theta
+          !newX = x + eScale * cos theta
+          !newY = y + eScale * sin theta
           newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
           ys =
             if (inRange xRange (round newX)) && (inRange yRange (round newY))
@@ -106,8 +106,8 @@ generatePath randomGen thetaDist' scaleDist' maxScale tao numSteps xRange yRange
               else xs
       t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
       if t < (1 - exp ((-1) / tao))
-        then go 0 newIndex ys
-        else go (n - 1) newIndex ys
+        then return ys
+        else go newIndex ys
 
 -- R2S1
 
@@ -123,7 +123,7 @@ countR2S1 (xMin, xMax) (yMin, yMax) numOrientations xs =
       ys =
         L.map (\(t, x, y) -> ((floor $ t / deltaTheta, round x, round y), 1)) .
         DL.toList .
-        DL.concat . L.map (DL.map (\(x, y, t, s, t0, s0) -> ((t, x, y)))) $
+        DL.concat . L.map (DL.map (\(x, y, t, s, t0, s0) -> (t, x, y))) $
         xs
       numTrajectories = L.length ys
       arr =
@@ -141,10 +141,10 @@ solveMonteCarloR2S1 ::
   -> Int
   -> Double
   -> Double
-  -> Int
+  -> FilePath
   -> ParticleIndex
   -> IO R2S1Array
-solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao numSteps (_, _, _, _, t0, _) = do
+solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao histFilePath (_, _, _, _, t0, s0) = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
       xRange =
@@ -163,20 +163,25 @@ solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao nu
       (\gen ->
          M.replicateM
            (div numTrails numGen)
-           (generatePath
-              gen
-              thetaDist
-              scaleDist
-              10
-              tao
-              numSteps
-              xRange
-              yRange
-              (0, 0, t0, 1, t0, 1)))
+           (do deltaTheta <-
+                 case thetaDist of
+                   Nothing -> return 0
+                   Just thetaDist' -> genContVar thetaDist' gen
+               generatePath
+                 gen
+                 thetaDist
+                 scaleDist
+                 10
+                 tao
+                 xRange
+                 yRange
+                 (0, 0, t0 + deltaTheta, s0, t0 + deltaTheta, s0)))
       gens
   let ys = parMap rdeepseq (countR2S1 xRange yRange numOrientations) xs
       histogram = L.foldl1' addHistogram ys
-  return . getNormalizedHistogramArr . mapHistogram (\x -> fromIntegral x :+ 0) $ histogram
+  unless (L.null histFilePath) (encodeFile histFilePath histogram)
+  return . getNormalizedHistogramArr . mapHistogram (\x -> fromIntegral x :+ 0) $
+    histogram
 
 -- R2S1RP
 
@@ -258,7 +263,6 @@ solveMonteCarloR2S1RP numGen numTrails xLen yLen numOrientations numScales theta
               scaleDist
               maxScale
               tao
-              numSteps
               xRange
               yRange
               (0, 0, t0, s0, t0, s0)))
@@ -294,7 +298,7 @@ countR2S1T0 (xMin, xMax) (yMin, yMax) numOrientations freqs xs =
              xs)
           freqs
           [1 ..]
-      numTrajectories = L.length ys
+      numTrajectories = div (L.length ys) (L.length freqs)
       arr =
         UA.accum
           (+)
@@ -350,7 +354,6 @@ solveMonteCarloR2S1T0 numGen numTrails xLen yLen numOrientations thetaSigma tao 
                  scaleDist
                  10
                  tao
-                 numSteps
                  xRange
                  yRange
                  (0, 0, t0, 1, t0, 1)))
@@ -384,7 +387,8 @@ countR2Z1T0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs xs =
              DL.concat $
              xs) $
         [(t0f, tf) | t0f <- (L.zip t0Freqs [1 ..]), tf <- (L.zip tFreqs [1 ..])]
-      numTrajectories = L.length ys
+      numTrajectories =
+        div (L.length ys) ((L.length t0Freqs) * (L.length tFreqs))
       arr =
         UA.accum
           (+)
@@ -448,7 +452,6 @@ solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao initia
                          scaleDist
                          initialScale
                          tao
-                         numSteps
                          xRange
                          yRange
                          (0, 0, t0, initialScale, t0, initialScale)))
@@ -474,7 +477,6 @@ solveMonteCarloR2Z1T0 numGen numTrails maxTrails xLen yLen thetaSigma tao initia
                      scaleDist
                      initialScale
                      tao
-                     numSteps
                      xRange
                      yRange
                      (0, 0, t0, initialScale, t0, initialScale)))
@@ -504,31 +506,30 @@ countR2Z2T0S0 ::
   -> [Double]
   -> [Double]
   -> [Double]
+  -> Double
   -> [DList ParticleIndex]
   -> Histogram (Complex Double)
-countR2Z2T0S0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs s0Freqs sFreqs xs =
-  let -- !maxR = sqrt . fromIntegral $ xMax ^ 2 + yMax ^ 2
-      !maxR = sqrt . fromIntegral $ (xMax - xMin + 1) ^ 2 + (yMax - yMin + 1) ^ 2
-      ys =
+countR2Z2T0S0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs s0Freqs sFreqs maxR xs =
+  let ys =
         DL.toList .
         DL.concat .
         L.map
           (\((t0f, i), (tf, j), (s0f, k), (sf, l)) ->
              DL.map
                (\(x, y, t, s, t0, s0) ->
-                  let !s' =
-                        if s == 0
-                          then 0
-                          else log s
-                      !s0' =
-                        if s0 == 0
-                          then 0
-                          else log s0
+                  let -- s' =
+                      --   if s == 0
+                      --     then 0
+                      --     else log s
+                      -- s0' =
+                      --   if s0 == 0
+                      --     then 0
+                      --     else log s0
                       !v =
                         exp
                           (0 :+
-                           (t0f * t0 + tf * t + s0f * (2 * pi * s0' / log maxR) +
-                            sf * (2 * pi * s' / log maxR)))
+                           (-t0f * t0 + tf * t +
+                            (sf * s + s0f * s0) * 2 * pi / log maxR))
                       !x' = round x
                       !y' = round y
                    in ((j, l, i, k, x', y'), v)) .
@@ -540,7 +541,11 @@ countR2Z2T0S0 (xMin, xMax) (yMin, yMax) t0Freqs tFreqs s0Freqs sFreqs xs =
         , s0f <- (L.zip s0Freqs [1 ..])
         , sf <- (L.zip sFreqs [1 ..])
         ]
-      numTrajectories = L.length ys
+      numTrajectories =
+        div
+          (L.length ys)
+          ((L.length t0Freqs) * (L.length tFreqs) * (L.length s0Freqs) *
+           (L.length sFreqs))
       arr =
         UA.accum
           (+)
@@ -620,14 +625,13 @@ solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSig
                   (do t0 <-
                         genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
                       s0 <-
-                        genContVar (uniformDistr 0 (maxScale)) gen :: IO Double
+                        genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
                       generatePath
                         gen
                         thetaDist
                         scaleDist
                         maxScale
                         tao
-                        numSteps
                         xRange
                         yRange
                         (0, 0, t0, s0, t0, s0)))
@@ -641,7 +645,8 @@ solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSig
                     theta0Freqs
                     thetaFreqs
                     scale0Freqs
-                    scaleFreqs)
+                    scaleFreqs
+                    maxScale)
                  xs
          return $! L.foldl' addHistogram h ys)
       hist
@@ -655,14 +660,14 @@ solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSig
              M.replicateM
                (div numLeft numGen)
                (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
-                   s0 <- genContVar (uniformDistr 0 maxScale) gen :: IO Double
+                   s0 <-
+                     genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
                    generatePath
                      gen
                      thetaDist
                      scaleDist
                      maxScale
                      tao
-                     numSteps
                      xRange
                      yRange
                      (0, 0, t0, s0, t0, s0)))
@@ -676,7 +681,8 @@ solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSig
                  theta0Freqs
                  thetaFreqs
                  scale0Freqs
-                 scaleFreqs)
+                 scaleFreqs
+                 maxScale)
               xs
           histogram' = L.foldl' addHistogram histogram ys
           newHist =
@@ -716,16 +722,23 @@ generatePathRaidal randomGen thetaDist' scaleDist' maxScale tao rRange init@(x',
         case scaleDist' of
           Nothing -> return 0
           Just scaleDist -> genContVar scaleDist randomGen
-      let (!newScale, flag) = scalePlus maxScale scale deltaScale
-          !newTheta =
-            if flag
-              then (theta `thetaPlus` (deltaTheta + pi))
-              else (theta `thetaPlus` deltaTheta)
-          !newX = x + scale * cos theta
-          !newY = y + scale * sin theta
+      let newScale = scale + deltaScale
+          newTheta = theta `thetaPlus` deltaTheta
+          newX = x + (exp scale) * cos theta
+          newY = y + (exp scale) * sin theta
+          -- r = sqrt $ newX' ^ 2 + newY' ^ 2
+          -- t = angleFunctionDeg newX' newY' 
+          -- (newX, newY) =
+          --   if r > maxScale
+          --     then ( (2 * maxScale - r) * sin (t + pi)
+          --          , (2 * maxScale - r) * cos (t + pi))
+          --     else (newX', newY')
           newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
           ys =
-            if (inRange rRange (round newX)) && round newY == 0
+            if (inRange -- first (const 1)
+                  (rRange)
+                  (round newX)) &&
+               round newY == 0
               then DL.cons newIndex xs
               else xs
       t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
@@ -750,11 +763,12 @@ countR2Z1T0Radial (rMin, rMax) t0Freqs tFreqs xs =
           (\((t0f, i), (tf, j)) ->
              DL.map
                (\(x, _, t, _, t0, _) ->
-                  ((j, i, round x), exp (0 :+ (t0f * t0 + tf * t)))) .
+                  ((j, i, round x), exp (0 :+ (-t0f * t0 + tf * t)))) .
              DL.concat $
              xs) $
         [(t0f, tf) | t0f <- (L.zip t0Freqs [1 ..]), tf <- (L.zip tFreqs [1 ..])]
-      numTrajectories = L.length ys
+      numTrajectories =
+        div (L.length ys) ((L.length t0Freqs) * (L.length tFreqs))
       arr =
         UA.accum
           (+)
@@ -862,9 +876,10 @@ countR2Z2T0S0Radial ::
   -> [Double]
   -> [Double]
   -> [Double]
+  -> Double
   -> [DList ParticleIndex]
   -> Histogram (Complex Double)
-countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs xs =
+countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
   let ys =
         DL.toList .
         DL.concat .
@@ -872,20 +887,19 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs xs =
           (\((t0f, i), (tf, j), (s0f, k), (sf, l)) ->
              DL.map
                (\(x, _, t, s, t0, s0) ->
-                  let !s' =
-                        if s == 0
-                          then 0
-                          else log s
-                      !s0' =
-                        if s0 == 0
-                          then 0
-                          else log s0
+                  let -- s' =
+                      --   if s == 0
+                      --     then 0
+                      --     else log s
+                      -- s0' =
+                      --   if s0 == 0
+                      --     then 0
+                      --     else log s0
                       !v =
-                        exp
-                          (0 :+
-                           (t0f * t0 + tf * t +
-                            s0f * (2 * pi * s0' / (log . fromIntegral $ rMax)) +
-                            sf * (2 * pi * s' / (log . fromIntegral $ rMax))))
+                        exp $
+                        0 :+
+                        (-t0f * t0 + tf * t +
+                         (sf * s - s0f * s0) * 2 * pi / (log maxScale))
                       !x' = round x
                    in ((j, l, i, k, x'), v)) .
              DL.concat $
@@ -896,7 +910,11 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs xs =
         , s0f <- (L.zip s0Freqs [1 ..])
         , sf <- (L.zip sFreqs [1 ..])
         ]
-      numTrajectories = L.length ys
+      numTrajectories =
+        div
+          (L.length ys)
+          ((L.length t0Freqs) * (L.length tFreqs) * (L.length s0Freqs) *
+           (L.length sFreqs))
       arr =
         UA.accum
           (+)
@@ -974,7 +992,7 @@ solveMonteCarloR2Z2T0S0Radial numGen numTrails maxTrails xLen yLen thetaSigma sc
                   (do t0 <-
                         genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
                       s0 <-
-                        genContVar (uniformDistr 0 (maxScale)) gen :: IO Double
+                        genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
                       generatePathRaidal
                         gen
                         thetaDist
@@ -983,7 +1001,7 @@ solveMonteCarloR2Z2T0S0Radial numGen numTrails maxTrails xLen yLen thetaSigma sc
                         tao
                         rRange
                         (0, 0, t0, s0, t0, s0)))
-             gens
+             gens 
          let ys =
                parMap
                  rdeepseq
@@ -992,7 +1010,8 @@ solveMonteCarloR2Z2T0S0Radial numGen numTrails maxTrails xLen yLen thetaSigma sc
                     theta0Freqs
                     thetaFreqs
                     scale0Freqs
-                    scaleFreqs)
+                    scaleFreqs
+                    maxScale)
                  xs
          return $! L.foldl' addHistogram h ys)
       hist
@@ -1006,7 +1025,8 @@ solveMonteCarloR2Z2T0S0Radial numGen numTrails maxTrails xLen yLen thetaSigma sc
              M.replicateM
                (div numLeft numGen)
                (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
-                   s0 <- genContVar (uniformDistr 0 maxScale) gen :: IO Double
+                   s0 <-
+                     genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
                    generatePathRaidal
                      gen
                      thetaDist
@@ -1024,7 +1044,310 @@ solveMonteCarloR2Z2T0S0Radial numGen numTrails maxTrails xLen yLen thetaSigma sc
                  theta0Freqs
                  thetaFreqs
                  scale0Freqs
-                 scaleFreqs)
+                 scaleFreqs
+                 maxScale
+                 )
+              xs
+          histogram' = L.foldl' addHistogram histogram ys
+          newHist =
+            if numMonteCarlo > 0
+              then histogram'
+              else addHistogram hist histogram'
+      unless (L.null filePath) (encodeFile filePath newHist)
+      return . R.map magnitude . getNormalizedHistogramArr $ newHist
+    else do
+      unless (L.null filePath) (encodeFile filePath histogram)
+      return . R.map magnitude . getNormalizedHistogramArr $ histogram
+      
+
+solveMonteCarloR2Z2T0S0Radial' ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> FilePath
+  -> Histogram (Complex Double)
+  -> IO (R.Array U DIM5 (Complex Double))
+solveMonteCarloR2Z2T0S0Radial' numGen numTrails maxTrails xLen yLen thetaSigma scaleSigma maxScale tao theta0Freqs thetaFreqs scale0Freqs scaleFreqs filePath hist = do
+  let !xShift = div xLen 2
+      xRange =
+        if odd xLen
+          then (-xShift, xShift)
+          else (-xShift, xShift - 1)
+      !yShift = div yLen 2
+      yRange =
+        if odd yLen
+          then (-yShift, yShift)
+          else (-yShift, yShift - 1)
+      rRange = (0, (round . sqrt . fromIntegral $ xShift ^ 2 + yShift ^ 2) - 1)
+      -- rRange = (0, round maxScale)
+      thetaDist = normalDistrE 0 thetaSigma
+      scaleDist = normalDistrE 0 scaleSigma
+      numMonteCarlo = div numTrails maxTrails
+      numLeft = mod numTrails maxTrails
+  printf
+    "%d trails, maximum %d each batch, %d batch in total.\n"
+    numTrails
+    maxTrails
+    (numMonteCarlo +
+     if numLeft > 0
+       then 1
+       else 0)
+  gensList <-
+    M.replicateM numMonteCarlo (M.replicateM numGen createSystemRandom)
+  histogram <-
+    M.foldM
+      (\h gens -> do
+         xs <-
+           MP.mapM
+             (\gen ->
+                M.replicateM
+                  (div maxTrails numGen)
+                  (do t0 <-
+                        genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                      s0 <-
+                        genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
+                      generatePathRaidal
+                        gen
+                        thetaDist
+                        scaleDist
+                        maxScale
+                        tao
+                        rRange
+                        (0, 0, t0, s0, t0, s0)))
+             gens
+         let ys =
+               parMap
+                 rdeepseq
+                 (countR2Z2T0S0Radial
+                    rRange
+                    theta0Freqs
+                    thetaFreqs
+                    scale0Freqs
+                    scaleFreqs
+                    maxScale)
+                 xs
+         return $! L.foldl' addHistogram h ys)
+      hist
+      gensList
+  if numLeft > 0
+    then do
+      gens <- M.replicateM numGen createSystemRandom
+      xs <-
+        MP.mapM
+          (\gen ->
+             M.replicateM
+               (div numLeft numGen)
+               (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                   s0 <-
+                     genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
+                   generatePathRaidal
+                     gen
+                     thetaDist
+                     scaleDist
+                     maxScale
+                     tao
+                     rRange
+                     (0, 0, t0, s0, t0, s0)))
+          gens
+      let ys =
+            parMap
+              rdeepseq
+              (countR2Z2T0S0Radial
+                 rRange
+                 theta0Freqs
+                 thetaFreqs
+                 scale0Freqs
+                 scaleFreqs
+                 maxScale)
+              xs
+          histogram' = L.foldl' addHistogram histogram ys
+          newHist =
+            if numMonteCarlo > 0
+              then histogram'
+              else addHistogram hist histogram'
+      -- unless (L.null filePath) (encodeFile filePath newHist)
+      return . getNormalizedHistogramArr $ newHist
+    else do
+      -- unless (L.null filePath) (encodeFile filePath histogram)
+      return . getNormalizedHistogramArr $ histogram
+
+
+
+
+{-# INLINE generatePathReversalCornerRaidal #-}
+generatePathReversalCornerRaidal ::
+     (Distribution d, ContGen d)
+  => GenIO
+  -> Maybe d
+  -> Maybe d
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> (Int, Int)
+  -> ParticleIndex
+  -> IO (DList ParticleIndex)
+generatePathReversalCornerRaidal randomGen thetaDist' scaleDist' maxScale taoDecay taoReversal taoCorner rRange init@(x', y', theta', scale', theta0', scale0') =
+  go (x', y', thetaCheck theta', scale', thetaCheck theta0', scale0') DL.empty
+  where
+    go z@(!x, !y, !theta, !scale, theta0, scale0) xs = do
+      deltaTheta <-
+        case thetaDist' of
+          Nothing -> return 0
+          Just thetaDist -> genContVar thetaDist randomGen
+      deltaScale <-
+        case scaleDist' of
+          Nothing -> return 0
+          Just scaleDist -> genContVar scaleDist randomGen
+      let newScale = scale + deltaScale
+          newTheta' = theta `thetaPlus` deltaTheta
+          newX = x + (exp scale) * cos theta
+          newY = y + (exp scale) * sin theta
+      newTheta <-
+        do tReversal <- genContVar (uniformDistr 0 1) randomGen :: IO Double
+           if tReversal < 1 - exp ((-1) / taoReversal)
+             then return $ newTheta' `thetaPlus` pi
+             else return newTheta' >>= \t' -> do
+                    tCorner <-
+                      genContVar (uniformDistr 0 1) randomGen :: IO Double
+                    if tCorner < 1 - exp ((-1) / taoCorner)
+                      then thetaCheck <$>
+                           genContVar (uniformDistr 0 (2 * pi)) randomGen :: IO Double
+                      else return t'
+      let newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
+          ys =
+            if (inRange rRange (round newX)) && round newY == 0
+              then DL.cons newIndex xs
+              else xs
+      tDecay <- genContVar (uniformDistr 0 1) randomGen :: IO Double
+      if tDecay < 1 - exp ((-1) / taoDecay)
+        then return ys
+        else go newIndex ys 
+
+solveMonteCarloR2Z2T0S0ReversalCornerRadial ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> FilePath
+  -> Histogram (Complex Double)
+  -> IO (R.Array D DIM5 Double)
+solveMonteCarloR2Z2T0S0ReversalCornerRadial numGen numTrails maxTrails xLen yLen thetaSigma scaleSigma maxScale taoDecay taoReversal taoCorner theta0Freqs thetaFreqs scale0Freqs scaleFreqs filePath hist = do
+  let !xShift = div xLen 2
+      xRange =
+        if odd xLen
+          then (-xShift, xShift)
+          else (-xShift, xShift - 1)
+      !yShift = div yLen 2
+      yRange =
+        if odd yLen
+          then (-yShift, yShift)
+          else (-yShift, yShift - 1)
+      rRange = (0, (round . sqrt . fromIntegral $ xShift ^ 2 + yShift ^ 2) - 1)
+      thetaDist = normalDistrE 0 thetaSigma
+      scaleDist = normalDistrE 0 scaleSigma
+      numMonteCarlo = div numTrails maxTrails
+      numLeft = mod numTrails maxTrails
+  printf
+    "%d trails, maximum %d each batch, %d batch in total.\n"
+    numTrails
+    maxTrails
+    (numMonteCarlo +
+     if numLeft > 0
+       then 1
+       else 0)
+  gensList <-
+    M.replicateM numMonteCarlo (M.replicateM numGen createSystemRandom)
+  histogram <-
+    M.foldM
+      (\h gens -> do
+         xs <-
+           MP.mapM
+             (\gen ->
+                M.replicateM
+                  (div maxTrails numGen)
+                  (do t0 <-
+                        genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                      s0 <-
+                        genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
+                      generatePathReversalCornerRaidal
+                        gen
+                        thetaDist
+                        scaleDist
+                        maxScale
+                        taoDecay
+                        taoReversal
+                        taoCorner
+                        rRange
+                        (0, 0, t0, s0, t0, s0)))
+             gens
+         let ys =
+               parMap
+                 rdeepseq
+                 (countR2Z2T0S0Radial
+                    rRange
+                    theta0Freqs
+                    thetaFreqs
+                    scale0Freqs
+                    scaleFreqs
+                    maxScale)
+                 xs
+         return $! L.foldl' addHistogram h ys)
+      hist
+      gensList
+  if numLeft > 0
+    then do
+      gens <- M.replicateM numGen createSystemRandom
+      xs <-
+        MP.mapM
+          (\gen ->
+             M.replicateM
+               (div numLeft numGen)
+               (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                   s0 <-
+                     genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
+                   generatePathReversalCornerRaidal
+                     gen
+                     thetaDist
+                     scaleDist
+                     maxScale
+                     taoDecay
+                     taoReversal
+                     taoCorner
+                     rRange
+                     (0, 0, t0, s0, t0, s0)))
+          gens
+      let ys =
+            parMap
+              rdeepseq
+              (countR2Z2T0S0Radial
+                 rRange
+                 theta0Freqs
+                 thetaFreqs
+                 scale0Freqs
+                 scaleFreqs
+                 maxScale)
               xs
           histogram' = L.foldl' addHistogram histogram ys
           newHist =

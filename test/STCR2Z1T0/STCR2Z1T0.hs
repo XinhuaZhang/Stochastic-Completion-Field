@@ -7,6 +7,7 @@ import           Data.Binary               (decodeFile)
 import           Data.Complex
 import           Data.List                 as L
 import           DFT.Plan
+import           Filter.Utils
 import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
@@ -71,24 +72,26 @@ main = do
     if flag
       then R.map magnitude . getNormalizedHistogramArr <$>
            decodeFile histFilePath
-      else solveMonteCarloR2Z1T0Radial
-             numThread
-             numTrail
-             maxTrail
-             numPoint
-             numPoint
-             sigma
-             tao
-             1
-             theta0Freqs
-             thetaFreqs
-             histFilePath
-             (emptyHistogram
-                [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
-                , L.length theta0Freqs
-                , L.length thetaFreqs
-                ]
-                0)
+      else do
+        putStrLn "Couldn't find a Green's function data. Start simulation..."
+        solveMonteCarloR2Z1T0Radial
+          numThread
+          numTrail
+          maxTrail
+          numPoint
+          numPoint
+          sigma
+          tao
+          0
+          theta0Freqs
+          thetaFreqs
+          histFilePath
+          (emptyHistogram
+             [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
+             , L.length theta0Freqs
+             , L.length thetaFreqs
+             ]
+             0)
   arrR2Z1T0 <-
     computeUnboxedP $
     computeR2Z1T0ArrayRadial
@@ -115,9 +118,9 @@ main = do
     computeInitialDistributionR2T0 plan numPoint numPoint theta0Freqs sourceDist
   sinkDistArr <-
     computeInitialDistributionR2T0 plan numPoint numPoint theta0Freqs sinkDist
-  arrR2Z1T0F <- (computeP . makeFilterR2Z1T0 $ arrR2Z1T0) >>= dftR2Z1T0 plan
+  arrR2Z1T0F <- (computeP . makeFilter2D $ arrR2Z1T0) >>= dftR2Z1T0 plan
   arrR2Z1T0TRF <-
-    (computeP . makeFilterR2Z1T0 . timeReverseR2Z1T0 thetaFreqs theta0Freqs $
+    (computeP . makeFilter2D . timeReverseR2Z1T0 thetaFreqs theta0Freqs $
      arrR2Z1T0) >>=
     dftR2Z1T0 plan
   -- Source field
@@ -135,7 +138,8 @@ main = do
     sourceR2Z1
   plotImageRepaComplex (folderPath </> "Source.png") . ImageRepa 8 $ sourceField
   -- Sink field
-  sinkArr <- convolveR2T0 plan arrR2Z1T0TRF sinkDistArr
+  sinkArr' <- convolveR2T0 plan arrR2Z1T0F sinkDistArr
+  let   sinkArr  = computeSinkFromSourceR2Z1T0 thetaFreqs theta0Freqs sinkArr'
   -- let sinkR2Z1 = R.sumS . rotateR2Z1T0Array $ sinkArr
   --     sinkField =
   --       computeS .
@@ -150,14 +154,14 @@ main = do
   plotImageRepaComplex (folderPath </> "Sink.png") . ImageRepa 8 $ sinkField
   -- Completion Filed
   completionFiled <-
-    timeReversalConvolveR2Z1 plan thetaFreqs sourceR2Z1 sinkR2Z1
+    convolveR2Z1 plan thetaFreqs sourceR2Z1 sinkR2Z1
   let completionFiledR2 =
-        R.sumS .
-        R.map magnitude . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
+        R.sumS . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
         completionFiled
   -- completionFiledR2 <-
   --   R.sumP . R.map magnitude . rotate3D . r2z1Tor2s1 numOrientation thetaFreqs $
   --   completionFiled
   plotImageRepa (folderPath </> "Completion.png") .
-    ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
+    ImageRepa 8 .
+    computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map magnitude $
     completionFiledR2

@@ -79,3 +79,4 @@ polar2cartesian
   => (a, a) -> (a, a)
 polar2cartesian (rad, deg) =
   (rad * (cos $ deg2Rad deg), rad * (sin $ deg2Rad deg))
+  

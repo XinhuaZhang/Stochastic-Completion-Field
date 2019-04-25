@@ -32,7 +32,7 @@ gaussian2DFilter plan (Gaussian2DParams sigma rows cols) = do
         VG.convert .
         toUnboxed .
         computeS .
-        R.map (:+ 0) . makeFilter . R.fromFunction (Z :. cols :. rows) $ \(Z :. i :. j) ->
+        R.map (:+ 0) . makeFilter2D . R.fromFunction (Z :. cols :. rows) $ \(Z :. i :. j) ->
           gaussian2D sigma (i - (div cols 2)) (j - (div rows 2))
   lock <- getFFTWLock
   (plan1, filterVecF) <- dft1dGPlan lock plan [cols, rows] [0, 1] filterVec

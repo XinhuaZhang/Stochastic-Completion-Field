@@ -141,3 +141,40 @@ r2z2Tor2s1rp numOrientations thetaFreqs numScales scaleFreqs arr =
    in fromListUnboxed (Z :. numOrientations :. numScales :. xLen :. yLen) .
       NL.toList . flatten $
       mat1 NL.<> mat2
+      
+
+{-# INLINE r2z2Tor2s1rpP #-}
+r2z2Tor2s1rpP ::
+     (Source s (Complex Double))
+  => Int
+  -> [Double]
+  -> Int
+  -> [Double]
+  -> R.Array s DIM4 (Complex Double)
+  -> IO (R.Array U DIM4 (Complex Double))
+r2z2Tor2s1rpP numOrientations thetaFreqs numScales scaleFreqs arr = do
+  let deltaTheta = 2 * pi / (fromIntegral numOrientations)
+      (Z :. numThetaFreq :. numScaleFreq :. xLen :. yLen) = extent arr
+      mat2 = ((numThetaFreq * numScaleFreq) >< (xLen * yLen)) . R.toList $ arr
+  mat1 <-
+    fmap
+      (((numOrientations * numScales) >< (numThetaFreq * numScaleFreq)) .
+       R.toList) .
+    computeUnboxedP $
+    R.traverse3
+      (fromFunction
+         (Z :. numOrientations :. numScales :. numThetaFreq :. numScaleFreq)
+         (const 0))
+      (fromListUnboxed (Z :. numThetaFreq) thetaFreqs)
+      (fromListUnboxed (Z :. numScaleFreq) scaleFreqs)
+      (\a _ _ -> a)
+      (\f1 f2 f3 (Z :. i :. j :. k :. l) ->
+         exp
+           (0 :+
+            (-1) *
+            ((deltaTheta * fromIntegral i) * f2 (Z :. k) +
+             (2 * pi * fromIntegral j / fromIntegral numScales) * f3 (Z :. l))))
+  return .
+    fromListUnboxed (Z :. numOrientations :. numScales :. xLen :. yLen) .
+    NL.toList . flatten $
+    mat1 NL.<> mat2

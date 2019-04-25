@@ -5,6 +5,7 @@ module FokkerPlanck.Interpolation where
 import           Data.Array.Repa as R
 import           Data.Complex
 import           Data.List       as L
+import           Filter.Utils
 import           Types
 
 {-# INLINE radialCubicInterpolation #-}
@@ -17,31 +18,33 @@ radialCubicInterpolation ::
 radialCubicInterpolation radialArr scaleFactor inputArr =
   let (_ :. n) = extent radialArr
       (_ :. nx :. ny) = extent inputArr
-   in R.traverse2 inputArr radialArr const $ \fInput fRadial idx@(sh :. i :. j) ->
-        let r =
-              (sqrt . fromIntegral $ (i - div nx 2) ^ 2 + (j - div ny 2) ^ 2) /
-              scaleFactor
-         in if scaleFactor == 0
-              then error "radialCubicInterpolation: scaleFactor = 0"
-              else if r < 0 || r > (fromIntegral $ n - 1) -- out of boundary
+   in if scaleFactor == 0
+        then error "radialCubicInterpolation: scaleFactor = 0"
+        else R.traverse2 inputArr radialArr const $ \fInput fRadial idx@(sh :. i :. j) ->
+               let r =
+                     (sqrt . fromIntegral $
+                      (i - center nx) ^ 2 + (j - center ny) ^ 2) /
+                     scaleFactor
+                in if r < 0 || r > (fromIntegral $ n - 1) -- out of boundary. When r = 0, log r makes no sense, and therefore the information at r = 0 should not be used to interpoalte 0 < r <= 1.
                      then 0
                      else if r <= 1 -- linear interpolation
                             then fInput idx *
-                                 ((fRadial (sh :. 0) +
-                                   r * (fRadial (sh :. 1) - fRadial (sh :. 0))) :+
+                                 ((fRadial (sh :. 1) +
+                                   (r - 1) *
+                                   (fRadial (sh :. 2) - fRadial (sh :. 1))) :+
                                   0)
                             else if r >= (fromIntegral $ n - 2) -- linear interpolation
                                    then fInput idx *
-                                        ((fRadial (sh :. (n - 2)) +
+                                        ((fRadial (sh :. n - 2) +
                                           (r - (fromIntegral $ n - 2)) *
                                           (fRadial (sh :. n - 1) -
                                            fRadial (sh :. n - 2))) :+
                                          0)
                                    else let x0 = floor r -- cubic interpolation
-                                            p0 = fRadial (sh :. (x0 - 1))
+                                            p0 = fRadial (sh :. x0 - 1)
                                             p1 = fRadial (sh :. x0)
-                                            p2 = fRadial (sh :. (x0 + 1))
-                                            p3 = fRadial (sh :. (x0 + 2))
+                                            p2 = fRadial (sh :. x0 + 1)
+                                            p3 = fRadial (sh :. x0 + 2)
                                             x = r - fromIntegral x0
                                          in fInput idx *
                                             (((-0.5 * p0 + 1.5 * p1 - 1.5 * p2 +

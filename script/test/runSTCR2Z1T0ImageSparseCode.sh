@@ -18,7 +18,7 @@ ImagePath=/home/xzhang/Workspaces/GenerativeAmoeba/output1LayerFull/Train/S1.pvp
 ReconPath=/home/xzhang/Workspaces/GenerativeAmoeba/output1LayerFull/Train/S1ReconImageAmoeba.pvp
 NumInteration=20
 WriteSourceFlag=True
-Threshold=0.05
+Threshold=0.5
 Threads=8
 
 time stack test :STCR2Z1T0ImageSparseCode-test --test-arguments "${Size} ${Orientations} ${Sigma} ${Tao} ${Length} ${InitialScale} ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${HistFilePath} ${Alpha} ${PinwheelFlag} ${ImagePath} ${ReconPath} ${NumInteration} ${WriteSourceFlag} ${Threshold} ${Threads} +RTS -N${Threads} -s -RTS"

@@ -43,6 +43,7 @@ dependencies:
 - resourcet >= 1.2.2
 - statistics >= 0.15.0.0 && < 0.16.0.0
 - text >= 1.2.3.1 && < 1.3.0.0
+- time == 1.8.0.2
 - unordered-containers >= 0.2.9.0 && < 0.3.0.0
 - vector >= 0.12.0.2 && < 0.13.0.0
 
@@ -156,7 +157,7 @@ tests:
     - Stochastic-Completion-Field
   R2Z2T0S0ToR2S1RPT0S0-test:
     main:                R2Z2T0S0ToR2S1RPT0S0.hs
-    source-dirs:         test
+    source-dirs:         test/R2Z2T0S0ToR2S1RPT0S0
     ghc-options:
     - -threaded
     - -rtsopts
@@ -169,6 +170,81 @@ tests:
     - -funfolding-keeness-factor1000
     - -fllvm
     - -optlo-O3
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2S1-test:
+    main:                STCR2S1.hs
+    source-dirs:         test/STCR2S1
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2S1
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2S1PointSet-test:
+    main:                STCR2S1PointSet.hs
+    source-dirs:         test/STCR2S1PointSet
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    # - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2S1PointSet
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2S1Edge-test:
+    main:                STCR2S1Edge.hs
+    source-dirs:         test/STCR2S1Edge
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    # - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2S1Edge
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
     dependencies:
     - Stochastic-Completion-Field
   STCR2Z1T0-test:
@@ -184,8 +260,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    # - -fllvm
+    # - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -227,15 +303,14 @@ tests:
     ghc-options:
     - -threaded
     - -rtsopts
-    - -with-rtsopts=-N
     - -O2
     - -j4
     - -main-is STCR2Z1T0Image
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    - -fllvm
+    - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -256,6 +331,31 @@ tests:
     - -O2
     - -j4
     - -main-is STCR2Z1T0PointSet
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z1T0Edge-test:
+    main:                STCR2Z1T0Edge.hs
+    source-dirs:         test/STCR2Z1T0Edge
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z1T0Edge
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
@@ -302,7 +402,7 @@ tests:
     ghc-options:
     - -threaded
     - -rtsopts
-    - -with-rtsopts=-N
+    # - -with-rtsopts=-K64m
     - -O2
     - -j4
     - -main-is STCR2Z2T0S0
@@ -321,9 +421,59 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
+  STCR2Z2T0S0PointSet-test:
+    main:                STCR2Z2T0S0PointSet.hs
+    source-dirs:         test/STCR2Z2T0S0PointSet
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0PointSet
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0ReversalCornerPointSet-test:
+    main:                STCR2Z2T0S0ReversalCornerPointSet.hs
+    source-dirs:         test/STCR2Z2T0S0ReversalCornerPointSet
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0ReversalCornerPointSet
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
   STCR2Z2T0S0Image-test:
     main:                STCR2Z2T0S0Image.hs
-    source-dirs:         test
+    source-dirs:         test/STCR2Z2T0S0Image
     ghc-options:
     - -threaded
     - -rtsopts
@@ -346,9 +496,34 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
+  STCR2Z2T0S0Edge-test:
+    main:                STCR2Z2T0S0Edge.hs
+    source-dirs:         test/STCR2Z2T0S0Edge
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0Edge
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
   Resize-test:
     main:                Resize.hs
-    source-dirs:         test
+    source-dirs:         test/Resize
     ghc-options:
     - -threaded
     - -rtsopts
@@ -398,6 +573,31 @@ tests:
     - -O2
     - -j4
     - -main-is EquivarianceDiagram
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  RadialPhase-test:
+    main:                RadialPhase.hs
+    source-dirs:         test/RadialPhase
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    # - -with-rtsopts=-K64m
+    - -O2
+    - -j4
+    - -main-is RadialPhase
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack

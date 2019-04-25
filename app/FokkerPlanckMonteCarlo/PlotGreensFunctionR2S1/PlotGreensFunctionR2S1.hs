@@ -44,14 +44,12 @@ main = do
       numOrientation
       sigma
       tao
-      len
+      ""
       init
   let arr' =
         computeS .
         -- reduceContrast 10 .
-        R.extend (Z :. (1 :: Int) :. All :. All) .
-        R.sumS .
-        rotate3D $
+        R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
         arr
       folderPath = "output/app/PlotGreensFunctionR2S1"
   createDirectoryIfMissing True folderPath
