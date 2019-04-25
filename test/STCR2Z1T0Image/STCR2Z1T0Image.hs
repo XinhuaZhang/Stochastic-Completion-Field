@@ -16,7 +16,7 @@ import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           Image.Transform
-import           STC.CompletionField
+import           STC.PowerMethod
 import           STC.OrientationScaleAnalysis
 import           System.Directory
 import           System.Environment

@@ -10,7 +10,7 @@ import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
 import           Image.Edge
 import           Image.IO
-import           STC.CompletionField
+import           STC.PowerMethod
 import           STC.PointSet
 import           System.Directory
 import           System.Environment

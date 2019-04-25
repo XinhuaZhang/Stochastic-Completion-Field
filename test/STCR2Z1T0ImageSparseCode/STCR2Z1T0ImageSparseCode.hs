@@ -20,7 +20,7 @@ import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           Image.Transform
 import           PVPFile.IO
-import           STC.CompletionField
+import           STC.PowerMethod
 import           STC.OrientationScaleAnalysis
 import           System.Directory
 import           System.Environment
@@ -127,17 +127,18 @@ main = do
           img
           (\(Z :. nx :. ny) -> (Z :. (L.length theta0Freqs) :. nx :. ny))
           (\f (Z :. _ :. i :. j) -> f (Z :. i :. j) :+ 0)
-  powerMethod1'
-    plan
-    folderPath
-    cols
-    rows
-    numOrientation
-    thetaFreqs
-    theta0Freqs
-    arrR2Z1T0
-    numIteration
-    writeSourceFlag
-    -- ""
-    threshold
-    initialDistSource
+  undefined
+  -- powerMethod1
+  --   plan
+  --   folderPath
+  --   cols
+  --   rows
+  --   numOrientation
+  --   thetaFreqs
+  --   theta0Freqs
+  --   arrR2Z1T0
+  --   numIteration
+  --   writeSourceFlag
+  --   ""
+  --   threshold
+  --   initialDistSource
