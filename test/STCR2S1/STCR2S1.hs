@@ -18,7 +18,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initDistStr:initOriStr:initSpeedStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initDistStr:initOriStr:initSpeedStr:rStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -30,6 +30,7 @@ main = do
       initDist = read initDistStr :: [R2S1RPPoint]
       initOri = read initOriStr :: Double
       initSpeed = read initSpeedStr :: Double
+      r = read rStr :: Int
       numThread = read numThreadStr :: Int
       sourceDist =
         computeInitialDistribution numPoint numPoint numOrientation . L.take 1 $
@@ -50,6 +51,7 @@ main = do
       numOrientation
       sigma
       tao
+      r
       ""
       (0, 0, 0, 0, initOri / 180 * pi, initSpeed)
   plan <- makeR2S1Plan emptyPlan arrG

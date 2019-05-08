@@ -81,14 +81,14 @@ main = do
       a' = round $ (fromIntegral a) * (sqrt 2) / 2
       b' = round $ (fromIntegral b) * (sqrt 2) / 2
       c' = round $ (fromIntegral c) * (sqrt 2) / 2
-      r = 40
-      numTheta = 8
-      deltaTheta = (2 * pi) / numTheta
+      r = 30
+      numTheta = 7
+      deltaTheta = (1 * pi) / numTheta
       xs =
         ((L.map
             (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
             [ (r * cos (k * deltaTheta) + 0, r * sin (k * deltaTheta) + 0)
-            | k <- [0 .. numTheta - 1]
+            | k <- [0 .. numTheta]
             ]) -- L.++
                 -- (L.map
                 --    (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))

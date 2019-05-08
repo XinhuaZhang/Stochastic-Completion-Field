@@ -248,12 +248,10 @@ timeReversalConvolveR2Z2 plan thetaFreqs scaleFreqs arr1 arr2 = do
 {-# INLINE convolveR2Z2 #-}
 convolveR2Z2 ::
      DFTPlan
-  -> [Double]
-  -> [Double]
   -> R.Array U DIM4 (Complex Double)
   -> R.Array U DIM4 (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
-convolveR2Z2 plan thetaFreqs scaleFreqs arr1 arr2 = do
+convolveR2Z2 plan arr1 arr2 = do
   let (Z :. numThetaFreqs :. numScaleFreqs :. xLen :. yLen) = extent arr1
   vec1F <-
     dftExecute

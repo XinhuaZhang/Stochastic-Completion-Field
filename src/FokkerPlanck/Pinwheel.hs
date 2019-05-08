@@ -65,7 +65,7 @@ computeR2Z2T0S0ArrayRadial radialArr xLen yLen scaleFactor rMax thetaFreqs scale
               yLen)) $ \ft fs ft0 fs0 (Z :. t :. s :. t0 :. s0 :. i :. j) ->
           pinwheel
             (ft (Z :. t) - ft0 (Z :. t0))
-            (fs (Z :. s) - fs0 (Z :. s0))
+            (fs (Z :. s) + fs0 (Z :. s0))
             rMax
             0
             (i - center xLen)
@@ -103,3 +103,11 @@ computeR2Z2T0S0ArrayRadial' xLen yLen scaleFactor rMax thetaFreqs scaleFreqs the
             (i - center xLen)
             (j - center yLen)
    in pinwheelArr
+
+{-# INLINE cutoff #-}
+cutoff :: (R.Source r Double) => Int -> R.Array r DIM5 Double -> R.Array D DIM5 Double
+cutoff r arr =
+  R.traverse arr id $ \f idx@(Z :. _ :. _ :. _ :. _ :. e) ->
+    if e > r
+      then 0
+      else f idx

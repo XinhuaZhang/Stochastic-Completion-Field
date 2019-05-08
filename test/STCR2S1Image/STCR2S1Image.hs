@@ -1,4 +1,4 @@
-module STCR2S1PointSet where
+module STCR2S1Image where
 
 import           Control.Monad           as M
 import           Control.Monad.Parallel  as MP
@@ -20,7 +20,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initOriStr:initSpeedStr:writeFlagStr:numIterationStr:thresholdStr:histFilePath:rStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initOriStr:initSpeedStr:writeFlagStr:numIterationStr:thresholdStr:histFilePath:cutoffStr:imagePath:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -34,10 +34,19 @@ main = do
       writeFlag = read writeFlagStr :: Bool
       numIteration = read numIterationStr :: Int
       threshold = read thresholdStr :: Double
-      r = read rStr :: Int
+      cutoff = read cutoffStr :: Int
       numThread = read numThreadStr :: Int
-      folderPath = "output/test/STCR2S1PointSet"
+      folderPath = "output/test/STCR2S1Image"
+  imgRepa@(ImageRepa _ img') <- readImageRepa imagePath False
+  let (Z :. _ :. cols :. rows) = extent img'
+      img =
+        computeS . R.traverse img' id $ \f idx@(Z :. k :. i :. j) ->
+          if (sqrt . fromIntegral $ (i - div cols 2) ^ 2 + (j - div rows 2) ^ 2) >
+             32
+            then 0
+            else f idx
   createDirectoryIfMissing True folderPath
+  plotImageRepa (folderPath </> "input.png") . ImageRepa 8 $ img
   flag <- doesFileExist histFilePath
   arrG <-
     if flag
@@ -58,24 +67,9 @@ main = do
             numOrientation
             sigma
             tao
-            r
+            cutoff
             histFilePath
             (0, 0, 0, 0, initOri / 180 * pi, initSpeed)
-  let r = 25
-      numTheta = 15
-      deltaTheta = (1 * pi) / numTheta
-      xs 
-       =[R2S1RPPoint (-i, 0, 0, 1) | i <- [0,4]]
-        -- ((L.map
-        --     (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
-        --     [ (r * cos (k * deltaTheta) + 0, r * sin (k * deltaTheta) + 0)
-        --     | k <- [0 .. numTheta]
-        --     ]) -- L.++
-        --  -- [R2S1RPPoint (-3, -1, 0, 1)]
-        --  )
-      bias = computeBias numPoint numPoint numOrientation xs
-      initialEigenVec =
-        computeInitialEigenVec numPoint numPoint numOrientation xs
   powerMethod
     emptyPlan
     folderPath
@@ -84,5 +78,11 @@ main = do
     writeFlag
     ""
     threshold
-    bias
-    initialEigenVec
+    (R.traverse img (const (Z :. numOrientation :. cols :. rows)) $ \f (Z :. _ :. i :. j) ->
+       if f (Z :. (0 :: Int) :. i :. j) > 0
+         then 1
+         else 0)
+    (R.traverse img (const (Z :. numOrientation :. cols :. rows)) $ \f (Z :. _ :. i :. j) ->
+       if f (Z :. (0 :: Int) :. i :. j) > 0
+         then 1 / fromIntegral numOrientation
+         else 0)

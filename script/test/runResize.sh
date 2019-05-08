@@ -1,5 +1,5 @@
 #!/bin/bash
-Input=output/test/Resize/triangle.png #Ehrenstein_only.jpeg #triangle.png
+Input=output/test/Resize/Ehrenstein_only.jpeg #Ehrenstein_only.jpeg #triangle.png
 Output=out.png
 Size=128
 Threads=1

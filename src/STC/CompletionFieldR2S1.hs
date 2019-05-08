@@ -220,16 +220,25 @@ eigenVectorR2S1 ::
   => DFTPlan
   -> FilePath
   -> R.Array s DIM3 Double
+  -> R.Array s DIM3 Double
   -> Int
   -> Bool
   -> R.Array s1 DIM3 Double
   -> R.Array s2 DIM3 Double
   -> IO (R.Array D DIM3 Double)
-eigenVectorR2S1 plan folderPath filterSource n writeFlag bias inputSource = do
+eigenVectorR2S1 plan folderPath filterSource filterSink n writeFlag bias inputSource = do
   let sourceDist = R.zipWith (*) bias inputSource
       s = R.sumAllS sourceDist
       sourceVec = computeS $ R.map (/ s) sourceDist
   sourceEigenVec <- shareWeightST plan sourceVec filterSource
+  -- sinkEigenVec <-
+  --   timeReversal <$>
+  --   shareWeightST
+  --     plan
+  --     (computeS . R.zipWith (*) bias $ sourceEigenVec')
+  --     filterSink
+  -- let sourceEigenVec =
+  --       R.zipWith (\x y -> x + 0.2 * y) sourceEigenVec' sinkEigenVec
   when
     writeFlag
     (plotImageRepa
@@ -264,9 +273,18 @@ powerMethod oldPlan folderPath filterSource numIteration writeFlag idStr thresho
   source <-
     M.foldM
       (\input n ->
-         eigenVectorR2S1 plan folderPath filterSource n writeFlag bias input)
+         eigenVectorR2S1
+           plan
+           folderPath
+           filterSource
+           filterSink
+           n
+           writeFlag
+           bias
+           input)
       (delay initialEigenVec)
       [1 .. numIteration]
+  -- print . R.toList . R.slice source $ (Z :. All :. (div xLen 2) :. (div yLen 2))
   sink <- shareWeightST plan (computeS . R.zipWith (*) bias $ source) filterSink
   plotImageRepa
     (folderPath </> "Sink.png")

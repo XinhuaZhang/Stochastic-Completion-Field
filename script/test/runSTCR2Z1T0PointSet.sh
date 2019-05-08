@@ -1,5 +1,5 @@
 #!/bin/bash
-Size=256
+Size=128
 Orientations=36
 Sigma=0.1
 Tao=100

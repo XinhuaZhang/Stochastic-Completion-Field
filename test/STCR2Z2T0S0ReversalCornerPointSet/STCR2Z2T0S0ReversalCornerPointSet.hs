@@ -100,8 +100,8 @@ main = do
       r = read rStr :: Double
       rr = round r :: Int
       shift = 15
-      numTheta = 8
-      deltaTheta = (2 * pi) / numTheta
+      numTheta = 45
+      deltaTheta = 1 * pi / numTheta
       xs =
         -- [ R2S1RPPoint (rr, shift, 0, 1)
         -- , R2S1RPPoint (rr, -shift, 0, 1)
@@ -112,26 +112,26 @@ main = do
         -- , R2S1RPPoint (shift, -rr, 0, 1)
         -- , R2S1RPPoint (-shift, -rr, 0, 1)
         -- ]
-        [R2S1RPPoint (i, 0, 0, 1) | i <- [-20,-19 .. 20]] -- L.++
-        -- [R2S1RPPoint (i, i, 0, 1) | i <- [-2,0 .. 20]]
+        -- [R2S1RPPoint (i, -i, 0, 1) | i <- [-2,0 .. 20]] L.++
+        [R2S1RPPoint (-i, -i, 0, 1) | i <- [-10,-8 .. 10]]
         -- ((L.map
         --     (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
         --     [ (r * cos (k * deltaTheta) + 0, r * sin (k * deltaTheta) + 0)
-        --     | k <- [0 .. numTheta - 1]
+        --     | k <- [0 .. numTheta]
         --     ]) -- L.++
-         -- (L.map
-         --    (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
-         --    [ ((r + 2) * cos (k * deltaTheta), (r + 2) * sin (k * deltaTheta))
-         --    | k <- [0 .. numTheta - 1]
-         --    ]) L.++
-         -- (L.map
-         --    (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
-         --    [ ( (r + 5) * cos (k * deltaTheta)
-         --      , (r + 5) * sin (k * deltaTheta))
-         --    | k <- [0 .. numTheta - 1]
-         --    ])
-               -- L.++ [R2S1RPPoint (3, 5, 0, 1)]
-         -- )
+        --  -- (L.map
+        --  --    (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
+        --  --    [ ((r + 2) * cos (k * deltaTheta), (r + 2) * sin (k * deltaTheta))
+        --  --    | k <- [0 .. numTheta - 1]
+        --  --    ]) L.++
+        --  -- (L.map
+        --  --    (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
+        --  --    [ ( (r + 5) * cos (k * deltaTheta)
+        --  --      , (r + 5) * sin (k * deltaTheta))
+        --  --    | k <- [0 .. numTheta - 1]
+        --  --    ])
+        --        -- L.++ [R2S1RPPoint (3, 5, 0, 1)]
+        --  )
                -- ([R2S1RPPoint (i, i, 0, 1) | i <- [a',a' + b' .. c']] L.++
                --  [R2S1RPPoint (i, -i, 0, 1) | i <- [-a',-(a' + b') .. -c']] L.++
                --  [R2S1RPPoint (i, i, 0, 1) | i <- [-a',-(a' + b') .. -c']] L.++

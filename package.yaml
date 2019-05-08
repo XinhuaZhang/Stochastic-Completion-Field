@@ -210,8 +210,33 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2S1Image-test:
+    main:                STCR2S1Image.hs
+    source-dirs:         test/STCR2S1Image
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    # - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2S1Image
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -456,6 +481,31 @@ tests:
     - -O2
     - -j4
     - -main-is STCR2Z2T0S0ReversalCornerPointSet
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0KoffkaCross-test:
+    main:                STCR2Z2T0S0KoffkaCross.hs
+    source-dirs:         test/STCR2Z2T0S0KoffkaCross
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0KoffkaCross
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000

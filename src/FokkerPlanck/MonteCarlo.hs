@@ -101,7 +101,7 @@ generatePath randomGen thetaDist' scaleDist' maxScale tao xRange yRange init@(x'
           !newY = y + eScale * sin theta
           newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
           ys =
-            if (inRange xRange (round newX)) && (inRange yRange (round newY))
+            if (inRange (xRange) (round newX)) && (inRange (yRange) (round newY))
               then DL.cons newIndex xs
               else xs
       t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
@@ -141,21 +141,31 @@ solveMonteCarloR2S1 ::
   -> Int
   -> Double
   -> Double
+  -> Int
   -> FilePath
   -> ParticleIndex
   -> IO R2S1Array
-solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao histFilePath (_, _, _, _, t0, s0) = do
+solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao r histFilePath (_, _, _, _, t0, s0) = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
-      xRange =
+      func (a, b) =
+        ( if abs a > r
+            then -r
+            else a
+        , if b > r
+            then r
+            else b)
+      xRange' =
         if odd xLen
           then (-xShift, xShift)
           else (-xShift, xShift - 1)
       !yShift = div yLen 2
-      yRange =
+      yRange' =
         if odd yLen
           then (-yShift, yShift)
           else (-yShift, yShift - 1)
+      xRange = func xRange'
+      yRange = func yRange'
       thetaDist = normalDistrE 0 thetaSigma
       scaleDist = normalDistrE 0 0
   xs <-
@@ -177,7 +187,7 @@ solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao hi
                  yRange
                  (0, 0, t0 + deltaTheta, s0, t0 + deltaTheta, s0)))
       gens
-  let ys = parMap rdeepseq (countR2S1 xRange yRange numOrientations) xs
+  let ys = parMap rdeepseq (countR2S1 xRange' yRange' numOrientations) xs
       histogram = L.foldl1' addHistogram ys
   unless (L.null histFilePath) (encodeFile histFilePath histogram)
   return . getNormalizedHistogramArr . mapHistogram (\x -> fromIntegral x :+ 0) $
@@ -899,7 +909,7 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
                         exp $
                         0 :+
                         (-t0f * t0 + tf * t +
-                         (sf * s - s0f * s0) * 2 * pi / (log maxScale))
+                         (sf * s + s0f * s0) * 2 * pi / (log maxScale))
                       !x' = round x
                    in ((j, l, i, k, x'), v)) .
              DL.concat $

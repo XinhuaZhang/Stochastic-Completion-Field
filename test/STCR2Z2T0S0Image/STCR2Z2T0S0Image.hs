@@ -18,7 +18,7 @@ import Text.Printf
 
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:imagePath:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:imagePath:cutoffRStr:reversalFactorStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -40,12 +40,20 @@ main = do
       scaleFreqs = [-scaleFreq .. scaleFreq]
       numIteration = read numIterationStr :: Int
       writeSourceFlag = read writeSourceFlagStr :: Bool
+      cutoffR = read cutoffRStr :: Int
+      reversalFactor = read reversalFactorStr :: Double
       numThread = read numThreadStr :: Int
       folderPath = "output/test/STCR2Z2T0S0Image"
-  imgRepa@(ImageRepa _ img) <- readImageRepa imagePath False
-  let (Z :. _ :. cols :. rows) = extent img
+  imgRepa@(ImageRepa _ img') <- readImageRepa imagePath False
+  let (Z :. _ :. cols :. rows) = extent img'
+      img =
+        computeUnboxedS . R.traverse img' id $ \f idx@(Z :. k :. i :. j) ->
+          if (sqrt . fromIntegral $ (i - div cols 2) ^ 2 + (j - div rows 2) ^ 2) >
+             48
+            then 0
+            else f idx
   createDirectoryIfMissing True folderPath
-  plotImageRepa (folderPath </> "input.png") imgRepa
+  plotImageRepa (folderPath </> "input.png") . ImageRepa 8 $ img
   flag <- doesFileExist histFilePath
   radialArr <-
     if flag
@@ -79,7 +87,7 @@ main = do
   arrR2Z2T0S0 <-
     computeUnboxedP $
     computeR2Z2T0S0ArrayRadial
-      radialArr
+      (cutoff cutoffR radialArr)
       cols
       rows
       1
@@ -89,7 +97,7 @@ main = do
       theta0Freqs
       scale0Freqs
   plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
-  powerMethodR2Z2T0S0
+  powerMethodR2Z2T0S0Reversal
     plan
     folderPath
     cols
@@ -103,8 +111,14 @@ main = do
     arrR2Z2T0S0
     numIteration
     writeSourceFlag
-    (printf "_%d_%d_%.2f_%.2f" (round maxScale :: Int) (round tao :: Int) thetaSigma scaleSigma)
+    (printf
+       "_%d_%d_%.2f_%.2f"
+       (round maxScale :: Int)
+       (round tao :: Int)
+       thetaSigma
+       scaleSigma)
     0.5
+    reversalFactor
     (R.traverse
        img
        (const
