@@ -12,7 +12,7 @@ import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
 import           Image.IO
-import           STC.CompletionField
+import           STC
 import           System.Directory
 import           System.Environment
 import           System.FilePath
@@ -160,7 +160,7 @@ main = do
   plotImageRepaComplex (folderPath </> printf "Sink%.0f.png" s) . ImageRepa 8 $
     sinkField
   -- Completion Filed
-  completionFiled <- convolveR2Z2 plan thetaFreqs scaleFreqs sourceR2Z2 sinkR2Z2
+  completionFiled <- convolveR2Z2 plan sourceR2Z2 sinkR2Z2
   completionFiledR2 <-
     R.sumP .
     R.sumS .

@@ -44,6 +44,7 @@ main = do
       numOrientation
       sigma
       tao
+      numPoint
       ""
       init
   let arr' =

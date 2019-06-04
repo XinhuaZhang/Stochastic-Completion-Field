@@ -8,7 +8,7 @@ import           DFT.Plan
 import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
 import           Image.IO
-import           STC.PowerMethod
+import           STC
 import           System.Directory
 import           System.Environment
 import           System.FilePath

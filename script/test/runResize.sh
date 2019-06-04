@@ -1,7 +1,8 @@
 #!/bin/bash
-Input=output/test/Resize/Ehrenstein_only.jpeg #Ehrenstein_only.jpeg #triangle.png
-Output=out.png
-Size=128
+ImageName=triangle
+Input=output/test/Resize/${ImageName}.png #Ehrenstein_only.jpeg #triangle.png
+Size=240
+Output=${ImageName}_${Size}.png
 Threads=1
 
 time stack test :Resize-test --test-arguments "${Input} ${Output} ${Size} ${Threads} +RTS -N${Threads} -s -RTS"

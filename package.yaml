@@ -37,6 +37,7 @@ dependencies:
 - hmatrix >= 0.19.0.0 && < 0.20.0.0
 - monad-parallel >= 0.7.2.3 && < 0.8.0.0
 - mwc-random >= 0.14.0.0 && < 0.15.0.0
+# - opencv >= 0.0.2.1 && < 0.1
 - parallel >= 3.2.2.0 && < 4.0.0.0
 - random >= 1.1 && < 2.0
 - repa >= 3.4.1.4 && < 3.5.0.0
@@ -64,8 +65,8 @@ executables:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2S1RP-exe:
@@ -81,8 +82,8 @@ executables:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2S1T0-exe:
@@ -98,8 +99,8 @@ executables:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2Z1T0-exe:
@@ -115,8 +116,8 @@ executables:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2Z2T0S0-exe:
@@ -132,8 +133,8 @@ executables:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
 
@@ -151,8 +152,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   R2Z2T0S0ToR2S1RPT0S0-test:
@@ -168,8 +169,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   STCR2S1-test:
@@ -185,8 +186,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -210,8 +211,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -235,8 +236,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -260,8 +261,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -285,8 +286,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -310,8 +311,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -334,8 +335,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -359,8 +360,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -384,8 +385,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -409,8 +410,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -434,8 +435,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -459,8 +460,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -484,8 +485,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -509,8 +510,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -534,8 +535,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -559,8 +560,83 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
+    #- -fllvm
+    #- -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0EndPoint-test:
+    main:                STCR2Z2T0S0EndPoint.hs
+    source-dirs:         test/STCR2Z2T0S0EndPoint
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0EndPoint
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0Amodal-test:
+    main:                STCR2Z2T0S0Amodal.hs
+    source-dirs:         test/STCR2Z2T0S0Amodal
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0Amodal
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    #- -fllvm
+    #- -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCR2Z2T0S0EndModal-test:
+    main:                STCR2Z2T0S0EndModal.hs
+    source-dirs:         test/STCR2Z2T0S0EndModal
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is STCR2Z2T0S0EndModal
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -584,8 +660,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   OrientationAnalysis-test:
@@ -601,8 +677,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -646,8 +722,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    # #- -fllvm
+    # #- -optlo-O3
     extra-libraries:
     - stdc++
     - lapack
@@ -658,3 +734,38 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
+  CannyEdgeEndPoint-test:
+    main:                CannyEdgeEndPoint.hs
+    source-dirs:         test/CannyEdgeEndPoint
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is CannyEdgeEndPoint
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    # - opencv_imgcodecs
+    # - opencv_core
+    # - opencv_features2d
+    # - opencv_highgui
+    # - opencv_calib3d
+    # - opencv_imgcodecs
+    # - opencv_photo
+    # - opencv_video
+    # - opencv_imgproc
+    # - opencv_videoio
+    dependencies:
+    - Stochastic-Completion-Field
+    

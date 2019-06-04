@@ -1,14 +1,12 @@
-module STCR2Z2T0S0Edge where
+module STCR2Z2T0S0Amodal where
 
 import           Data.Array.Repa         as R
 import           Data.Binary             (decodeFile)
 import           Data.Complex
 import           Data.List               as L
 import           DFT.Plan
-import           Filter.Utils
 import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
-import           Image.Edge
 import           Image.IO
 import           STC
 import           System.Directory
@@ -19,7 +17,7 @@ import           Types
 
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:edgeFilePath:scaleFactorStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoDecayStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:sigmaStr:initDistStr:cutoffRadiusStr:reversalFactorStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -28,7 +26,7 @@ main = do
       thetaSigma = read thetaSigmaStr :: Double
       scaleSigma = read scaleSigmaStr :: Double
       maxScale = read maxScaleStr :: Double
-      tao = read taoStr :: Double
+      taoDecay = read taoDecayStr :: Double
       numTrail = read numTrailStr :: Int
       maxTrail = read maxTrailStr :: Int
       theta0Freq = read theta0FreqsStr :: Double
@@ -41,9 +39,12 @@ main = do
       scaleFreqs = [-scaleFreq .. scaleFreq]
       numIteration = read numIterationStr :: Int
       writeSourceFlag = read writeSourceFlagStr :: Bool
-      scaleFactor = read scaleFactorStr :: Double
+      sigma = read sigmaStr :: Double
+      initDist = read initDistStr :: [R2S1RPPoint]
+      cutoffRadius = read cutoffRadiusStr :: Int
+      reversalFactor = read reversalFactorStr :: Double
       numThread = read numThreadStr :: Int
-      folderPath = "output/test/STCR2Z2T0S0Edge"
+      folderPath = "output/test/STCR2Z2T0S0Amodal"
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   radialArr <-
@@ -61,7 +62,7 @@ main = do
           thetaSigma
           scaleSigma
           maxScale
-          tao
+          taoDecay
           theta0Freqs
           thetaFreqs
           scale0Freqs
@@ -78,7 +79,7 @@ main = do
   arrR2Z2T0S0 <-
     computeUnboxedP $
     computeR2Z2T0S0ArrayRadial
-      radialArr
+      (cutoff cutoffRadius radialArr)
       numPoint
       numPoint
       1
@@ -88,24 +89,16 @@ main = do
       theta0Freqs
       scale0Freqs
   plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
-  xs <- parseEdgeFile edgeFilePath
-  randomPonintSet <- generateRandomPointSet 40 numPoint numPoint
-  let ys =
-        L.map
-          (\(R2S1RPPoint (a, b, c, d)) ->
-             (R2S1RPPoint
-                ( round $ (fromIntegral a - 150) / scaleFactor
-                , round $ (fromIntegral b - 150) / scaleFactor
-                , c
-                , d)))
+  let xs = initDist
+      bias =
+        computeBiasR2T0S0Gaussian
+          numPoint
+          numPoint
+          theta0Freqs
+          scale0Freqs
+          0
+          sigma
           xs
-      zs =
-        L.map
-          (\(R2S1RPPoint (a, b, c, d)) ->
-             (R2S1RPPoint (a - center numPoint, b - center numPoint, c, d)))
-          randomPonintSet
-      points = ys L.++ zs
-  let bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs points
       eigenVec =
         computeInitialEigenVectorR2T0S0
           numPoint
@@ -114,8 +107,8 @@ main = do
           scale0Freqs
           thetaFreqs
           scaleFreqs
-          points
-  powerMethodR2Z2T0S0
+          xs
+  powerMethodR2Z2T0S0BiasReversal
     plan
     folderPath
     numPoint
@@ -129,8 +122,14 @@ main = do
     arrR2Z2T0S0
     numIteration
     writeSourceFlag
-    -- (printf "_%d" (round scaleFactor :: Int))
-    (printf "_%d_%d_%.2f_%.2f" (round maxScale :: Int) (round tao :: Int) thetaSigma scaleSigma)
-    0.5
+    (printf
+       "_%d_%d_%d_%.2f_%.2f_%.3f"
+       numPoint
+       (round maxScale :: Int)
+       (round taoDecay :: Int)
+       thetaSigma
+       scaleSigma
+       reversalFactor)
+    reversalFactor
     bias
     eigenVec

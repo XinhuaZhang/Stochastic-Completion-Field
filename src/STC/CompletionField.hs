@@ -1,14 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators    #-}
 
-module STC.CompletionField
-  ( module STC.CompletionField
-  , module STC.Plan
-  , module STC.InitialDistribution
-  , module STC.Bias
-  , module STC.Convolution
-  , module STC.Utils
-  ) where
+module STC.CompletionField where
 
 import           Control.Monad.Parallel    as MP
 import           Data.Array.Repa           as R
@@ -167,7 +160,7 @@ completionFieldR2Z2 ::
   -> [Double]
   -> R2T0S0Array
   -> R2T0S0Array
-  -> IO (R.Array D DIM2 Double)
+  -> IO (R.Array U DIM4 (Complex Double))
 completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale scaleFreqs source sink = do
   completionFiled <- convolveR2Z2 plan source sink
   let (Z :. _ :. _ :. cols :. rows) = extent completionR2S1RP
@@ -195,10 +188,9 @@ completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale sca
   plotImageRepaComplex (folderPath </> printf "Completion%s.png" idStr) .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFiledR2
-  plotImageRepa (folderPath </> printf "CompletionMagnitude%s.png" idStr) .
-    ImageRepa 8 .
-    computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map magnitude $
-    completionFiledR2
+  (R.sumP . rotate4D . rotate4D . R.map magnitude $ completionR2S1RP) >>= R.sumP >>=
+    plotImageRepa (folderPath </> printf "CompletionMagnitude%s.png" idStr) .
+    ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All)
   let avg = R.sumAllS completionFiledR2 / (fromIntegral $ rows * cols)
       (Z :. cols :. rows) = extent completionFiledR2
   plotImageRepa (folderPath </> printf "Completion_normalized%s.png" idStr) .
@@ -207,7 +199,7 @@ completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale sca
     R.extend (Z :. (1 :: Int) :. All :. All) .
     R.map log . normalizeValueRange (1, 256) . R.map magnitude $
     completionFiledR2
-  return . R.map magnitude $ completionFiledR2
+  return completionFiled
 
 {-# INLINE timeReverseR2Z1T0 #-}
 timeReverseR2Z1T0 ::

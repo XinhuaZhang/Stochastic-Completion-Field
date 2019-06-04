@@ -22,6 +22,6 @@ main = do
     R.map
       (\x ->
          if x > avg
-           then 0
-           else 255) $
+           then 255
+           else 0) $
     arr

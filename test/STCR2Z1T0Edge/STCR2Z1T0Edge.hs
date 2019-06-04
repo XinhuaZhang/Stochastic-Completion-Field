@@ -10,8 +10,7 @@ import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
 import           Image.Edge
 import           Image.IO
-import           STC.PowerMethod
-import           STC.PointSet
+import           STC
 import           System.Directory
 import           System.Environment
 import           System.FilePath

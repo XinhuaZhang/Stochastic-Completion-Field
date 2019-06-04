@@ -12,7 +12,7 @@ import           FokkerPlanck.DomainChange
 import           FokkerPlanck.MonteCarlo
 import           FokkerPlanck.Pinwheel
 import           Image.IO
-import           STC.CompletionField
+import           STC
 import           System.Directory
 import           System.Environment
 import           System.FilePath

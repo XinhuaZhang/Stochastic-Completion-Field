@@ -20,7 +20,7 @@ import           FokkerPlanck.Pinwheel
 import           Image.IO
 import           Image.Transform
 import           PVPFile.IO
-import           STC.PowerMethod
+import           STC
 import           STC.OrientationScaleAnalysis
 import           System.Directory
 import           System.Environment
