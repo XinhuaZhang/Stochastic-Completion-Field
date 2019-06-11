@@ -1,29 +1,31 @@
 #!/bin/bash
-Size=64
+Size=750
 Orientations=16
-Scales=8
+Scales=1
 ThetaSigma=0.1
-ScaleSigma=0.2
-MaxScale=16 #1.000001
+ScaleSigma=0.0
+MaxScale=1.000001
 Tao=100
 Trails=1000000 
 MaxTrails=100000
-Theta0Freqs=5
-ThetaFreqs=5
-Scale0Freqs=5
-ScaleFreqs=5
+Theta0Freqs=10
+ThetaFreqs=10
+Scale0Freqs=0
+ScaleFreqs=0
 HistFileName=${Size}_${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${Theta0Freqs}_${ThetaFreqs}_${Scale0Freqs}_${ScaleFreqs}.dat
 HistPath=output/test/STCR2Z2T0S0EndPoint/${HistFileName}
 NumInteration=100
 WriteSourceFlag=True
-CutoffRadiusEndPoint=12
+CutoffRadiusEndPoint=16
 CutoffRadius=48
-ReversalFactor=0.001
+ReversalFactor=1
+PatchNormFlag=False
+PatchNormSize=180
 Threads=16
 
 # for R in {30,35}
 # do
-time stack test :STCR2Z2T0S0EndPoint-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${NumInteration} ${WriteSourceFlag} ${CutoffRadiusEndPoint} ${CutoffRadius} ${ReversalFactor} 60 ${Threads}  +RTS -N${Threads} -H2g -K1g -RTS"
+time stack test :STCR2Z2T0S0EndPoint-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${NumInteration} ${WriteSourceFlag} ${CutoffRadiusEndPoint} ${CutoffRadius} ${ReversalFactor} 60 ${PatchNormFlag} ${PatchNormSize} ${Threads}  +RTS -N${Threads} -H2g -K1g -RTS"
 # done
 
 # R=30

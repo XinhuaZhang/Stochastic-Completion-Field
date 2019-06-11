@@ -27,3 +27,7 @@ type R2T0S0Array   = Array U DIM4 (Complex Double) -- (Z :. (L.length theta0freq
 data R2S1RPPoint =
   R2S1RPPoint (Int, Int, Double, Double)
   deriving (Show, Read)
+  
+instance Eq R2S1RPPoint where
+  (==) (R2S1RPPoint (x1, y1, _, _)) (R2S1RPPoint (x2, y2, _, _)) =
+    x1 == x2 && y1 == y2

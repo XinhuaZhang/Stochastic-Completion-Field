@@ -1,7 +1,7 @@
 #!/bin/bash
 ImageName=triangle
 Input=output/test/Resize/${ImageName}.png #Ehrenstein_only.jpeg #triangle.png
-Size=240
+Size=512
 Output=${ImageName}_${Size}.png
 Threads=1
 

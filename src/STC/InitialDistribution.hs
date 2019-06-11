@@ -7,6 +7,7 @@ import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed as VU
 import           DFT.Plan
+import           STC.PointSet
 import           System.Random
 import           Types
 

@@ -21,7 +21,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:cStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:cStr:patchNormFlagStr:patchNormSizeStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -46,6 +46,8 @@ main = do
       cutoffRadiusEndPoint = read cutoffRadiusEndPointStr :: Int
       cutoffRadius = read cutoffRadiusStr :: Int
       reversalFactor = read reversalFactorStr :: Double
+      patchNormFlag = read patchNormFlagStr :: Bool
+      patchNormSize = read patchNormSizeStr :: Int
       numThread = read numThreadStr :: Int
       folderPath = "output/test/STCR2Z2T0S0EndPoint"
       a = 20 :: Int
@@ -110,46 +112,23 @@ main = do
       scaleFreqs
       theta0Freqs
       scale0Freqs
-  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
-      -- a' = round $ (fromIntegral a) * (sqrt 2) / 2
-      -- b' = round $ (fromIntegral b) * (sqrt 2) / 2
-      -- c' = round $ (fromIntegral c) * (sqrt 2) / 2
-      -- xs =
-      --   ([R2S1RPPoint (i, i, 0, 0) | i <- [a',a' + b' .. c']] L.++
-      --    [R2S1RPPoint (i, -i, 0, 0) | i <- [-a',-(a' + b') .. -c']] L.++
-      --    [R2S1RPPoint (i, i, 0, 0) | i <- [-a',-(a' + b') .. -c']] L.++
-      --    [R2S1RPPoint (i, -i, 0, 0) | i <- [a',a' + b' .. c']] L.++
-      --    [R2S1RPPoint (i, 0, 0, 0) | i <- [a,a + b .. c]] L.++
-      --    [R2S1RPPoint (0, i, 0, 0) | i <- [-a,-(a + b) .. -c]] L.++
-      --    [R2S1RPPoint (i, 0, 0, 0) | i <- [-a,-(a + b) .. -c]] L.++
-      --    [R2S1RPPoint (0, i, 0, 0) | i <- [a,a + b .. c]])
-      -- xs = [R2S1RPPoint (i, 0, 0, 0) | i <- [a,a + b .. c]] L.++ [R2S1RPPoint (0, i, 0, 0) | i <- [b,2 * b .. c]] L.++ [R2S1RPPoint (0, -i, 0, 0) | i <- [b,2 * b .. c]]
-      -- r = 50 :: Double
-      -- numTheta = 26 :: Double
-      -- theta = 2 * pi - pi / 3
-      -- deltaTheta = theta / numTheta
-      -- xs =
-      --   (L.map
-      --      (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
-      --      [ (r * cos (k * deltaTheta) + 0, r * sin (k * deltaTheta) + 0)
-      --      | k <- [0 .. numTheta]
-      --      ]) L.++
-      --   [R2S1RPPoint (i, 0, 0, 0) | i <- [0,10 .. round r - 10]] L.++
-      --   (L.map
-      --      (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
-      --      [(r' * cos theta + 0, r' * sin theta + 0) | r' <- [10,20 .. r - 10]])
-  xs <-
-    M.foldM
-      (\((R2S1RPPoint (z0, 0, 0, 0)):ys) _ -> do
-         z <- randomRIO (4, 10) :: IO Double
-         if z0 + round z <= 25
-           then return $
-                (R2S1RPPoint (z0 + round z, 0, 0, 0)) :
-                ((R2S1RPPoint (z0, 0, 0, 0)) : ys)
-           else return ((R2S1RPPoint (z0, 0, 0, 0)) : ys))
-      [R2S1RPPoint (-25, 0, 0, 0)]
-      [1 .. 7]
-  let bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs xs
+  plan' <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  (plan, pathNormMethod) <-
+    makePatchNormFilter plan' numPoint numPoint patchNormFlag patchNormSize
+  let kanizsaTriangle1 =
+        makeShape2D $ Points (0, 0) 10 (KanizsaTriangle1 0 480 160 80)
+      shapeArr =
+        getShape2DRepaArray
+          numPoint
+          numPoint
+          (L.map
+             (\(x, y) ->
+                (x + fromIntegral numPoint / 2, y + fromIntegral numPoint / 2))
+             kanizsaTriangle1)
+      xs =
+        L.map (\(x, y) -> R2S1RPPoint (x, y, 0, 1)) . getShape2DIndexList $
+        kanizsaTriangle1
+      bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs xs
       eigenVec =
         computeInitialEigenVectorR2T0S0
           numPoint
@@ -159,6 +138,7 @@ main = do
           thetaFreqs
           scaleFreqs
           xs
+  plotImageRepa (folderPath </> "Shape.png") . ImageRepa 8 $ shapeArr
   endPointFlag <- doesFileExist endPointFilePath
   completionFieldR2Z2'' <-
     if endPointFlag
@@ -176,12 +156,10 @@ main = do
                    scaleFreqs
                    theta0Freqs
                    scale0Freqs
-               (plan', pathNormFilterF) <-
-                 makePatchNormFilter plan numPoint numPoint 15
                completionFieldR2Z2' <-
                  computeS <$>
                  powerMethodR2Z2T0S0Reversal
-                   plan'
+                   plan
                    folderPath
                    numPoint
                    numPoint
@@ -192,7 +170,7 @@ main = do
                    scaleFreqs
                    scale0Freqs
                    arrR2Z2T0S0EndPoint
-                   pathNormFilterF
+                   pathNormMethod
                    numIteration
                    writeSourceFlag
                    (printf

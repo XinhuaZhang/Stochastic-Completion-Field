@@ -7,6 +7,7 @@ import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed as VU
 import           DFT.Plan
+import           STC.PointSet
 import           Types
 
 computeBiasR2T0 :: Int -> Int -> [Double] -> [R2S1RPPoint] -> R2T0Array
@@ -32,7 +33,7 @@ computeBiasR2T0 xLen yLen theta0Freqs xs =
         (fromUnboxed (Z :. xLen :. yLen) vec)
         (const (Z :. numTheta0Freqs :. xLen :. yLen)) $ \f idx@(Z :. _ :. i :. j) ->
         f (Z :. i :. j)
-          
+
 computeBiasR2T0S0 ::
      Int
   -> Int
@@ -63,8 +64,8 @@ computeBiasR2T0S0 xLen yLen theta0Freqs scale0Freqs xs =
              xs) $
         [(t0f, s0f) | t0f <- theta0Freqs, s0f <- scale0Freqs]
    in fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) vec
-   
-   
+
+
 computeBiasR2T0S0Gaussian ::
      Int
   -> Int

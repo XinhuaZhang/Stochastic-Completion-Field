@@ -7,6 +7,8 @@ module STC
   , module STC.PowerMethod
   , module STC.Utils
   , module STC.PointSet
+  , module STC.PowerMethodNormalization
+  , module STC.Shape
   ) where
 
 import           STC.Bias
@@ -16,4 +18,6 @@ import           STC.InitialDistribution
 import           STC.Plan
 import           STC.PointSet
 import           STC.PowerMethod
+import           STC.PowerMethodNormalization
+import           STC.Shape
 import           STC.Utils

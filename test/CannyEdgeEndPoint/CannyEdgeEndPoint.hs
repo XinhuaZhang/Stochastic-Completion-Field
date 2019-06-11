@@ -25,7 +25,7 @@ import           Utils.Array
 
 main = do
   args <- getArgs
-  let (numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:inputImgPath:threshold1Str:threshold2Str:pixelDistStr:numThreadStr:_) =
+  let (numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:inputImgPath:threshold1Str:threshold2Str:pixelDistStr:patchNormFlagStr:patchNormSizeStr:numThreadStr:_) =
         args
       numPoint = read numPointStr :: Int
       numOrientation = read numOrientationStr :: Int
@@ -52,6 +52,8 @@ main = do
       threshold1 = read threshold1Str :: Double
       threshold2 = read threshold2Str :: Double
       pixelDist = read pixelDistStr :: Int
+      patchNormFlag = read patchNormFlagStr :: Bool
+      patchNormSize = read patchNormSizeStr :: Int
       numThread = read numThreadStr :: Int
       folderPath = "output/test/CannyEdgeEndPoint"
   createDirectoryIfMissing True folderPath
@@ -126,6 +128,13 @@ main = do
       theta0Freqs
       scale0Freqs
   planReversal <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  (plan, pathNormMethod) <-
+    makePatchNormFilter
+      planReversal
+      numPoint
+      numPoint
+      patchNormFlag
+      patchNormSize
   let endPointFilePath =
         folderPath </>
         (printf
@@ -163,12 +172,12 @@ main = do
                  (fromIntegral $ (L.length theta0Freqs * L.length scale0Freqs)) :+
                  0
             else 0
-  plotImageRepaComplex (folderPath </> "bias_0.png") .
-    ImageRepa 8 .
-    computeS .
-    R.extend (Z :. (1 :: Int) :. All :. All) .
-    R.sumS . R.sumS . rotate4D . rotate4D $
-    bias
+  -- plotImageRepaComplex (folderPath </> "bias_0.png") .
+  --   ImageRepa 8 .
+  --   computeS .
+  --   R.extend (Z :. (1 :: Int) :. All :. All) .
+  --   R.sumS . R.sumS . rotate4D . rotate4D $
+  --   bias
   endPointFlag <- doesFileExist endPointFilePath
   endPointR2Z2 <-
     if endPointFlag
@@ -186,12 +195,10 @@ main = do
                    scaleFreqs
                    theta0Freqs
                    scale0Freqs
-               (planReversal', pathNormFilterF) <-
-                 makePatchNormFilter planReversal numPoint numPoint 20
                completionFieldR2Z2 <-
                  computeS <$>
                  powerMethodR2Z2T0S0Reversal
-                   planReversal'
+                   plan
                    folderPath
                    numPoint
                    numPoint
@@ -202,7 +209,7 @@ main = do
                    scaleFreqs
                    scale0Freqs
                    arrR2Z2T0S0EndPoint
-                   pathNormFilterF
+                   pathNormMethod
                    numIteration
                    writeSourceFlag
                    (printf
@@ -236,9 +243,37 @@ main = do
     biasMag
   printf "%f %f\n" reversalFactor (R.sumAllS biasMag)
   let rotatedEndBias =
-        computeS $
+        computeUnboxedS $
         R.zipWith
           (+)
           (rotateBiasR2Z2T0S0 90 thetaFreqs endPointR2Z2Biased)
           (rotateBiasR2Z2T0S0 (-90) thetaFreqs endPointR2Z2Biased)
-  undefined
+  powerMethodR2Z2T0S0Bias
+    plan
+    folderPath
+    numPoint
+    numPoint
+    numOrientation
+    thetaFreqs
+    theta0Freqs
+    numScale
+    scaleFreqs
+    scale0Freqs
+    arrR2Z2T0S0
+    PowerMethodNone
+    numIteration
+    writeSourceFlag
+    (printf
+       "_%d_%d_%d_%d_%d_%d_%.2f_%.2f_%f"
+       numPoint
+       (round thetaFreq :: Int)
+       (round scaleFreq :: Int)
+       (round maxScale :: Int)
+       (round tao :: Int)
+       cutoffRadiusEndPoint
+       thetaSigma
+       scaleSigma
+       reversalFactor)
+    0.5
+    rotatedEndBias 
+    eigenVec

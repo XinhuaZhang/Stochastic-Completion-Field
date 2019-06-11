@@ -253,28 +253,28 @@ eigenVectorR2Z2Bias ::
   -> Int
   -> [Double]
   -> R2Z2T0S0Array
+  -> PowerMethodNormalizationOption
   -> Int
   -> Bool
   -> String
   -> R.Array U DIM4 (Complex Double)
   -> R.Array s DIM6 (Complex Double)
   -> IO R2Z2T0S0Array
-eigenVectorR2Z2Bias plan folderPath numOrientation thetaFreqs numScale scaleFreqs filterF n writeFlag name bias inputR2Z2T0S0 = do
+eigenVectorR2Z2Bias plan folderPath numOrientation thetaFreqs numScale scaleFreqs filterF normMethod n writeFlag name bias inputR2Z2T0S0 = do
   let (Z :. numThetaFreq :. numScaleFreq :. numTheta0Freq :. numScale0Freq :. cols :. rows) =
         extent inputR2Z2T0S0
   inputR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ inputR2Z2T0S0) >>= R.sumP
-  sourceDist <- convolveR2Z2 plan bias inputR2Z2
-  s <- R.foldAllP max 0 . R.map magnitude $ sourceDist
-  let initialDist = R.map (/ (s :+ 0)) sourceDist
-  sourceArr <- convolveR2T0S0P plan filterF initialDist
-  printCurrentTime $ printf "iteration %d" n
+  biasedInputR2Z2 <- convolveR2Z2 plan bias inputR2Z2
+  normalizedBiasedInputR2Z2 <-
+    powerMethodNormalization plan normMethod biasedInputR2Z2
+  sourceArr <- convolveR2T0S0P plan filterF normalizedBiasedInputR2Z2
+  printCurrentTime $ printf "iteration %d" (n + 1)
   when
-    (n == 1 || writeFlag)
+    (n == 0 || writeFlag)
     (let
-      in do sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr) >>= R.sumP
-            sourceR2S1RP <-
+      in do sourceR2S1RP <-
               r2z2Tor2s1rpP numOrientation thetaFreqs numScale scaleFreqs $
-              sourceR2Z2
+              inputR2Z2
             sourceField <-
               (R.sumP . rotate4D . rotate4D $ sourceR2S1RP) >>=
               fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
@@ -299,6 +299,7 @@ powerMethodR2Z2T0S0Bias ::
   -> [Double]
   -> [Double]
   -> R2Z2T0S0Array
+  -> PowerMethodNormalizationOption
   -> Int
   -> Bool
   -> String
@@ -306,7 +307,7 @@ powerMethodR2Z2T0S0Bias ::
   -> R.Array U DIM4 (Complex Double)
   -> R.Array s DIM6 (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
-powerMethodR2Z2T0S0Bias plan folderPath cols rows numOrientation thetaFreqs theta0Freqs numScale scaleFreqs scale0Freqs filter numIteration writeFlag idStr threshold bias eigenVecSource = do
+powerMethodR2Z2T0S0Bias plan folderPath cols rows numOrientation thetaFreqs theta0Freqs numScale scaleFreqs scale0Freqs filter normMethod numIteration writeFlag idStr threshold bias eigenVecSource = do
   filterF <- dftR2Z2T0S0 plan . computeS . makeFilter2D $ filter
   sourceR2Z2T0S0 <-
     M.foldM
@@ -319,13 +320,14 @@ powerMethodR2Z2T0S0Bias plan folderPath cols rows numOrientation thetaFreqs thet
            numScale
            scaleFreqs
            filterF
+           normMethod
            n
            writeFlag
            ("Source" L.++ idStr)
            bias
            input)
       (computeS $ delay eigenVecSource)
-      [1 .. numIteration]
+      [0 .. numIteration]
   let sinkR2Z2T0S0 =
         computeSinkFromSourceR2Z2T0S0 thetaFreqs theta0Freqs sourceR2Z2T0S0
   sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceR2Z2T0S0) >>= R.sumP
@@ -359,7 +361,7 @@ eigenVectorR2Z2Reversal ::
   -> Int
   -> [Double]
   -> R2Z2T0S0Array
-  -> VS.Vector (Complex Double)
+  -> PowerMethodNormalizationOption
   -> Int
   -> Bool
   -> String
@@ -367,60 +369,36 @@ eigenVectorR2Z2Reversal ::
   -> R.Array s1 DIM4 (Complex Double)
   -> R.Array s2 DIM6 (Complex Double)
   -> IO R2Z2T0S0Array
-eigenVectorR2Z2Reversal plan folderPath numOrientation thetaFreqs numScale scaleFreqs filterF patchNormFilterF n writeFlag name reversalFactor bias inputR2Z2T0S0 = do
+eigenVectorR2Z2Reversal plan folderPath numOrientation thetaFreqs numScale scaleFreqs filterF normMethod n writeFlag name reversalFactor bias inputR2Z2T0S0 = do
   let (Z :. numThetaFreq :. numScaleFreq :. numTheta0Freq :. numScale0Freq :. cols :. rows) =
         extent inputR2Z2T0S0
-      -- reversal = computeReversalR2Z2T0S0 thetaFreqs inputR2Z2T0S0'
-      -- inputR2Z2T0S0 =
-      --   R.zipWith
-      --     (\x y -> x + (reversalFactor :+ 0) * y)
-      --     inputR2Z2T0S0'
-      --     reversal
   inputR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ inputR2Z2T0S0) >>= R.sumP
-  let sourceDist = inputR2Z2 -- R.zipWith (*) bias inputR2Z2
-  -- s <- R.foldAllP max 0 . R.map magnitude $ inputR2Z2 --sourceDist
-  let initialDist' = sourceDist -- R.map (/ (s :+ 0))
-      initialDist =
+  let biasedInputR2Z2 = R.zipWith (*) bias inputR2Z2
+  normalizedBiasedInputR2Z2 <-
+    powerMethodNormalization plan normMethod biasedInputR2Z2
+  let initialDist =
         R.traverse2
-          initialDist'
+          normalizedBiasedInputR2Z2
           (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
           const $ \f1 f2 idx@(Z :. k :. _ :. i :. j) ->
           f1 idx + (reversalFactor :+ 0) * f1 idx * exp (0 :+ f2 (Z :. k) * pi)
-  -- sourceArr <-
-  --   (computeS . R.map (/ (s :+ 0))) <$> convolveR2T0S0P plan filterF initialDist
-  sourceArr' <- convolveR2T0S0P plan filterF initialDist
-  sourceArrR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr') >>= R.sumP
-  -- s <- R.foldAllP max 0 . R.map magnitude $ initialDist
-  -- sourceArr <-
-  --   localNormalization
-  --     30
-  --     (R.traverse2 sourceArr' bias const $ \f fb idx@(Z :. k :. l :. _ :. _ :. i :. j) ->
-  --        f idx * fb (Z :. k :. l :. i :. j))
-      -- sourceArr = computeS . R.map (/ (s :+ 0)) $ sourceArr'
-  sourceArr <-
-    patchNorm
-      plan
-      patchNormFilterF
-      (R.traverse2 sourceArr' bias const $ \f fb idx@(Z :. k :. l :. _ :. _ :. i :. j) ->
-         f idx * fb (Z :. k :. l :. i :. j))
+  sourceArr <- convolveR2T0S0P plan filterF initialDist
+  sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr) >>= R.sumP
   let a =
         sumAllS $
         R.zipWith
           (\x y -> conjugate x * y)
           initialDist
-          (R.zipWith (*) sourceArrR2Z2 bias)
+          (R.zipWith (*) bias sourceR2Z2)
       b = sumAllS $ R.zipWith (\x y -> conjugate x * y) initialDist initialDist
   printCurrentTime $
-    printf "iteration %d: %.5f" n ((magnitude a) / (magnitude b))
+    printf "iteration %d: %.5f" (n + 1) ((magnitude a) / (magnitude b))
   when
-    (n == 1 ||
-     (writeFlag -- && odd n
-      ))
+    (n == 0 || writeFlag)
     (let
-      in do sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr') >>= R.sumP
-            sourceR2S1RP <-
+      in do sourceR2S1RP <-
               r2z2Tor2s1rpP numOrientation thetaFreqs numScale scaleFreqs $
-              sourceR2Z2
+              inputR2Z2
             sourceField <-
               (R.sumP . rotate4D . rotate4D $ sourceR2S1RP) >>=
               fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
@@ -429,7 +407,7 @@ eigenVectorR2Z2Reversal plan folderPath numOrientation thetaFreqs numScale scale
               (folderPath </> name L.++ "_" L.++ show n L.++ ".png") .
               ImageRepa 8 $
               sourceField
-            let biasR2Z2 = R.zipWith (*) bias sourceR2Z2
+            let biasR2Z2 = R.zipWith (*) bias inputR2Z2
             biasR2S1RP <-
               r2z2Tor2s1rpP numOrientation thetaFreqs numScale scaleFreqs $
               biasR2Z2
@@ -439,6 +417,15 @@ eigenVectorR2Z2Reversal plan folderPath numOrientation thetaFreqs numScale scale
               R.sumP
             plotImageRepa (folderPath </> "Bias_" L.++ show n L.++ ".png") .
               ImageRepa 8 $
+              biasField
+            let nonzeroVec = VU.filter (/= 0) . toUnboxed $ biasField
+                minV = VU.minimum nonzeroVec
+                maxV = VU.maximum nonzeroVec 
+            plotImageRepa (folderPath </> "InversedBias_" L.++ show n L.++ ".png") .
+              ImageRepa 8 .
+              computeS . R.map (\x -> if x == 0
+                                         then 0
+                                         else (maxV - x) + minV) $
               biasField)
   return sourceArr
 
@@ -455,7 +442,7 @@ powerMethodR2Z2T0S0Reversal ::
   -> [Double]
   -> [Double]
   -> R2Z2T0S0Array
-  -> VS.Vector (Complex Double)
+  -> PowerMethodNormalizationOption
   -> Int
   -> Bool
   -> String
@@ -464,7 +451,7 @@ powerMethodR2Z2T0S0Reversal ::
   -> R.Array s1 DIM4 (Complex Double)
   -> R.Array s2 DIM6 (Complex Double)
   -> IO (R.Array D DIM4 (Complex Double))
-powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs theta0Freqs numScale scaleFreqs scale0Freqs filter patchNormFilterF numIteration writeFlag idStr threshold reversalFactor bias eigenVecSource = do
+powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs theta0Freqs numScale scaleFreqs scale0Freqs filter normMethod numIteration writeFlag idStr threshold reversalFactor bias eigenVecSource = do
   filterF <- dftR2Z2T0S0 plan . computeS . makeFilter2D $ filter
   sourceR2Z2T0S0 <-
     M.foldM
@@ -477,7 +464,7 @@ powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs 
            numScale
            scaleFreqs
            filterF
-           patchNormFilterF
+           normMethod
            n
            writeFlag
            ("Source" L.++ idStr)
@@ -485,7 +472,7 @@ powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs 
            bias
            input)
       (computeS . delay $ eigenVecSource)
-      [1 .. numIteration]
+      [0 .. numIteration]
   let sinkR2Z2T0S0 =
         computeSinkFromSourceR2Z2T0S0 thetaFreqs theta0Freqs sourceR2Z2T0S0
   sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceR2Z2T0S0) >>= R.sumP

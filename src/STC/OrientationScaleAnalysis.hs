@@ -12,7 +12,7 @@ import           FokkerPlanck.DomainChange (r2z1Tor2s1)
 import           Graphics.Gnuplot.Simple
 import           Image.IO                  (ImageRepa (..), plotImageRepa,
                                             plotImageRepaComplex)
-import           STC.CompletionField       (convolveR2T0)
+import           STC.Convolution       (convolveR2T0)
 import           System.FilePath
 import           Types
 import           Utils.Array
