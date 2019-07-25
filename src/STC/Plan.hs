@@ -80,32 +80,75 @@ makeR2Z2T0S0Plan oldPlan arr = do
          , yLen
          ]
          [4, 5]
-         vec >>= \(plan, vec) ->
-         dft1dGPlan
-           lock
-           plan
-           [numThetaFreqs, numScaleFreqs, xLen, yLen]
-           [0, 1]
-           vec >>= \(plan, vec) ->
-           idft1dGPlan
-             lock
-             plan
-             [numThetaFreqs, numScaleFreqs, xLen, yLen]
-             [0, 1]
-             vec >>= \(plan, vec) ->
+         vec -- >>= \(plan, vec) ->
+         -- dft1dGPlan
+         --   lock
+         --   plan
+         --   [ numTheta0Freqs
+         --   , numScale0Freqs
+         --   , xLen
+         --   , yLen
+         --   , numThetaFreqs
+         --   , numScaleFreqs
+         --   ]
+         --   [2, 3, 4, 5]
+         --   vec >>= \(plan, vec) ->
+         --   idft1dGPlan
+         --     lock
+         --     plan
+         --     [ numTheta0Freqs
+         --     , numScale0Freqs
+         --     , xLen
+         --     , yLen
+         --     , numThetaFreqs
+         --     , numScaleFreqs
+         --     ]
+         --     [2, 3, 4, 5]
+         --     vec
+      >>= \(plan, vec) ->
              dft1dGPlan
                lock
                plan
-               [numTheta0Freqs, numScale0Freqs, xLen, yLen]
-               [2, 3]
+               [numThetaFreqs, numScaleFreqs, xLen, yLen]
+               [0, 1]
                vec >>= \(plan, vec) ->
                idft1dGPlan
                  lock
                  plan
-                 [numTheta0Freqs, numScale0Freqs, xLen, yLen]
-                 [2, 3]
+                 [numThetaFreqs, numScaleFreqs, xLen, yLen]
+                 [0, 1]
                  vec >>= \(plan, vec) ->
-                 dft1dGPlan lock plan [numScale0Freqs, xLen, yLen] [1, 2] vec)
+                 dft1dGPlan
+                   lock
+                   plan
+                   [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+                   [2, 3]
+                   vec >>= \(plan, vec) ->
+                   idft1dGPlan
+                     lock
+                     plan
+                     [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+                     [2, 3]
+                     vec -- >>= \(plan, vec) ->
+                     -- dft1dGPlan
+                     --   lock
+                     --   plan
+                     --   [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+                     --   [0, 1, 2, 3]
+                     --   vec >>= \(plan, vec) ->
+                     --   idft1dGPlan
+                     --     lock
+                     --     plan
+                     --     [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+                     --     [0, 1, 2, 3]
+                     --     vec
+      >>= \(plan, vec) ->
+                         dft1dGPlan
+                           lock
+                           plan
+                           [numScale0Freqs, xLen, yLen]
+                           [1, 2]
+                           vec)
 
 
 makeImagePlan ::

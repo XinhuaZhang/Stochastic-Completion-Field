@@ -78,6 +78,27 @@ dftR2Z2T0S0 plan arr = do
          [4, 5]) .
     VS.convert . toUnboxed $
     arr
+    
+{-# INLINE dftR2Z2T0S0Deconv #-}
+dftR2Z2T0S0Deconv :: DFTPlan -> R2Z2T0S0Array -> IO R2Z2T0S0Array
+dftR2Z2T0S0Deconv plan arr = do
+  let (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen :. numThetaFreqs :. numScaleFreqs) =
+        extent arr
+  fmap (fromUnboxed (extent arr) . VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID
+         DFT1DG
+         [ numTheta0Freqs
+         , numScale0Freqs
+         , xLen
+         , yLen
+         , numThetaFreqs
+         , numScaleFreqs
+         ]
+         [2, 3, 4, 5]) .
+    VS.convert . toUnboxed $
+    arr
 
 {-# INLINE computeSinkFromSourceR2Z2T0S0 #-}
 computeSinkFromSourceR2Z2T0S0 ::

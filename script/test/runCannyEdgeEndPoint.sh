@@ -1,11 +1,11 @@
 #!/bin/bash
-Size=600
+Size=1024
 Orientations=16
 Scales=1
-ThetaSigma=0.1
+ThetaSigma=0.01
 ScaleSigma=0.0
 MaxScale=1.000001
-Tao=100
+Tao=500
 Trails=1000000 
 MaxTrails=100000
 Theta0Freqs=10
@@ -14,17 +14,18 @@ Scale0Freqs=0
 ScaleFreqs=0
 HistFileName=${Size}_${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${Theta0Freqs}_${ThetaFreqs}_${Scale0Freqs}_${ScaleFreqs}.dat
 HistPath=output/test/CannyEdgeEndPoint/${HistFileName}
-NumInteration=50
+NumInteration=100
 WriteSourceFlag=True
 CutoffRadiusEndPoint=32
 CutoffRadius=96
-ReversalFactor=0.01
-InputImgPath=output/test/Resize/triangle_512.png
+ReversalFactor=0.0
+InputImgPath=output/test/Resize/triangle_1024.png
 Threshold1=30
 Threshold2=200
 PixelDist=10
 PatchNormFlag=True
-PatchNormSize=150
+PatchNormSize=80
+ApproximatedEigenValue=0.0
 Threads=16
 
-time stack test :CannyEdgeEndPoint-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${NumInteration} ${WriteSourceFlag} ${CutoffRadiusEndPoint} ${CutoffRadius} ${ReversalFactor} ${InputImgPath} ${Threshold1} ${Threshold2} ${PixelDist} ${PatchNormFlag} ${PatchNormSize} ${Threads} +RTS -N${Threads} -RTS"
+time stack test :CannyEdgeEndPoint-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${NumInteration} ${WriteSourceFlag} ${CutoffRadiusEndPoint} ${CutoffRadius} ${ReversalFactor} ${InputImgPath} ${Threshold1} ${Threshold2} ${PixelDist} ${PatchNormFlag} ${PatchNormSize} ${ApproximatedEigenValue} ${Threads} +RTS -N${Threads} -RTS"

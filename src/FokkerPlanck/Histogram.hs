@@ -1,12 +1,15 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 module FokkerPlanck.Histogram where
 
 import           Control.DeepSeq
 import           Data.Array.Repa     as R
 import           Data.Binary
+import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed as VU
 import           GHC.Generics        (Generic)
+import           Types
 
 data Histogram a = Histogram
   { histogramSize :: [Int]
@@ -60,6 +63,68 @@ getNormalizedHistogramArr (Histogram size n vec)
     "\nVector length = " L.++
     (show . VU.length $ vec)
   | otherwise = fromUnboxed (shapeOfList size) . VU.map (/ fromIntegral n) $ vec
+  
+{-# INLINE getNormalizedHistogramArrSink #-}
+getNormalizedHistogramArrSink ::
+     (Shape d) => Histogram (Complex Double) -> R.Array U d (Complex Double)
+getNormalizedHistogramArrSink (Histogram size n vec)
+  | n == 0 = error "getNormalizedHistogramArr: n == 0."
+  | (L.product size) /= (VU.length vec) =
+    error $
+    "getNormalizedHistogramArr: size mismatch\nSize = " L.++ show size L.++
+    " = " L.++
+    (show . L.product $ size) L.++
+    "\nVector length = " L.++
+    (show . VU.length $ vec)
+  | otherwise =
+    let normalizedVec =
+          VU.map (\x -> (1 - (magnitude x) / fromIntegral n) :+ 0) $ vec
+     in fromUnboxed (shapeOfList size) . VU.map (/ (VU.sum normalizedVec)) $
+        normalizedVec
+   
+
+{-# INLINE getNormalizedHistogramArrSink' #-}
+getNormalizedHistogramArrSink' ::
+     (Shape d) => Histogram (Complex Double) -> R.Array U d (Complex Double)
+getNormalizedHistogramArrSink' (Histogram size n vec)
+  | n == 0 = error "getNormalizedHistogramArr: n == 0."
+  | (L.product size) /= (VU.length vec) =
+    error $
+    "getNormalizedHistogramArr: size mismatch\nSize = " L.++ show size L.++
+    " = " L.++
+    (show . L.product $ size) L.++
+    "\nVector length = " L.++
+    (show . VU.length $ vec)
+  | otherwise =
+    let normalizedVec =
+          VU.map
+            (\x ->
+               let m = magnitude x
+                in if m == 0
+                     then fromIntegral n :+ 0
+                     else (fromIntegral n / m) :+ 0) $
+          vec
+     in fromUnboxed (shapeOfList size) -- . VU.map (/ (VU.sum normalizedVec)) $
+        normalizedVec
+
+{-# INLINE getNormalizedHistogramArrR2Z2T0S0 #-}
+getNormalizedHistogramArrR2Z2T0S0 ::
+     Histogram (Complex Double) -> R.Array U DIM5 (Complex Double)
+getNormalizedHistogramArrR2Z2T0S0 (Histogram size n vec)
+  | n == 0 = error "getNormalizedHistogramArr: n == 0."
+  | (L.product size) /= (VU.length vec) =
+    error $
+    "getNormalizedHistogramArr: size mismatch\nSize = " L.++ show size L.++
+    " = " L.++
+    (show . L.product $ size) L.++
+    "\nVector length = " L.++
+    (show . VU.length $ vec)
+  | otherwise =
+    let arr = fromUnboxed (shapeOfList size) . VU.map (\x ->  magnitude x / fromIntegral n) $ vec
+        maxArr = R.foldS max 0 arr
+     in computeS . R.traverse2 arr maxArr const $ \f fMax idx@(Z :. a :. b :. c :. d :. r) ->
+          (f (Z :. a :. b :. c :. d :. 1) - f idx) :+ 0
+
 
 {-# INLINE emptyHistogram #-}
 emptyHistogram :: (Unbox a) => [Int] -> a -> Histogram a

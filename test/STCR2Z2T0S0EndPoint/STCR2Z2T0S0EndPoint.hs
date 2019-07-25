@@ -19,9 +19,10 @@ import           System.Random
 import           Text.Printf
 import           Types
 import           Utils.Array
+import           Utils.Parallel
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:cStr:patchNormFlagStr:patchNormSizeStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:cStr:patchNormFlagStr:patchNormSizeStr:approximatedEigenValueStr:shape2DStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -48,6 +49,8 @@ main = do
       reversalFactor = read reversalFactorStr :: Double
       patchNormFlag = read patchNormFlagStr :: Bool
       patchNormSize = read patchNormSizeStr :: Int
+      approximatedEigenValue = read approximatedEigenValueStr :: Double
+      shape2D@(Points _ minDist _) = read shape2DStr :: Points Shape2D
       numThread = read numThreadStr :: Int
       folderPath = "output/test/STCR2Z2T0S0EndPoint"
       a = 20 :: Int
@@ -112,11 +115,13 @@ main = do
       scaleFreqs
       theta0Freqs
       scale0Freqs
-  plan' <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
-  (plan, pathNormMethod) <-
-    makePatchNormFilter plan' numPoint numPoint patchNormFlag patchNormSize
-  let kanizsaTriangle1 =
-        makeShape2D $ Points (0, 0) 10 (KanizsaTriangle1 0 480 160 80)
+  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  -- (plan, pathNormMethod) <-
+  --   makePatchNormFilter plan' numPoint numPoint patchNormFlag patchNormSize
+      -- minDist = 8
+      -- kanizsaTriangle1 =
+      --   makeShape2D $ Points (-30, -30) minDist (Corner 30 60 80) --(PacMan 30 60 50)  --(Ehrenstein 8 15 40)  -- (IncompleteCircle 0 60 50 ) -- (TJunction 45 50) -- (PacMan 0 60 100 ) -- (Corner 0 60 100) --(KanizsaTriangle1 0 480 160 80)
+  let pointSet = makeShape2D shape2D
       shapeArr =
         getShape2DRepaArray
           numPoint
@@ -124,10 +129,10 @@ main = do
           (L.map
              (\(x, y) ->
                 (x + fromIntegral numPoint / 2, y + fromIntegral numPoint / 2))
-             kanizsaTriangle1)
+             pointSet)
       xs =
         L.map (\(x, y) -> R2S1RPPoint (x, y, 0, 1)) . getShape2DIndexList $
-        kanizsaTriangle1
+        pointSet
       bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs xs
       eigenVec =
         computeInitialEigenVectorR2T0S0
@@ -156,6 +161,35 @@ main = do
                    scaleFreqs
                    theta0Freqs
                    scale0Freqs
+               pathNormMethod <-
+                 if patchNormFlag
+                   then do
+                     let points =
+                           createIndex2D .
+                           L.map
+                             (\(i, j) ->
+                                (i + div numPoint 2, j + div numPoint 2)) .
+                           getShape2DIndexList $
+                           pointSet
+                         ys =
+                           pointCluster
+                             (connectionMatrixP
+                                (ParallelParams numThread 1)
+                                (minDist + 1)
+                                points) $
+                           points
+                     M.zipWithM_
+                       (\i ->
+                          plotImageRepa
+                            (folderPath </> (printf "Cluster%03d.png" i)) .
+                          ImageRepa 8)
+                       [1 :: Int ..] .
+                       cluster2Array numPoint numPoint $
+                       ys
+                     return . PowerMethodConnection $ ys
+                   else return PowerMethodGlobal
+               (R.foldAllP max 0 . R.map magnitude $ arrR2Z2T0S0EndPoint) >>=
+                 print
                completionFieldR2Z2' <-
                  computeS <$>
                  powerMethodR2Z2T0S0Reversal
@@ -169,6 +203,7 @@ main = do
                    numScale
                    scaleFreqs
                    scale0Freqs
+                   maxScale
                    arrR2Z2T0S0EndPoint
                    pathNormMethod
                    numIteration
@@ -186,29 +221,24 @@ main = do
                       reversalFactor)
                    0.5
                    reversalFactor
+                   approximatedEigenValue
                    bias
                    eigenVec
                -- writeRepaArray endPointFilePath completionFieldR2Z2'
                return completionFieldR2Z2')
   let completionFieldR2Z2 = R.zipWith (*) completionFieldR2Z2'' bias
-      endpointBias = completionFieldR2Z2
-        -- rotateBiasR2Z2T0S0 0 theta0Freqs . R.traverse completionFieldR2Z2 id $ \f idx@(Z :. _ :. _ :. i :. j) ->
-        --   if (sqrt . fromIntegral $
-        --       (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2) >
-        --      35
-        --     then 0
-        --     else f idx
-        -- R.traverse
-          -- (R.zipWith
-          --    (+)
-          --    (rotateBiasR2Z2T0S0 90 theta0Freqs completionFieldR2Z2)
-          --    (rotateBiasR2Z2T0S0 (-90) theta0Freqs completionFieldR2Z2))
-        --   id $ \f idx@(Z :. _ :. _ :. i :. j) ->
-        --   if (sqrt . fromIntegral $
-        --       (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2) >
-        --      35
-        --     then 0
-        --     else f idx
+      endpointBias = rotateBiasR2Z2T0S0 180 theta0Freqs completionFieldR2Z2
+      -- endpointBias =
+      --   R.zipWith
+      --     (+)
+      --     (rotateBiasR2Z2T0S0 90 theta0Freqs completionFieldR2Z2)
+      --     (rotateBiasR2Z2T0S0 (-90) theta0Freqs completionFieldR2Z2)
+                    -- rotateBiasR2Z2T0S0 0 theta0Freqs . R.traverse completionFieldR2Z2 id $ \f idx@(Z :. _ :. _ :. i :. j) ->
+                    --   if (sqrt . fromIntegral $
+                    --       (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2) >
+                    --      35
+                    --     then 0
+                    --     else f idx
       biasMag =
         R.sumS .
         R.sumS .
@@ -236,7 +266,6 @@ main = do
   --   -- numIteration
   --   10
   --   writeSourceFlag
-  --   -- True
   --   (printf
   --      "_%d_%d_%d_%d_%d_%d_%.2f_%.2f"
   --      numPoint
@@ -247,7 +276,7 @@ main = do
   --      cutoffRadius
   --      thetaSigma
   --      scaleSigma)
-  --   1
+  --   0.1
   --   (computeS endpointBias)
   --   (R.fromFunction
   --      (Z :. (L.length thetaFreqs) :. (L.length scaleFreqs) :.
@@ -259,3 +288,4 @@ main = do
   --        then 1 / (fromIntegral $ (L.length theta0Freqs * L.length scale0Freqs)) :+
   --             0
   --        else 0)
+ 

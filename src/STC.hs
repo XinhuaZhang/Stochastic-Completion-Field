@@ -9,6 +9,7 @@ module STC
   , module STC.PointSet
   , module STC.PowerMethodNormalization
   , module STC.Shape
+  , module STC.PointCluster
   ) where
 
 import           STC.Bias
@@ -16,6 +17,7 @@ import           STC.CompletionField
 import           STC.Convolution
 import           STC.InitialDistribution
 import           STC.Plan
+import           STC.PointCluster
 import           STC.PointSet
 import           STC.PowerMethod
 import           STC.PowerMethodNormalization

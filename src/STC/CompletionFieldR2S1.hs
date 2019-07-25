@@ -21,6 +21,8 @@ import           Text.Printf
 import           Types
 import           Utils.Array
 
+-- Implementation of [Williams and Jacbos, 1997]
+
 {-# INLINE checkN #-}
 checkN :: Int -> Int -> Int
 checkN maxN n
@@ -63,19 +65,17 @@ timeReversal arr =
                  else (Z :. k + n :. i :. j))
         arr
         
-{-# INLINE flip2D #-}
-flip2D ::
-     (R.Source r e, Shape sh)
-  => R.Array r (sh :. Int :. Int) e
-  -> R.Array D (sh :. Int :. Int) e
-flip2D arr =
-  let (_ :. cols :. rows) = extent arr
-   in R.backpermute
-        (extent arr)
-        -- (\(a :. c :. d) -> (a :. (cols - 1 - c) :. (rows - 1 - d)))
-        (\(a :. c :. d) -> (a :. c :. (rows - 1 - d)))
-        -- (\(a :. c :. d) -> (a :. (cols - 1 - c) :. d))
-        arr
+{-# INLINE makeR2S1Plan #-}
+makeR2S1Plan :: (R.Source r e) => DFTPlan -> R.Array r DIM3 e -> IO DFTPlan
+makeR2S1Plan oldPlan arr = do
+  let (Z :. orientations :. rows :. cols) = extent arr
+  vec3D <-
+    VS.map (:+ 0) . VS.fromList <$>
+    M.replicateM (orientations * rows * cols) randomIO
+  lock <- getFFTWLock
+  fst <$>
+    (dft1dGPlan lock oldPlan [orientations, rows, cols] [1, 2] vec3D >>= \(plan, vec) ->
+       idft1dGPlan lock plan [orientations, rows, cols] [1, 2] vec)
 
 {-# INLINE convolve #-}
 convolve ::
@@ -125,18 +125,6 @@ shareWeightST dftPlan arr arrG = do
       [0 .. nf - 1]
   return . delay . fromUnboxed (extent arrG) . L.foldl1' (VU.zipWith (+)) $ xs
 
-{-# INLINE makeR2S1Plan #-}
-makeR2S1Plan :: (R.Source r e) => DFTPlan -> R.Array r DIM3 e -> IO DFTPlan
-makeR2S1Plan oldPlan arr = do
-  let (Z :. orientations :. rows :. cols) = extent arr
-  vec3D <-
-    VS.map (:+ 0) . VS.fromList <$>
-    M.replicateM (orientations * rows * cols) randomIO
-  lock <- getFFTWLock
-  fst <$>
-    (dft1dGPlan lock oldPlan [orientations, rows, cols] [1, 2] vec3D >>= \(plan, vec) ->
-       idft1dGPlan lock plan [orientations, rows, cols] [1, 2] vec)
-
 {-# INLINE computeInitialDistribution #-}
 computeInitialDistribution ::
      Int -> Int -> Int -> [R2S1RPPoint] -> R.Array U DIM3 Double
@@ -162,6 +150,7 @@ computeInitialDistribution xLen yLen numOrientation xs =
         xs
    in fromUnboxed (Z :. numOrientation :. xLen :. yLen) vec
 
+-- Implementation of [Williams and Zweck, 2003]
 
 {-# INLINE computeBias #-}
 computeBias ::

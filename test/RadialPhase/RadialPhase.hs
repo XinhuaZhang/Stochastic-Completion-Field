@@ -122,12 +122,13 @@ main = do
          [ PNG (folderPath </> "Magnitude" </> printf "%d_%d.png" i j)
          , Title (printf "sf: %.0f, s0f: %.0f" sf s0f)
          -- , XRange (0, log (fromIntegral len))
-         , YRange (0, maxMag)
+         -- , YRange (0, maxMag)
          ]
          (defaultStyle
             {plotType = LinesPoints, lineSpec = CustomStyle [LineTitle ""]}) .
-       L.zip (L.map log [1 .. fromIntegral len - 1]) .
-       L.tail . R.toList . R.map magnitude . R.slice arr3d $
+       L.zip ( [0 .. fromIntegral len - 1]) .
+       -- L.tail .
+      R.toList . R.map magnitude . R.slice arr3d $
        (Z :. i :. j :. All))
     [ (a, b)
     | a <- L.zip [0 .. (L.length scaleFreqs) - 1] scaleFreqs

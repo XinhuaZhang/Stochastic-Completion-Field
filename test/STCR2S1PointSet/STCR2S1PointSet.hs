@@ -39,7 +39,7 @@ main = do
       folderPath = "output/test/STCR2S1PointSet"
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
-  arrG <-
+  arrG' <-
     if flag
       then getNormalizedHistogramArr .
            mapHistogram
@@ -61,11 +61,19 @@ main = do
             r
             histFilePath
             (0, 0, 0, 0, initOri / 180 * pi, initSpeed)
+  let arrG =
+        computeS . R.map (\x ->  1 - x) 
+        . R.traverse arrG' id $ \f idx@(Z :. k :. i :. j) ->
+          let r =
+                sqrt . fromIntegral $
+                (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2
+           in if r <= 12
+                 then f idx
+                 else 0
   let r = 25
       numTheta = 15
       deltaTheta = (1 * pi) / numTheta
-      xs 
-       =[R2S1RPPoint (-i, 0, 0, 1) | i <- [0,4]]
+      xs = [R2S1RPPoint (-i, 0, 0, 1) | i <- [-24,-18 .. 24]]
         -- ((L.map
         --     (\(i, j) -> R2S1RPPoint (round i, round j, 0, 1))
         --     [ (r * cos (k * deltaTheta) + 0, r * sin (k * deltaTheta) + 0)

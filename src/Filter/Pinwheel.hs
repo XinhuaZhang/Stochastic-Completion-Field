@@ -28,6 +28,7 @@ data PinwheelParams = PinwheelParams
 {-# INLINE pinwheel #-}
 pinwheel :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 pinwheel af rf maxR alpha x y
+  | r == 0 && af == 0 && rf == 0 = 1
   | r == 0 = 0
   | otherwise =
     -- (r :+ 0) ** (alpha :+ 0) *

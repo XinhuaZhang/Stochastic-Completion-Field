@@ -72,6 +72,15 @@ rotateR2Z2T0S0Array arr =
        (Z :. k :. l :. i :. j :. m :. n)
        (\(Z :. a :. b :. c :. d :. e :. f) -> (Z :. a :. b :. e :. f :. c :. d))
        arr
+       
+{-# INLINE rotateR2Z2T0S0ArrayDeconv #-}
+rotateR2Z2T0S0ArrayDeconv :: (R.Source s e) => R.Array s DIM6 e -> R.Array D DIM6 e
+rotateR2Z2T0S0ArrayDeconv arr =
+  let (Z :. k :. l :. m :. n :. i :. j) = extent arr
+  in R.backpermute
+       (Z :. m :. n :. i :. j :. k :. l)
+       (\(Z :. a :. b :. c :. d :. e :. f) -> (Z :. e :. f :. a :. b :. c :. d))
+       arr
 
 writeRepaArray ::
      (Shape sh, Binary e, R.Source s e) => FilePath -> R.Array s sh e -> IO ()

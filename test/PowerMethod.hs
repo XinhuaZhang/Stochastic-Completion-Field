@@ -79,3 +79,5 @@ main = do
          (getListStr getComplexStr' . NL.toList $ vec))
     (NL.toList eigVal)
     eigVecs
+  print eigVal
+  print eigVecs

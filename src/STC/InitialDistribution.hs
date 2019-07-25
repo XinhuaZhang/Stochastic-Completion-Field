@@ -113,8 +113,15 @@ computeInitialDistributionR2T0S0 plan xLen yLen theta0Freqs scale0Freqs maxScale
                             s0f * 2 * pi * scale / log maxScale)))) $
              xs) $
         [(t0f, s0f) | t0f <- theta0Freqs, s0f <- scale0Freqs]
-   in return $
-      fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) vec
+   in return . fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) $ vec
+      -- computeS .
+      -- R.traverse
+      --   (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) vec)
+      --   id $ \f idx@(Z :. a :. b :. c :. d) ->
+      --   if a == div (L.length theta0Freqs) 2 &&
+      --      b == div (L.length scale0Freqs) 2
+      --     then f idx
+      --     else 0
 
 
 computeInitialEigenVectorR2T0S0 ::
@@ -155,8 +162,9 @@ computeInitialEigenVectorR2T0S0 xLen yLen theta0Freqs scale0Freqs thetaFreqs sca
            (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :.
             numScale0Freqs :.
             xLen :.
-            yLen)) $ \f idx@(Z :. tf :. sf :. _ :. _ :. i :. j) ->
+            yLen)) $ \f idx@(Z :. tf :. sf :. t0f :. s0f :. i :. j) -> 
         if tf == div numThetaFreqs 2 && sf == div numScaleFreqs 2
+           -- t0f == div numThetaFreqs 2 && s0f == div numScaleFreqs 2
           then f (Z :. i :. j) / fromIntegral (numTheta0Freqs * numScale0Freqs)
           else 0
 

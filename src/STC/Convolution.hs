@@ -9,6 +9,7 @@ import           Data.Vector.Storable   as VS
 import           DFT.Plan
 import           Filter.Utils
 import           Types
+import Data.Ix
 
 {-# INLINE makeFilterR2Z1 #-}
 makeFilterR2Z1 ::
@@ -111,6 +112,112 @@ convolveR2T0S0P ::
 convolveR2T0S0P plan filterF initialDistribution = do
   let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
         extent filterF
+      -- initialDistribution' =
+      --   -- R.map conjugate .
+      --   R.backpermute
+      --     (extent initialDistribution)
+      --     (\(Z :. a :. b :. c :. d) -> (Z :. a :. b :. (xLen - 1 - c) :. (yLen - 1 - d))) $ initialDistribution
+  initialDistributionF <-
+    fmap
+      (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
+       VS.convert . VS.concat) .
+    MP.mapM
+      (\t0f ->
+         dftExecute plan (DFTPlanID DFT1DG [numScale0Freqs, xLen, yLen] [1, 2]) .
+         VS.convert .
+         toUnboxed .
+         computeUnboxedS -- . R.map conjugate
+          .
+         R.slice initialDistribution $
+         (Z :. t0f :. All :. All :. All)) $
+    [0 .. numTheta0Freqs - 1]
+  let arrF =
+        R.traverse2
+          filterF
+          initialDistributionF
+          const
+          (\f1 f2 idx@(Z :. tf :. sf :. t0f :. s0f :. x :. y) ->
+             (f1 idx) * -- conjugate $
+             (f2 (Z :. t0f :. s0f :. x :. y)))
+  vecs <-
+    MP.mapM
+      (\(tf, sf) ->
+         dftExecute
+           plan
+           (DFTPlanID
+              IDFT1DG
+              [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+              [2, 3]) .
+         VS.convert . toUnboxed . computeS . R.slice arrF $
+         (Z :. tf :. sf :. All :. All :. All :. All))
+      [ (tf, sf)
+      | tf <- [0 .. numThetaFreqs - 1]
+      , sf <- [0 .. numScaleFreqs - 1]
+      ]
+  return . fromUnboxed (extent filterF) . VS.convert . VS.concat $ vecs
+  -- return .
+  --   computeS .
+  --   R.traverse (fromUnboxed (extent filterF) . VS.convert . VS.concat $ vecs) id $ \f1 (Z :. a :. b :. c :. d :. e :. f) ->
+  --   let x = xLen - e - 1
+  --       y = yLen - f - 1
+  --    in if (inRange (0,xLen - 1) x) && (inRange (0,yLen - 1) y)
+  --         then f1 (Z :. a :. b :. c :. d :. x :. y)
+  --         else 0
+  
+{-# INLINE deconvolveR2T0S0 #-}
+deconvolveR2T0S0 :: DFTPlan -> R2Z2T0S0Array -> R2T0S0Array -> IO R2Z2T0S0Array
+deconvolveR2T0S0 plan filterF initialDistribution = do
+  let (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen :. numThetaFreqs :. numScaleFreqs) =
+        extent filterF
+  initialDistributionF <-
+    fmap
+      (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
+       VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID
+         DFT1DG
+         [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+         [0, 1, 2, 3]) .
+    VS.convert . toUnboxed $
+    initialDistribution
+  arrF <-
+    computeP $
+    R.traverse2
+      filterF
+      initialDistributionF
+      const
+      (\f1 f2 idx@(Z :. t0f :. s0f :. x :. y :. tf :. sf) ->
+         if f1 idx == 0
+           then 0
+           else (f2 (Z :. tf :. sf :. x :. y)) / (f1 idx))
+  fmap (fromUnboxed (extent filterF) . VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID
+         IDFT1DG
+         [ numTheta0Freqs
+         , numScale0Freqs
+         , xLen
+         , yLen
+         , numThetaFreqs
+         , numScaleFreqs
+         ]
+         [2, 3, 4, 5]) .
+    VS.convert . toUnboxed $
+    arrF
+
+
+{-# INLINE deconvolveR2T0S0P #-}
+deconvolveR2T0S0P ::
+     (R.Source s (Complex Double))
+  => DFTPlan
+  -> R2Z2T0S0Array
+  -> R.Array s DIM4 (Complex Double)
+  -> IO R2Z2T0S0Array
+deconvolveR2T0S0P plan filterF initialDistribution = do
+  let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
+        extent filterF
   initialDistributionF <-
     fmap
       (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
@@ -127,7 +234,9 @@ convolveR2T0S0P plan filterF initialDistribution = do
           initialDistributionF
           const
           (\f1 f2 idx@(Z :. tf :. sf :. t0f :. s0f :. x :. y) ->
-             f1 idx * f2 (Z :. t0f :. s0f :. x :. y))
+             if f1 idx == 0
+               then 0
+               else  (f2 (Z :. tf :. sf :. x :. y)) * conjugate (f1 idx))
   vecs <-
     MP.mapM
       (\(tf, sf) ->

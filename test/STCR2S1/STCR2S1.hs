@@ -42,6 +42,7 @@ main = do
         computeInitialDistribution numPoint numPoint numOrientation initDist
       folderPath = "output/test/STCR2S1"
   createDirectoryIfMissing True folderPath
+  -- Compute the Green's function
   arrG <-
     solveMonteCarloR2S1
       numThread
@@ -55,12 +56,14 @@ main = do
       ""
       (0, 0, 0, 0, initOri / 180 * pi, initSpeed)
   plan <- makeR2S1Plan emptyPlan arrG
+  -- Source Field
   source <- shareWeightST plan sourceDist . computeUnboxedS . R.map magnitude $ arrG
   plotImageRepa
     (folderPath </> "Source.png")
     (ImageRepa 8 .
      computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
      source)
+  -- Sink Field
   sink <-
     shareWeightST plan sinkDist .
     rotateST (computeUnboxedS . R.map magnitude $ arrG) $
@@ -70,6 +73,7 @@ main = do
     (ImageRepa 8 .
      computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
      sink)
+  -- Completion Field
   let completion = R.zipWith (*) source . timeReversal $ sink
   plotImageRepa
     (folderPath </> "Completion.png")

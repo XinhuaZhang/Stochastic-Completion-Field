@@ -101,7 +101,7 @@ generatePath randomGen thetaDist' scaleDist' maxScale tao xRange yRange init@(x'
           !newY = y + eScale * sin theta
           newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
           ys =
-            if (inRange (xRange) (round newX)) && (inRange (yRange) (round newY))
+            if (inRange xRange (round newX)) && (inRange yRange (round newY))
               then DL.cons newIndex xs
               else xs
       t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
@@ -737,7 +737,7 @@ generatePathRaidal randomGen thetaDist' scaleDist' maxScale tao rRange init@(x',
           newX = x + (exp scale) * cos theta
           newY = y + (exp scale) * sin theta
           -- r = sqrt $ newX' ^ 2 + newY' ^ 2
-          -- t = angleFunctionDeg newX' newY' 
+          -- t = angleFunctionDeg newX' newY'
           -- (newX, newY) =
           --   if r > maxScale
           --     then ( (2 * maxScale - r) * sin (t + pi)
@@ -745,14 +745,15 @@ generatePathRaidal randomGen thetaDist' scaleDist' maxScale tao rRange init@(x',
           --     else (newX', newY')
           newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
           ys =
-            if (inRange -- first (const 1)
-                  (rRange)
-                  (round newX)) &&
-               round newY == 0
+            if (inRange rRange (round newX)) && round newY == 0
               then DL.cons newIndex xs
               else xs
+          -- ys =
+          --   if (inRange rRange (round x)) && round y == 0
+          --     then DL.cons z xs
+          --     else xs
       t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
-      if t < (1 - exp ((-1) / tao))
+      if t > exp ((-1) / tao)
         then return ys
         else go newIndex ys
 
@@ -909,7 +910,7 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
                         exp $
                         0 :+
                         (-t0f * t0 + tf * t +
-                         (sf * s + s0f * s0) * 2 * pi / (log maxScale))
+                         (sf * s - s0f * s0) * 2 * pi / (log maxScale))
                       !x' = round x
                    in ((j, l, i, k, x'), v)) .
              DL.concat $
@@ -1186,10 +1187,10 @@ solveMonteCarloR2Z2T0S0Radial' numGen numTrails maxTrails xLen yLen thetaSigma s
               then histogram'
               else addHistogram hist histogram'
       -- unless (L.null filePath) (encodeFile filePath newHist)
-      return . getNormalizedHistogramArr $ newHist
+      return . getNormalizedHistogramArrSink' $ newHist
     else do
       -- unless (L.null filePath) (encodeFile filePath histogram)
-      return . getNormalizedHistogramArr $ histogram
+      return . getNormalizedHistogramArrSink' $ histogram
 
 
 

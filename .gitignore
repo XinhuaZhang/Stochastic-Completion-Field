@@ -25,3 +25,4 @@ Stochastic-Completion-Field.cabal
 /TAGS
 *.tgz
 output
+send.sh

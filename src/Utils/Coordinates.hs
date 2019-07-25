@@ -50,7 +50,7 @@ angleFunctionRad i j
 deg2Rad
   :: (Floating a)
   => a -> a
-deg2Rad deg = (deg / 360.0) * 2 * pi
+deg2Rad deg = (deg / 180) * pi
 
 {-# INLINE rad2Deg #-}
 

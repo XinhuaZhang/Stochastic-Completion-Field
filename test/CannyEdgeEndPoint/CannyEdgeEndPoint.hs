@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 module CannyEdgeEndPoint where
 
+import           Control.Monad             as M
 import           Data.Array.Repa           as R
 import           Data.Binary               (decodeFile)
 import           Data.ByteString           as BS (readFile)
@@ -14,7 +15,9 @@ import           GHC.Word
 import           Image.IO
 import           Image.IO
 import           Image.Transform
--- import           OpenCV                    as CV hiding (Z)
+import           Utils.Parallel
+import           OpenCV                    as CV hiding (Z)
+import           Data.Array.Unboxed        as AU
 import           STC
 import           System.Directory
 import           System.Environment
@@ -25,7 +28,7 @@ import           Utils.Array
 
 main = do
   args <- getArgs
-  let (numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:inputImgPath:threshold1Str:threshold2Str:pixelDistStr:patchNormFlagStr:patchNormSizeStr:numThreadStr:_) =
+  let (numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:inputImgPath:threshold1Str:threshold2Str:pixelDistStr:patchNormFlagStr:patchNormSizeStr:approximatedEigenValueStr:numThreadStr:_) =
         args
       numPoint = read numPointStr :: Int
       numOrientation = read numOrientationStr :: Int
@@ -54,34 +57,35 @@ main = do
       pixelDist = read pixelDistStr :: Int
       patchNormFlag = read patchNormFlagStr :: Bool
       patchNormSize = read patchNormSizeStr :: Int
+      approximatedEigenValue = read approximatedEigenValueStr :: Double
       numThread = read numThreadStr :: Int
       folderPath = "output/test/CannyEdgeEndPoint"
   createDirectoryIfMissing True folderPath
-  -- img <-
-  --   (exceptError . coerceMat . imdecode ImreadUnchanged) <$>
-  --   BS.readFile inputImgPath :: IO (Mat ('S '[ 'D, 'D]) 'D ('S GHC.Word.Word8))
-  -- let edge =
-  --       exceptError . canny threshold1 threshold2 (Just 7) CannyNormL2 $ img
-  --     edgeRepa = R.map fromIntegral . toRepa $ edge
-  --     (Z :. _ :. rows :. cols) = extent edgeRepa
-  --     nonzeros = L.filter (> 0) . R.toList $ edgeRepa
-  --     avg = L.sum nonzeros / (fromIntegral . L.length $ nonzeros)
-  --     edgeRepaSparse =
-  --       computeS .
-  --       pad [numPoint, numPoint, 1] 0 .
-  --       R.extend (Z :. (1 :: Int) :. All :. All) .
-  --       increasePixelDistance pixelDist .
-  --       R.slice
-  --         (R.map
-  --            (\x ->
-  --               if x >= avg
-  --                 then 255
-  --                 else 0)
-  --            edgeRepa) $
-  --       (Z :. (0 :: Int) :. All :. All)
-  -- plotImageRepa (folderPath </> "edge.png") . ImageRepa 8 . computeS $ edgeRepa
-  -- plotImageRepa (folderPath </> "edge_sparse.png") . ImageRepa 8 $
-  --   edgeRepaSparse
+  img <-
+    (exceptError . coerceMat . imdecode ImreadUnchanged) <$>
+    BS.readFile inputImgPath :: IO (Mat ('S '[ 'D, 'D]) 'D ('S GHC.Word.Word8))
+  let edge =
+        exceptError . canny threshold1 threshold2 (Just 7) CannyNormL2 $ img
+      edgeRepa = R.map fromIntegral . toRepa $ edge
+      (Z :. _ :. rows :. cols) = extent edgeRepa
+      nonzeros = L.filter (> 0) . R.toList $ edgeRepa
+      avg = L.sum nonzeros / (fromIntegral . L.length $ nonzeros)
+      edgeRepaSparse =
+        computeS .
+        pad [numPoint, numPoint, 1] 0 .
+        R.extend (Z :. (1 :: Int) :. All :. All) .
+        increasePixelDistance pixelDist .
+        R.slice
+          (R.map
+             (\x ->
+                if x >= avg
+                  then 255
+                  else 0)
+             edgeRepa) $
+        (Z :. (0 :: Int) :. All :. All)
+  plotImageRepa (folderPath </> "edge.png") . ImageRepa 8 . computeS $ edgeRepa
+  plotImageRepa (folderPath </> "edge_sparse.png") . ImageRepa 8 $
+    edgeRepaSparse
   edgeRepaSparse <-
     (\(ImageRepa _ img) -> img) <$>
     readImageRepa (folderPath </> "edge_sparse.png") False
@@ -127,14 +131,39 @@ main = do
       scaleFreqs
       theta0Freqs
       scale0Freqs
-  planReversal <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
-  (plan, pathNormMethod) <-
-    makePatchNormFilter
-      planReversal
-      numPoint
-      numPoint
-      patchNormFlag
-      patchNormSize
+  -- planReversal <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  -- (plan, pathNormMethod) <-
+  --   makePatchNormFilter
+  --     planReversal
+  --     numPoint
+  --     numPoint
+  --     patchNormFlag
+  --     patchNormSize
+  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  pathNormMethod <-
+    if patchNormFlag
+      then do
+        let points =
+              createIndex2D .
+              L.map fst . L.filter (\(_, v) -> v /= 0) . AU.assocs $
+              (AU.listArray ((0, 0), (numPoint - 1, numPoint - 1)) . R.toList $
+               edgeRepaSparse :: AU.Array (Int, Int) Double)
+            ys =
+              pointCluster
+                (connectionMatrixP
+                   (ParallelParams numThread 1)
+                   (2 * pixelDist)
+                   points) $
+              points
+        M.zipWithM_
+          (\i ->
+             plotImageRepa (folderPath </> (printf "Cluster%03d.png" i)) .
+             ImageRepa 8)
+          [1 :: Int ..] .
+          cluster2Array numPoint numPoint $
+          ys
+        return . PowerMethodConnection $ ys
+      else return PowerMethodGlobal
   let endPointFilePath =
         folderPath </>
         (printf
@@ -225,7 +254,8 @@ main = do
                       reversalFactor)
                    0.5
                    reversalFactor
-                   bias
+                   approximatedEigenValue
+                   (computeS bias)
                    eigenVec
                -- writeRepaArray endPointFilePath completionFieldR2Z2
                return completionFieldR2Z2)
@@ -241,39 +271,39 @@ main = do
   plotImageRepa (folderPath </> "EndPointBias.png") .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     biasMag
-  printf "%f %f\n" reversalFactor (R.sumAllS biasMag)
-  let rotatedEndBias =
-        computeUnboxedS $
-        R.zipWith
-          (+)
-          (rotateBiasR2Z2T0S0 90 thetaFreqs endPointR2Z2Biased)
-          (rotateBiasR2Z2T0S0 (-90) thetaFreqs endPointR2Z2Biased)
-  powerMethodR2Z2T0S0Bias
-    plan
-    folderPath
-    numPoint
-    numPoint
-    numOrientation
-    thetaFreqs
-    theta0Freqs
-    numScale
-    scaleFreqs
-    scale0Freqs
-    arrR2Z2T0S0
-    PowerMethodNone
-    numIteration
-    writeSourceFlag
-    (printf
-       "_%d_%d_%d_%d_%d_%d_%.2f_%.2f_%f"
-       numPoint
-       (round thetaFreq :: Int)
-       (round scaleFreq :: Int)
-       (round maxScale :: Int)
-       (round tao :: Int)
-       cutoffRadiusEndPoint
-       thetaSigma
-       scaleSigma
-       reversalFactor)
-    0.5
-    rotatedEndBias 
-    eigenVec
+  -- printf "%f %f\n" reversalFactor (R.sumAllS biasMag)
+  -- let rotatedEndBias =
+  --       computeUnboxedS $
+  --       R.zipWith
+  --         (+)
+  --         (rotateBiasR2Z2T0S0 90 thetaFreqs endPointR2Z2Biased)
+  --         (rotateBiasR2Z2T0S0 (-90) thetaFreqs endPointR2Z2Biased)
+  -- powerMethodR2Z2T0S0Bias
+  --   plan
+  --   folderPath
+  --   numPoint
+  --   numPoint
+  --   numOrientation
+  --   thetaFreqs
+  --   theta0Freqs
+  --   numScale
+  --   scaleFreqs
+  --   scale0Freqs
+  --   arrR2Z2T0S0
+  --   PowerMethodNone
+  --   numIteration
+  --   writeSourceFlag
+  --   (printf
+  --      "_%d_%d_%d_%d_%d_%d_%.2f_%.2f_%f"
+  --      numPoint
+  --      (round thetaFreq :: Int)
+  --      (round scaleFreq :: Int)
+  --      (round maxScale :: Int)
+  --      (round tao :: Int)
+  --      cutoffRadiusEndPoint
+  --      thetaSigma
+  --      scaleSigma
+  --      reversalFactor)
+  --   0.5
+  --   rotatedEndBias
+  --   eigenVec

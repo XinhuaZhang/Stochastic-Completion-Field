@@ -17,6 +17,7 @@ import           System.FilePath
 import           Types
 import           Utils.Array
 import           Utils.Parallel
+import Text.Printf
 
 
 {-# INLINE analyzeOrientation #-}
@@ -90,12 +91,11 @@ plotMagnitudeOrientation ::
      (R.Source s (Complex Double))
   => FilePath
   -> Int
-  -> Int
   -> [Double]
   -> R.Array s DIM3 (Complex Double)
   -> (Int, Int)
-  -> IO ()
-plotMagnitudeOrientation folderPath numOrientationSample numOrientation thetaFreqs arr (i, j) = do
+  -> IO (Int,Int)
+plotMagnitudeOrientation folderPath numOrientationSample thetaFreqs arr (i', j') = do
   let orientationSampleRad =
         [ 2 * pi / fromIntegral numOrientationSample * fromIntegral i
         | i <- [0 .. numOrientationSample - 1]
@@ -105,14 +105,15 @@ plotMagnitudeOrientation folderPath numOrientationSample numOrientation thetaFre
         | i <- [0 .. numOrientationSample - 1]
         ]
       freqArr = fromListUnboxed (Z :. (L.length thetaFreqs)) thetaFreqs
-      xsFreqDomain =
-        normalizeList $
+      xsFreqDomain
+        -- normalizeList $
+       =
         parMap
           rdeepseq
           (\theta ->
              magnitude .
              R.sumAllS .
-             R.zipWith (\freq x -> x * exp (0 :+ theta * (-freq))) freqArr .
+             R.zipWith (\freq x -> x * exp (0 :+ theta * freq)) freqArr .
              R.slice arr $
              (Z :. All :. i :. j))
           orientationSampleRad
@@ -120,24 +121,52 @@ plotMagnitudeOrientation folderPath numOrientationSample numOrientation thetaFre
         normalizeList $
         R.toList .
         R.map magnitude .
-        r2z1Tor2s1 numOrientation thetaFreqs .
+        r2z1Tor2s1 numOrientationSample thetaFreqs .
         extend (Z :. All :. (1 :: Int) :. (1 :: Int)) . R.slice arr $
         (Z :. All :. i :. j)
+      (Z :. _ :. cols :. rows) = extent arr
+      magVec =
+        VU.concat $
+        parMap
+          rdeepseq
+          (\theta ->
+             toUnboxed .
+             computeS .
+             R.map magnitude . R.sumS . rotate3D . R.traverse2 arr freqArr const $ \f1 f2 idx@(Z :. k :. _ :. _) ->
+               f1 idx * exp (0 :+ theta * f2 (Z :. k)))
+          orientationSampleRad
+      (Z :. c :. a :. b) =
+        fromIndex (Z :. (L.length thetaFreqs) :. cols :. rows) . VU.maxIndex $
+        magVec
+      maxMag = VU.maximum magVec
+      (i,j) = (a,b)
+  printf
+    "Max magnitude: %0.5f at (%d,%d) %f degree.\n"
+    maxMag
+    a
+    b
+    ((fromIntegral c :: Double) / (fromIntegral numOrientationSample) * 360)
   plotPathsStyle
     [ PNG (folderPath </> "Magnitude.png")
     , Title ("Magnitude at " L.++ show (i, j))
     ] $
     L.zip
+        -- defaultStyle
+      --     { plotType = LinesPoints
+      --     , lineSpec = CustomStyle [LineTitle "Spatial Domain", PointType 1]
+      --     }
+      -- ,
       [ defaultStyle
-          { plotType = LinesPoints
-          , lineSpec = CustomStyle [LineTitle "Spatial Domain", PointType 1]
-          }
-      , defaultStyle
-          { plotType = LinesPoints
-          , lineSpec = CustomStyle [LineTitle "Frequency Domain", PointType 2]
+          { plotType = Lines
+          , lineSpec =
+              CustomStyle
+                [ LineTitle "Frequency Domain" -- , PointType 0
+                ]
           }
       ]
-      [L.zip orientationSampleDeg xs, L.zip orientationSampleDeg xsFreqDomain]
+       -- L.zip orientationSampleDeg xs,
+      [L.zip orientationSampleDeg xsFreqDomain]
+  return (a,b)
 
 
 plotMagnitudeOrientationSource ::
