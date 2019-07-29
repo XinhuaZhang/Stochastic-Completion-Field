@@ -1,35 +1,36 @@
 #!/bin/bash
 Size=128
-Orientations=16
+Orientations=1
 Scales=16
-ThetaSigma=0.1
+ThetaSigma=0.0
 ScaleSigma=0.1
-MaxScale=32 #1.000000001
-Tao=500
+MaxScale=64 #1.000000001
+Tao=100
 Trails=1000000
-MaxTrails=10000
-Theta0Freqs=5
-ThetaFreqs=5
-Scale0Freqs=5
-ScaleFreqs=5
+MaxTrails=100000
+Theta0Freqs=0
+ThetaFreqs=0
+Scale0Freqs=10
+ScaleFreqs=10
 HistFileName=${Size}_${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${Theta0Freqs}_${ThetaFreqs}_${Scale0Freqs}_${ScaleFreqs}.dat
 HistPath=output/test/STCR2Z2T0S0EndPoint/${HistFileName}
 NumInteration=10
 WriteSourceFlag=True
-CutoffRadiusEndPoint=32
+CutoffRadiusEndPoint=44
 CutoffRadius=32
 ReversalFactor=0.0
 PatchNormFlag=False
 PatchNormSize=160
 ApproximatedEigenValue=0.0
-Corner="(Corner{cornerThetaDeg0=0,cornerThetaDeg1=90,cornerLength=80})"
+Corner="(Corner{cornerThetaDeg0=0,cornerThetaDeg1=120,cornerLength=40})"
 PacMan="(PacMan{pacManThetaDeg0=30,pacManThetaDeg1=120,pacManRadius=50})"
 TJunction="(TJunction{tJunctionThetaDeg=45,tJunctionLength=50})"
 Cross="(Cross{crossThetaDeg=60,crossLength=50})"
 ETriangle="(ETriangle{eTriangleThetaDeg=0,eTriangleLength=100})"
-IncompleteCircle="(IncompleteCircle{iCircleTheta0=0,iCircleTheta1=0,iCircleRadiau=31})"
-Line="(Line{lineOrientationDeg=20,lineLength=90,lineWidth=1})"
-Shape2D="Points(0,0)21${IncompleteCircle}"
+IncompleteCircle="(IncompleteCircle{iCircleTheta0=0,iCircleTheta1=0,iCircleRadiau=40})"
+Circle="(Circle{circleNum=8,circleRadius=35})"
+Line="(Line{lineOrientationDeg=20,lineLength=60,lineWidth=1})"
+Shape2D="Points(0,0)8${Corner}"
 
 Threads=16
 # for R in {30,35}

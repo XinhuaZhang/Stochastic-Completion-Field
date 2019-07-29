@@ -237,6 +237,7 @@ main = do
                    numScale
                    scaleFreqs
                    scale0Freqs
+                   maxScale
                    arrR2Z2T0S0EndPoint
                    pathNormMethod
                    numIteration

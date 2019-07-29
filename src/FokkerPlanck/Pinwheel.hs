@@ -65,7 +65,7 @@ computeR2Z2T0S0ArrayRadial radialArr xLen yLen scaleFactor rMax thetaFreqs scale
               yLen)) $ \ft fs ft0 fs0 (Z :. t :. s :. t0 :. s0 :. i :. j) ->
           pinwheel
             (ft (Z :. t) - ft0 (Z :. t0))
-            (fs (Z :. s) - fs0 (Z :. s0))
+            (fs (Z :. s) + fs0 (Z :. s0))
             rMax
             0
             (i - center xLen)

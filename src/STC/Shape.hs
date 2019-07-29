@@ -48,6 +48,8 @@ data Shape2D
   | Ehrenstein { ehrensteinNumPoint    :: Int
                , ehrensteinInnerRadius :: Int
                , ehrensteinLength      :: Int }
+  | Circle { circleNum    :: Int
+           , circleRadius :: Int }
   deriving (Show, Read)
 
 isDuplicate :: Int -> (Double,Double) -> [(Double,Double)] -> Bool
@@ -126,7 +128,6 @@ makeShape2D (Points (centerC, centerR) minDist (ETriangle thetaDeg len)) =
 makeShape2D (Points (centerC, centerR) minDist (IncompleteCircle thetaDeg0 thetaDeg1 r)) =
   let thetaRad0 = deg2Rad thetaDeg0
       thetaRad1 = deg2Rad thetaDeg1
-      -- deltaTheta = 2 * asin (fromIntegral minDist / 2 / fromIntegral r)
       n =
         floor ((2 * pi - thetaRad1) * fromIntegral r / fromIntegral minDist) + 1 :: Int
       deltaTheta = (2 * pi - thetaRad1) / fromIntegral n
@@ -141,7 +142,6 @@ makeShape2D (Points (centerC, centerR) minDist (IncompleteCircle thetaDeg0 theta
         ]
    in removeDuplicate minDist . L.map (\(x, y) -> (x + centerC, y + centerR)) $
       xs
-
 makeShape2D (Points (centerC, centerR) minDist (PacMan thetaDeg0 thetaDeg1 r)) =
   removeDuplicate minDist . makeShape2DList $
   [ (Points (centerC, centerR) minDist (IncompleteCircle thetaDeg0 thetaDeg1 r))
@@ -181,19 +181,20 @@ makeShape2D (Points (centerC, centerR) minDist (Cross thetaDeg len)) =
   [0, 90, 180, 270]
 makeShape2D (Points (centerC, centerR) minDist (Rectangle thetaDeg width height)) = undefined
 makeShape2D (Points (centerC, centerR) minDist (Ehrenstein num r len)) =
-  let deltaThetaRad = 2 * pi / fromIntegral num
-      deltaThetaDeg = 360 / fromIntegral num
-      circleIdx =
-        [ ( fromIntegral r * cos (n * deltaThetaRad) + centerC
-          , fromIntegral r * sin (n * deltaThetaRad) + centerR)
-        | n <- [0 .. (fromIntegral num - 1)]
-        ] :: [(Double, Double)]
+  let deltaThetaDeg = 360 / fromIntegral num
+      circleIdx = makeShape2D (Points (centerC, centerR) undefined (Circle num r))
    in removeDuplicate minDist .
       makeShape2DList .
       L.zipWith
         (\(i, j) k -> (Points (i, j) minDist (Line (k * deltaThetaDeg) len 1)))
         circleIdx $
       [0 .. (fromIntegral num - 1)]
+makeShape2D (Points (centerC, centerR) _ (Circle num r)) =
+  let deltaThetaRad = 2 * pi / fromIntegral num
+   in [ ( fromIntegral r * cos (n * deltaThetaRad) + centerC
+        , fromIntegral r * sin (n * deltaThetaRad) + centerR)
+      | n <- [0 .. (fromIntegral num - 1)]
+      ]
 
 {-# INLINE makeShape2DContrast #-}
 makeShape2DContrast :: Int -> Int -> ContrastArea Shape2D -> R.Array D DIM2 Int

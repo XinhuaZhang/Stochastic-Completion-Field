@@ -2,7 +2,7 @@
 Size=1024
 Orientations=16
 Scales=1
-ThetaSigma=0.01
+ThetaSigma=0.1
 ScaleSigma=0.0
 MaxScale=1.000001
 Tao=500
@@ -22,7 +22,7 @@ ReversalFactor=0.0
 InputImgPath=output/test/Resize/triangle_1024.png
 Threshold1=30
 Threshold2=200
-PixelDist=10
+PixelDist=8
 PatchNormFlag=True
 PatchNormSize=80
 ApproximatedEigenValue=0.0

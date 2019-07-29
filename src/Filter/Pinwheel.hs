@@ -30,6 +30,7 @@ pinwheel :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 pinwheel af rf maxR alpha x y
   | r == 0 && af == 0 && rf == 0 = 1
   | r == 0 = 0
+  -- | r < 4 = 0
   | otherwise =
     -- (r :+ 0) ** (alpha :+ 0) *
     -- exp (0 :+ rf * ((log r) / (log maxR) * 2 * pi + 0.5 * pi)) *

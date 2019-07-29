@@ -59,11 +59,11 @@ thetaCheck !theta =
 
 {-# INLINE scalePlus #-}
 scalePlus :: Double -> Double -> Double -> (Double, Bool)
-scalePlus maxScale x y = (z, False)
-  -- | z < 0 = (-z, True)
+scalePlus maxScale x y -- = (z, False)
+  | z < 0 = (0, False)
   -- | z < 0 = (maxScale + z, False)
-  -- | z >= maxScale = (z - maxScale, False)
-  -- | otherwise = (z, False)
+  | z >= log maxScale = (log maxScale, False)
+  | otherwise = (z, False)
   where
     !z = x + y
 
@@ -732,7 +732,7 @@ generatePathRaidal randomGen thetaDist' scaleDist' maxScale tao rRange init@(x',
         case scaleDist' of
           Nothing -> return 0
           Just scaleDist -> genContVar scaleDist randomGen
-      let newScale = scale + deltaScale
+      let (newScale, _) = scalePlus maxScale scale deltaScale
           newTheta = theta `thetaPlus` deltaTheta
           newX = x + (exp scale) * cos theta
           newY = y + (exp scale) * sin theta
@@ -744,6 +744,7 @@ generatePathRaidal randomGen thetaDist' scaleDist' maxScale tao rRange init@(x',
           --          , (2 * maxScale - r) * cos (t + pi))
           --     else (newX', newY')
           newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
+          recordIndex = (newX, newY, theta, scale, theta0, scale0)
           ys =
             if (inRange rRange (round newX)) && round newY == 0
               then DL.cons newIndex xs
@@ -910,7 +911,7 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
                         exp $
                         0 :+
                         (-t0f * t0 + tf * t +
-                         (sf * s - s0f * s0) * 2 * pi / (log maxScale))
+                         (sf * s + s0f * s0) * 2 * pi / (log maxScale))
                       !x' = round x
                    in ((j, l, i, k, x'), v)) .
              DL.concat $

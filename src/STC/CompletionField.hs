@@ -209,9 +209,26 @@ completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale sca
   plotImageRepaComplex (folderPath </> printf "Completion%s.png" idStr) .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFiledR2
-  (R.sumP . rotate4D . rotate4D . R.map magnitude $ completionR2S1RP) >>= R.sumP >>=
+  (R.sumP . rotate4D . rotate4D $ completionR2S1RP) >>= R.sumP >>=
     plotImageRepa (folderPath </> printf "CompletionMagnitude%s.png" idStr) .
-    ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All)
+    ImageRepa 8 .
+    computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map magnitude
+  (R.sumP . rotate4D . rotate4D $ completionR2S1RP) >>= R.sumP >>=
+    plotImageRepa (folderPath </> printf "CompletionRealPart%s.png" idStr) .
+    ImageRepa 8 .
+    computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map realPart
+  (R.sumP . rotate4D . rotate4D $ completionR2S1RP) >>= R.sumP >>=
+    plotImageRepa
+      (folderPath </> printf "CompletionRealPartPositive%s.png" idStr) .
+    ImageRepa 8 .
+    computeS .
+    R.extend (Z :. (1 :: Int) :. All :. All) .
+    R.map
+      (\x ->
+         let y = realPart x
+          in if y > 0
+               then y
+               else 0)
   let avg = R.sumAllS completionFiledR2 / (fromIntegral $ rows * cols)
       (Z :. cols :. rows) = extent completionFiledR2
   plotImageRepa (folderPath </> printf "Completion_normalized%s.png" idStr) .

@@ -93,12 +93,22 @@ powerMethodNormalization (PowerMethodConnection xss) arr = do
          L.concat .
          parMap
            rdeepseq
-           (\xs ->
+           (\xs
+                  -- s =
+                  --   L.maximum .
+                  --   L.map
+                  --     (\(i, j) ->
+                  --        R.foldAllS max 0 . R.slice (R.map magnitude arr) $
+                  --        (Z :. All :. All :. i :. j)) $
+                  --   xs
+             ->
               let s =
-                    L.maximum .
+                    sqrt .
+                    L.sum .
                     L.map
                       (\(i, j) ->
-                         R.foldAllS max 0 . R.slice (R.map magnitude arr) $
+                         R.sumAllS .
+                         R.slice (R.map (\x -> (magnitude x) ^ 2) arr) $
                          (Z :. All :. All :. i :. j)) $
                     xs
                in L.map (\x -> (x, s)) xs) $

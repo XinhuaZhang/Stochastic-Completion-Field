@@ -606,8 +606,8 @@ powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs 
       thetaFreqs
       numScale
       scaleFreqs
-      sourceR2Z2
-      sinkR2Z2
+      (computeS . R.zipWith (\x y -> (1-x) * y) bias $ sourceR2Z2)
+      (computeS . R.zipWith (\x y -> (1-x) * y) bias $ sinkR2Z2)
   return . delay $ sourceR2Z2
 
 {-# INLINE eigenVectorR2Z2BiasReversal #-}
