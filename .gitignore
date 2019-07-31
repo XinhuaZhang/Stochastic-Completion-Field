@@ -26,3 +26,6 @@ Stochastic-Completion-Field.cabal
 *.tgz
 output
 send.sh
+
+# vim files
+*.swp
