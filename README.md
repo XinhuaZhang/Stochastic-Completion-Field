@@ -29,6 +29,12 @@ This installation guide is for Linux/Ubuntu operating system. There are no plans
    * <a href="https://docs.haskellstack.org/en/stable/install_and_upgrade/">Stack full installation guide</a>
    
 2. Install <a href="http://www.fftw.org/">fftw3</a>. 
+   - In Ubuntu, do:
+     ```bash
+     sudo apt-get install libfftw3-dev libfftw3-doc
+     ```
+
+Below is for manual install:
    - FFTW "is a C subroutine library for computing the discrete Fourier transform (DFT)".
    * Download and/or extract the latest stable release.
    * Open a new command line terminal and navigate to the folder with the downloaded files.
