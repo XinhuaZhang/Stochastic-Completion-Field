@@ -30,18 +30,24 @@ This installation guide is for Linux/Ubuntu operating system. There are no plans
    
 2. Install <a href="http://www.fftw.org/">fftw3</a>. 
    - FFTW "is a C subroutine library for computing the discrete Fourier transform (DFT)".
-   * Download and/or extract the latest stable release.
-   * Open a new command line terminal and navigate to the folder with the downloaded files.
-   * In succession, input the following commands:
+   - In Ubuntu, do:
      ```bash
-     ./configure
+     sudo apt-get install libfftw3-dev libfftw3-doc
      ```
-     ```bash
-     make
-     ```
-     ```bash
-     sudo make install
-     ```
+
+   - Below is for manual install (incomplete):
+     * Download and/or extract the latest stable release.
+     * Open a new command line terminal and navigate to the folder with the downloaded files.
+     * In succession, input the following commands:
+       ```bash
+       ./configure
+       ```
+       ```bash
+       make
+       ```
+       ```bash
+       sudo make install
+       ```
    * <a href="http://www.fftw.org/fftw3_doc/Installation-and-Customization.html">FFTW3 full installation guide<a/>. Linux/Ubuntu is an Unix system.
 	
 3. Install <a href="http://www.netlib.org/blas/">BLAS</a> and <a href="http://www.netlib.org/lapack/">LAPACK<a/>. 
