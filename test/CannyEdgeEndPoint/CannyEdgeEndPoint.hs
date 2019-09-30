@@ -63,7 +63,7 @@ main = do
   createDirectoryIfMissing True folderPath
   img <-
     (exceptError . coerceMat . imdecode ImreadUnchanged) <$>
-    BS.readFile inputImgPath :: IO (Mat ('S '[ 'D, 'D]) 'D ('S GHC.Word.Word8))
+    BS.readFile inputImgPath  :: IO (Mat ('S '[ 'D, 'D]) 'D ('S GHC.Word.Word8))
   let edge =
         exceptError . canny threshold1 threshold2 (Just 7) CannyNormL2 $ img
       edgeRepa = R.map fromIntegral . toRepa $ edge
@@ -115,7 +115,7 @@ main = do
              [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
              , L.length scale0Freqs
              , L.length theta0Freqs
-             , L.length scaleFreqs
+             , L.length scaleFreqsp
              , L.length thetaFreqs
              ]
              0)

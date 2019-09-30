@@ -16,6 +16,7 @@ data PowerMethodNormalizationOption
   = PowerMethodPatchNorm (VS.Vector (Complex Double))
   | PowerMethodGlobal
   | PowerMethodConnection [[(Int, Int)]]
+  | PowerMethodConnectionMax [[(Int, Int)]]
 
 -- {-# INLINE makePatchNormFilter #-}
 -- makePatchNormFilter ::
@@ -83,8 +84,9 @@ powerMethodNormalization ::
   -> R.Array s DIM4 (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
 powerMethodNormalization PowerMethodGlobal arr = do
-  s <- R.sumAllP . rotate4D . rotate4D . R.map (\x -> (magnitude x) ^ 2) $ arr
-  return . computeS . R.map (/ ((sqrt s) :+ 0)) $ arr
+  -- s <- R.sumAllP . rotate4D . rotate4D . R.map (\x -> (magnitude x) ^ 2) $ arr
+  s <- R.foldAllP max 0 . rotate4D . rotate4D . R.map (\x -> magnitude x) $ arr
+  return . computeS . R.map (/ (s :+ 0)) $ arr
 powerMethodNormalization (PowerMethodConnection xss) arr = do
   let (Z :. _ :. _ :. cols :. rows) = extent arr
       arrNorm =
@@ -93,18 +95,37 @@ powerMethodNormalization (PowerMethodConnection xss) arr = do
          L.concat .
          parMap
            rdeepseq
-           (\xs
-                  -- s =
-                  --   L.maximum .
-                  --   L.map
-                  --     (\(i, j) ->
-                  --        R.foldAllS max 0 . R.slice (R.map magnitude arr) $
-                  --        (Z :. All :. All :. i :. j)) $
-                  --   xs
-             ->
+           (\xs ->
+              let s =
+                    L.maximum .
+                    L.map
+                      (\(i, j) ->
+                         R.foldAllS max 0 .
+                         R.slice (R.map (\x -> magnitude x) arr) $
+                         (Z :. All :. All :. i :. j)) $
+                    xs
+               in L.map
+                    (\x ->
+                       ( x
+                       , if s == 0
+                           then 0
+                           else 1 / s))
+                    xs) $
+         xss :: UArray (Int, Int) Double)
+  return . computeS . R.traverse2 arr arrNorm const $ \f fNorm idx@(Z :. _ :. _ :. i :. j) ->
+    f idx * ((fNorm (Z :. i :. j)) :+ 0)    
+powerMethodNormalization (PowerMethodConnectionMax xss) arr = do
+  let (Z :. numThetaFreq :. numScaleFreq :. cols :. rows) = extent arr
+      arrMax =
+        fromListUnboxed (Z :. cols :. rows) . AU.elems $
+        (AU.accumArray (+) 0 ((0, 0), (cols - 1, rows - 1)) .
+         L.concat .
+         parMap
+           rdeepseq
+           (\xs ->
               let s =
                     sqrt .
-                    L.sum .
+                    L.maximum .
                     L.map
                       (\(i, j) ->
                          R.sumAllS .
@@ -113,7 +134,23 @@ powerMethodNormalization (PowerMethodConnection xss) arr = do
                     xs
                in L.map (\x -> (x, s)) xs) $
          xss :: UArray (Int, Int) Double)
-  return . computeS . R.traverse2 arr arrNorm const $ \f fNorm idx@(Z :. _ :. _ :. i :. j) ->
-    if fNorm (Z :. i :. j) == 0
-      then f idx
-      else f idx / ((fNorm (Z :. i :. j)) :+ 0)
+      arrSum =
+        fromListUnboxed (Z :. cols :. rows) . AU.elems $
+        (AU.accumArray (+) 0 ((0, 0), (cols - 1, rows - 1)) .
+         L.concat .
+         parMap
+           rdeepseq
+           (\xs ->
+              L.map
+                (\(i, j) ->
+                   ( (i, j)
+                   , sqrt .
+                     R.sumAllS . R.slice (R.map (\x -> (magnitude x) ^ 2) arr) $
+                     (Z :. All :. All :. i :. j))) $
+              xs) $
+         xss :: UArray (Int, Int) Double)
+  return . computeS . R.traverse3 arr arrMax arrSum (\s1 s2 s3 -> s1) $ \f fMax fSum idx@(Z :. k :. l :. i :. j) ->
+    if fSum (Z :. i :. j) > 0.9 * fMax (Z :. i :. j) && k == div numThetaFreq 2 && l == div numScaleFreq 2
+      then 1 -- (f idx) / (fSum (Z :. i :. j) :+ 0)
+      else 0
+

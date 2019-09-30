@@ -3,6 +3,8 @@ module Filter.Pinwheel
   ( module Filter.Utils
   , PinwheelParams(..)
   , pinwheel
+  , pinwheelHollow
+  , pinwheelHollowNonzeronCenter
   , pinwheelFilter
   , convolvePinwheel
   , frequencyDomainMultiply
@@ -30,12 +32,31 @@ pinwheel :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 pinwheel af rf maxR alpha x y
   | r == 0 && af == 0 && rf == 0 = 1
   | r == 0 = 0
-  -- | r < 4 = 0
   | otherwise =
-    -- (r :+ 0) ** (alpha :+ 0) *
-    -- exp (0 :+ rf * ((log r) / (log maxR) * 2 * pi + 0.5 * pi)) *
-    -- exp (0 :+ af * theta)
     (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) * exp (0 :+ af * theta)
+  where
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  
+    
+{-# INLINE pinwheelHollow #-}
+pinwheelHollow :: Double -> Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
+pinwheelHollow radius af rf maxR alpha x y
+  | r < radius = 0.0
+  | otherwise =
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) * exp (0 :+ af * theta)
+  where
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  
+    
+{-# INLINE pinwheelHollowNonzeronCenter #-}
+pinwheelHollowNonzeronCenter :: Double -> Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
+pinwheelHollowNonzeronCenter radius af rf maxR alpha x y =
+  if r == 0 && af == 0 && rf == 0
+    then 1
+    else if r < radius
+           then 0
+           else (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+                exp (0 :+ af * theta)
   where
     r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  

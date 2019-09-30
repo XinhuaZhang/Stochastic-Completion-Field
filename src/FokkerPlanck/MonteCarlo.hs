@@ -899,15 +899,7 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
           (\((t0f, i), (tf, j), (s0f, k), (sf, l)) ->
              DL.map
                (\(x, _, t, s, t0, s0) ->
-                  let -- s' =
-                      --   if s == 0
-                      --     then 0
-                      --     else log s
-                      -- s0' =
-                      --   if s0 == 0
-                      --     then 0
-                      --     else log s0
-                      !v =
+                  let !v =
                         exp $
                         0 :+
                         (-t0f * t0 + tf * t +
@@ -947,6 +939,72 @@ countR2Z2T0S0Radial (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
         ]
         numTrajectories
         (toUnboxedVector arr)
+
+{-# INLINE countR2Z2T0S0RadialSymmetric #-}
+countR2Z2T0S0RadialSymmetric ::
+     (Int, Int)
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> Double
+  -> [DList ParticleIndex]
+  -> Histogram (Complex Double)
+countR2Z2T0S0RadialSymmetric (rMin, rMax) t0Freqs tFreqs s0Freqs sFreqs maxScale xs =
+  let upperTriangularIdx =
+        L.filter
+          (\((_, i), (_, j), (_, k), (_, l)) ->
+             (k - 1) * (L.length s0Freqs) + (l - 1) >=
+             (i - 1) * (L.length sFreqs) + (j - 1))
+          [ (tf, sf, t0f, s0f)
+          | tf <- (L.zip tFreqs [1 ..])
+          , sf <- (L.zip sFreqs [1 ..])
+          , t0f <- (L.zip t0Freqs [1 ..])
+          , s0f <- (L.zip s0Freqs [1 ..])
+          ]
+      ys =
+        DL.toList .
+        DL.concat .
+        L.map
+          (\((tf, i), (sf, j), (t0f, k), (s0f, l)) ->
+             DL.map
+               (\(x, _, t, s, t0, s0) ->
+                  let !v =
+                        exp $
+                        0 :+
+                        (-t0f * t0 + tf * t +
+                         (sf * s + s0f * s0) * 2 * pi / (log maxScale))
+                      !x' = round x
+                   in ((i, j, k, l, x'), v)) .
+             DL.concat $
+             xs) $
+        upperTriangularIdx
+      numTrajectories =
+        div
+          (L.length ys)
+          ((L.length t0Freqs) * (L.length tFreqs) * (L.length s0Freqs) *
+           (L.length sFreqs))
+      arr =
+        UA.accum
+          (+)
+          0
+          ( (1, 1, 1, 1, rMin)
+          , ( L.length tFreqs
+            , L.length sFreqs
+            , L.length t0Freqs
+            , L.length s0Freqs
+            , rMax))
+          ys
+   in Histogram
+        [ (rMax - rMin + 1)
+        , (L.length s0Freqs)
+        , (L.length t0Freqs)
+        , (L.length sFreqs)
+        , (L.length tFreqs)
+        ]
+        numTrajectories
+        (toUnboxedVector arr)
+        
 
 
 -- (Z :. (L.length thetafreqs) :. (L.length scaleFreqs) :. (L.length theta0Freqs) :. (L.length scale0Freqs) :. rLen )

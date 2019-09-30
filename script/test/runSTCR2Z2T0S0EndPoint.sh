@@ -1,41 +1,42 @@
 #!/bin/bash
-Size=128
-Orientations=1
+Size=256
+Orientations=16
 Scales=16
-ThetaSigma=0.0
+ThetaSigma=0.1
 ScaleSigma=0.1
-MaxScale=64 #1.000000001
+MaxScale=48 #1.000000001
 Tao=100
 Trails=1000000
 MaxTrails=100000
-Theta0Freqs=0
-ThetaFreqs=0
-Scale0Freqs=10
-ScaleFreqs=10
+Theta0Freqs=8
+ThetaFreqs=8
+Scale0Freqs=0
+ScaleFreqs=0
 HistFileName=${Size}_${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${Theta0Freqs}_${ThetaFreqs}_${Scale0Freqs}_${ScaleFreqs}.dat
 HistPath=output/test/STCR2Z2T0S0EndPoint/${HistFileName}
-NumInteration=10
+NumInteration=100
 WriteSourceFlag=True
-CutoffRadiusEndPoint=44
+CutoffRadiusEndPoint=32
 CutoffRadius=32
 ReversalFactor=0.0
 PatchNormFlag=False
 PatchNormSize=160
 ApproximatedEigenValue=0.0
-Corner="(Corner{cornerThetaDeg0=0,cornerThetaDeg1=120,cornerLength=40})"
+Corner="(Corner{cornerThetaDeg0=30,cornerThetaDeg1=60,cornerLength=80})"
 PacMan="(PacMan{pacManThetaDeg0=30,pacManThetaDeg1=120,pacManRadius=50})"
 TJunction="(TJunction{tJunctionThetaDeg=45,tJunctionLength=50})"
 Cross="(Cross{crossThetaDeg=60,crossLength=50})"
 ETriangle="(ETriangle{eTriangleThetaDeg=0,eTriangleLength=100})"
 IncompleteCircle="(IncompleteCircle{iCircleTheta0=0,iCircleTheta1=0,iCircleRadiau=40})"
-Circle="(Circle{circleNum=8,circleRadius=35})"
 Line="(Line{lineOrientationDeg=20,lineLength=60,lineWidth=1})"
-Shape2D="Points(0,0)8${Corner}"
-
+Circle="(Circle{circleNum=8,circleRadius=35})"
+Shape2D="Points(0,0)2${Corner}"
+UseFFTWWisdomFlag=True
+FFTWWisdomFileName="fftwWisdom.dat"
 Threads=16
 # for R in {30,35}
 # do
-time stack test :STCR2Z2T0S0EndPoint-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${NumInteration} ${WriteSourceFlag} ${CutoffRadiusEndPoint} ${CutoffRadius} ${ReversalFactor} 60 ${PatchNormFlag} ${PatchNormSize} ${ApproximatedEigenValue} ${Shape2D} ${Threads}  +RTS -N${Threads} -H2g -K1g -RTS"
+time stack test :STCR2Z2T0S0EndPoint-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${Theta0Freqs} ${ThetaFreqs} ${Scale0Freqs} ${ScaleFreqs} ${HistPath} ${NumInteration} ${WriteSourceFlag} ${CutoffRadiusEndPoint} ${CutoffRadius} ${ReversalFactor} 60 ${PatchNormFlag} ${PatchNormSize} ${ApproximatedEigenValue} ${Shape2D} output/test/CannyEdgeIllusoryContour/Ehrenstein_only_segments.dat 3 ${UseFFTWWisdomFlag} ${FFTWWisdomFileName} ${Threads}  +RTS -N${Threads} -H2g -K1g -RTS"
 # done
 
 # R=30

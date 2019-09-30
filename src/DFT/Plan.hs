@@ -8,6 +8,8 @@ module DFT.Plan
   , DFTPlan
   , FFTWLock
   , getFFTWLock
+  , importFFTWWisdom
+  , exportFFTWWisdom
   , getDFTPlan
   , emptyPlan
   , checkPlanID
@@ -32,6 +34,7 @@ import           Data.List                    as L
 import           Data.Vector.Storable         as VS
 import           Data.Vector.Storable.Mutable as VSM
 import           DFT.FFI
+import           Foreign.C
 import           Foreign.Marshal.Array
 import           GHC.Generics                 (Generic)
 
@@ -77,6 +80,14 @@ type FFTWLock = MVar ()
 {-# INLINE getFFTWLock #-}
 getFFTWLock :: IO FFTWLock
 getFFTWLock = newMVar ()
+
+{-# INLINE importFFTWWisdom #-}
+importFFTWWisdom :: FilePath -> IO ()
+importFFTWWisdom filePath = newCString filePath >>= c_import_wisdom_filename >> return ()
+
+{-# INLINE exportFFTWWisdom #-}
+exportFFTWWisdom :: FilePath -> IO ()
+exportFFTWWisdom filePath = newCString filePath >>= c_export_wisdom_filename >> return ()
 
 {-# INLINE emptyPlan #-}
 emptyPlan :: DFTPlan

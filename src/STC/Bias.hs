@@ -64,7 +64,19 @@ computeBiasR2T0S0 xLen yLen theta0Freqs scale0Freqs xs =
              xs) $
         [(t0f, s0f) | t0f <- theta0Freqs, s0f <- scale0Freqs]
    in fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) vec
-
+   
+{-# INLINE computeBiasR2T0S0FromRepa #-}
+computeBiasR2T0S0FromRepa ::
+     (R.Source s Double)
+  => Int
+  -> Int
+  -> Int
+  -> Int
+  -> R.Array s DIM2 Double
+  -> R.Array D DIM4 (Complex Double)
+computeBiasR2T0S0FromRepa rows cols numTheta0Freq numScale0Freq arr =
+  R.traverse arr (const (Z :. numTheta0Freq :. numScale0Freq :. cols :. rows)) $ \f (Z :. _ :. _ :. i :. j) ->
+    f (Z :. i :. j) :+ 0
 
 computeBiasR2T0S0Gaussian ::
      Int
@@ -152,3 +164,24 @@ computeBiasR2T0S0' xLen yLen theta0Freqs scale0Freqs xs =
         if tf == div numTheta0Freqs 2 && sf == div numScale0Freqs 2
           then f (Z :. i :. j)
           else 0
+
+
+
+computeBiasR2 :: Int -> Int -> [R2S1RPPoint] -> R2Array
+computeBiasR2 xLen yLen xs =
+  let xShift = div xLen 2
+      (xMin, xMax) =
+        if odd xLen
+          then (-xShift, xShift)
+          else (-xShift, xShift - 1)
+      yShift = div yLen 2
+      (yMin, yMax) =
+        if odd yLen
+          then (-yShift, yShift)
+          else (-yShift, yShift - 1)
+      vec =
+        toUnboxedVector .
+        AU.accum (+) 0 ((xMin, yMin), (xMax, yMax)) .
+        L.map (\(R2S1RPPoint (x, y, _, _)) -> ((x, y), 1)) $
+        xs
+   in fromUnboxed (Z :. xLen :. yLen) vec

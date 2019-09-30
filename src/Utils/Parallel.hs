@@ -3,9 +3,16 @@ module Utils.Parallel
   , module Utils.Parallel
   ) where
 
+import           Control.Monad
+import           Control.Monad.IO.Class
+import           Control.Monad.Parallel       as MP
+import           Control.Monad.Trans.Resource
 import           Control.Parallel.Strategies
-import           Data.Vector                 as V
-import           Prelude                     as P
+import           Data.Conduit                 as C
+import           Data.Conduit.List            as C
+import           Data.List                    as L
+import           Data.Vector                  as V
+import           Prelude                      as P
 
 data ParallelParams = ParallelParams
   { numThread :: Int
@@ -23,7 +30,7 @@ parMapChunk ParallelParams {numThread = nt} strat f xs =
 parZipWithChunk :: ParallelParams -> Strategy c -> (a -> b -> c) -> [a] -> [b] -> [c]
 parZipWithChunk ParallelParams {numThread = nt} strat f xs =
   withStrategy (parListChunk (div (P.length xs) nt) strat) . P.zipWith f xs
-  
+
 {-# INLINE parZipWith #-}
 parZipWith :: Strategy c -> (a -> b -> c) -> [a] -> [b] -> [c]
 parZipWith strat f xs  = withStrategy (parList strat) . P.zipWith f xs
@@ -58,7 +65,7 @@ parMapChunkVector ParallelParams{numThread = nt} strat f xs =
       (parVectorChunk (div (V.length xs) nt)
                       strat)) .
    (V.map f)) xs
-  
+
 parZipWithVector :: Strategy c
                  -> (a -> b -> c)
                  -> V.Vector a
@@ -79,7 +86,7 @@ parZipWithChunkVector ParallelParams{numThread = nt} strat f xs ys =
                      strat)) .
   (V.zipWith f xs) $
   ys
-  
+
 
 parZipWith3Vector :: Strategy d
                   -> (a -> b -> c -> d)
@@ -88,7 +95,7 @@ parZipWith3Vector :: Strategy d
                   -> V.Vector c
                   -> V.Vector d
 parZipWith3Vector start f xs ys =
-  withStrategy (parTraversable start) . V.zipWith3 f xs ys                       
+  withStrategy (parTraversable start) . V.zipWith3 f xs ys
 
 parZipWith3ChunkVector :: ParallelParams
                        -> Strategy d
@@ -103,7 +110,7 @@ parZipWith3ChunkVector ParallelParams{numThread = nt} strat f xs ys zs =
                      strat)) .
   (V.zipWith3 f xs ys) $
   zs
-  
+
 parZipWith4ChunkVector :: ParallelParams
                        -> Strategy e
                        -> (a -> b -> c -> d -> e)
@@ -132,3 +139,22 @@ parVectorChunk n strat xs
   | otherwise =
     fmap V.concat $ parTraversable (evalTraversable strat) (vectorChunk n xs)
 
+{-# INLINE parConduit #-}
+parConduit ::
+     (NFData b) => ParallelParams -> (a -> b) -> ConduitT a b (ResourceT IO) ()
+parConduit parallelParams func = do
+  xs <- C.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do sourceList $ parMapChunk parallelParams rdeepseq func xs
+        parConduit parallelParams func)
+
+{-# INLINE parConduitIO #-}
+parConduitIO :: ParallelParams -> (a -> IO b) -> ConduitT a b (ResourceT IO) ()
+parConduitIO parallelParams func = do
+  xs <- C.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <- liftIO $ MP.mapM func xs
+        sourceList ys
+        parConduitIO parallelParams func)

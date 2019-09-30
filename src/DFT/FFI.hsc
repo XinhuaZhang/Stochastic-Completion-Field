@@ -79,9 +79,15 @@ foreign import ccall safe "fftw3.h fftw_execute_r2r" c_execute_r2r
 
 foreign import ccall safe "fftw3.h fftw_export_wisdom_to_string"
         c_export_wisdom_string :: IO CString
+        
+foreign import ccall safe "fftw3.h fftw_export_wisdom_to_filename"
+        c_export_wisdom_filename :: CString -> IO C.CInt
 
 foreign import ccall safe "fftw3.h fftw_import_wisdom_from_string"
         c_import_wisdom_string :: CString -> IO C.CInt
+        
+foreign import ccall safe "fftw3.h fftw_import_wisdom_from_filename"
+        c_import_wisdom_filename :: CString -> IO C.CInt
 
 foreign import ccall safe "fftw3.h fftw_import_system_wisdom"
         c_import_wisdom_system :: IO C.CInt

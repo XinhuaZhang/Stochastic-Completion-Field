@@ -112,11 +112,6 @@ convolveR2T0S0P ::
 convolveR2T0S0P plan filterF initialDistribution = do
   let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
         extent filterF
-      -- initialDistribution' =
-      --   -- R.map conjugate .
-      --   R.backpermute
-      --     (extent initialDistribution)
-      --     (\(Z :. a :. b :. c :. d) -> (Z :. a :. b :. (xLen - 1 - c) :. (yLen - 1 - d))) $ initialDistribution
   initialDistributionF <-
     fmap
       (fromUnboxed (Z :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) .
@@ -124,11 +119,7 @@ convolveR2T0S0P plan filterF initialDistribution = do
     MP.mapM
       (\t0f ->
          dftExecute plan (DFTPlanID DFT1DG [numScale0Freqs, xLen, yLen] [1, 2]) .
-         VS.convert .
-         toUnboxed .
-         computeUnboxedS -- . R.map conjugate
-          .
-         R.slice initialDistribution $
+         VS.convert . toUnboxed . computeUnboxedS . R.slice initialDistribution $
          (Z :. t0f :. All :. All :. All)) $
     [0 .. numTheta0Freqs - 1]
   let arrF =
@@ -137,8 +128,7 @@ convolveR2T0S0P plan filterF initialDistribution = do
           initialDistributionF
           const
           (\f1 f2 idx@(Z :. tf :. sf :. t0f :. s0f :. x :. y) ->
-             (f1 idx) * -- conjugate $
-             (f2 (Z :. t0f :. s0f :. x :. y)))
+             (f1 idx) * (f2 (Z :. t0f :. s0f :. x :. y)))
   vecs <-
     MP.mapM
       (\(tf, sf) ->
@@ -155,14 +145,7 @@ convolveR2T0S0P plan filterF initialDistribution = do
       , sf <- [0 .. numScaleFreqs - 1]
       ]
   return . fromUnboxed (extent filterF) . VS.convert . VS.concat $ vecs
-  -- return .
-  --   computeS .
-  --   R.traverse (fromUnboxed (extent filterF) . VS.convert . VS.concat $ vecs) id $ \f1 (Z :. a :. b :. c :. d :. e :. f) ->
-  --   let x = xLen - e - 1
-  --       y = yLen - f - 1
-  --    in if (inRange (0,xLen - 1) x) && (inRange (0,yLen - 1) y)
-  --         then f1 (Z :. a :. b :. c :. d :. x :. y)
-  --         else 0
+
   
 {-# INLINE deconvolveR2T0S0 #-}
 deconvolveR2T0S0 :: DFTPlan -> R2Z2T0S0Array -> R2T0S0Array -> IO R2Z2T0S0Array
@@ -378,4 +361,48 @@ convolveR2Z2 plan arr1 arr2 = do
     dftExecute
       plan
       (DFTPlanID IDFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [0, 1]) $
+    VS.zipWith (*) vec1F vec2F
+
+
+-- For local eigenvector
+{-# INLINE convolve4D #-}
+convolve4D :: DFTPlan -> R2Z2Array -> R2Z2Array -> IO R2Z2Array 
+convolve4D plan filterF initialDistribution = do
+  let (Z :. numThetaFreqs :. numScaleFreqs :. xLen :. yLen) = extent filterF 
+  initialDistributionF <-
+    fmap
+      (fromUnboxed (Z :. numThetaFreqs :. numScaleFreqs :. xLen :. yLen) .
+       VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID DFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [2,3]) .
+    VS.convert . toUnboxed $
+    initialDistribution
+  arrF <- computeP $ filterF *^ initialDistributionF
+  fmap (fromUnboxed (extent filterF) . VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID IDFT1DG [numThetaFreqs, numScaleFreqs, xLen, yLen] [2,3]) .
+    VS.convert . toUnboxed $
+    arrF
+
+
+{-# INLINE convolveR2 #-}
+convolveR2 ::
+     DFTPlan
+  -> R.Array U DIM2 (Complex Double)
+  -> R.Array U DIM2 (Complex Double)
+  -> IO (R.Array U DIM2 (Complex Double))
+convolveR2 plan arr1 arr2 = do
+  let (Z :. xLen :. yLen) = extent arr1
+  vec1F <-
+    dftExecute plan (DFTPlanID DFT1DG [xLen, yLen] [0, 1]) .
+    VS.convert . toUnboxed $
+    arr1
+  vec2F <-
+    (computeP . makeFilter2D $ arr2) >>=
+    (dftExecute plan (DFTPlanID DFT1DG [xLen, yLen] [0, 1]) .
+     VS.convert . toUnboxed)
+  fmap (fromUnboxed (extent arr1) . VS.convert) .
+    dftExecute plan (DFTPlanID IDFT1DG [xLen, yLen] [0, 1]) $
     VS.zipWith (*) vec1F vec2F

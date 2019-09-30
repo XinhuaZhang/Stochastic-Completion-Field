@@ -19,8 +19,10 @@ type R2S1RPT0S0Array = Array U DIM6 (Complex Double)
 type R2Z2T0S0Array = Array U DIM6 (Complex Double) 
 -- (Z :. (L.length thetafreqs)  :. (L.length scalefreqs) :. (L.length theta0Freqs) :. (L.length scale0Freqs) :. xLen :. yLen )
 
+type R2Array   = Array U DIM2 (Complex Double) -- (Z :. xLen :. yLen)
 type R2T0Array   = Array U DIM3 (Complex Double) -- (Z :. (L.length theta0freqs) :. xLen :. yLen)
 type R2Z1Array   = Array U DIM3 (Complex Double) -- (Z :. (L.length thetafreqs) :. xLen :. yLen)
+type R2Z2Array   = Array U DIM4 (Complex Double) -- (Z :. (L.length thetafreqs) :. (L.length scalefreqs) :. xLen :. yLen)
 
 type R2T0S0Array   = Array U DIM4 (Complex Double) -- (Z :. (L.length theta0freqs) :. (L.length scale0freqs)  :. xLen :. yLen)
 

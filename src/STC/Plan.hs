@@ -49,106 +49,69 @@ makeR2Z1T0Plan oldPlan arr = do
 makeR2Z2T0S0Plan ::
      (R.Source r (Complex Double))
   => DFTPlan
+  -> Bool
+  -> FilePath
   -> R.Array r DIM6 (Complex Double)
   -> IO DFTPlan
-makeR2Z2T0S0Plan oldPlan arr = do
+makeR2Z2T0S0Plan oldPlan wisdomFlag wisdomFilePath arr = do
   let (Z :. numThetaFreqs :. numScaleFreqs :. numTheta0Freqs :. numScale0Freqs :. xLen :. yLen) =
         extent arr
+  when wisdomFlag (importFFTWWisdom wisdomFilePath)
   lock <- getFFTWLock
   let vecTemp1 = VS.convert . toUnboxed . computeS . delay $ arr
-  fst <$>
-    (dft1dGPlan
-       lock
-       oldPlan
-       [ numThetaFreqs
-       , numScaleFreqs
-       , numTheta0Freqs
-       , numScale0Freqs
-       , xLen
-       , yLen
-       ]
-       [4, 5]
-       vecTemp1 >>= \(plan, vec) ->
-       idft1dGPlan
-         lock
-         plan
-         [ numThetaFreqs
-         , numScaleFreqs
-         , numTheta0Freqs
-         , numScale0Freqs
-         , xLen
-         , yLen
-         ]
-         [4, 5]
-         vec -- >>= \(plan, vec) ->
-         -- dft1dGPlan
-         --   lock
-         --   plan
-         --   [ numTheta0Freqs
-         --   , numScale0Freqs
-         --   , xLen
-         --   , yLen
-         --   , numThetaFreqs
-         --   , numScaleFreqs
-         --   ]
-         --   [2, 3, 4, 5]
-         --   vec >>= \(plan, vec) ->
-         --   idft1dGPlan
-         --     lock
-         --     plan
-         --     [ numTheta0Freqs
-         --     , numScale0Freqs
-         --     , xLen
-         --     , yLen
-         --     , numThetaFreqs
-         --     , numScaleFreqs
-         --     ]
-         --     [2, 3, 4, 5]
-         --     vec
-      >>= \(plan, vec) ->
+  plan <-
+    fst <$>
+    (-- dft1dGPlan
+     --   lock
+     --   oldPlan
+     --   [ numThetaFreqs
+     --   , numScaleFreqs
+     --   , numTheta0Freqs
+     --   , numScale0Freqs
+     --   , xLen
+     --   , yLen
+     --   ]
+     --   [4, 5]
+     --   vecTemp1 >>= \(plan, vec) ->
+     --   idft1dGPlan
+     --     lock
+     --     plan
+     --     [ numThetaFreqs
+     --     , numScaleFreqs
+     --     , numTheta0Freqs
+     --     , numScale0Freqs
+     --     , xLen
+     --     , yLen
+     --     ]
+     --     [4, 5]
+     --     vec >>= \(plan, vec) ->
+         dft1dGPlan
+           lock
+           oldPlan
+           [numThetaFreqs, numScaleFreqs, xLen, yLen]
+           [0, 1]
+           vecTemp1 >>= \(plan, vec) ->
+           idft1dGPlan
+             lock
+             plan
+             [numThetaFreqs, numScaleFreqs, xLen, yLen]
+             [0, 1]
+             vec >>= \(plan, vec) ->
              dft1dGPlan
                lock
                plan
-               [numThetaFreqs, numScaleFreqs, xLen, yLen]
-               [0, 1]
+               [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+               [2, 3]
                vec >>= \(plan, vec) ->
                idft1dGPlan
                  lock
                  plan
-                 [numThetaFreqs, numScaleFreqs, xLen, yLen]
-                 [0, 1]
+                 [numTheta0Freqs, numScale0Freqs, xLen, yLen]
+                 [2, 3]
                  vec >>= \(plan, vec) ->
-                 dft1dGPlan
-                   lock
-                   plan
-                   [numTheta0Freqs, numScale0Freqs, xLen, yLen]
-                   [2, 3]
-                   vec >>= \(plan, vec) ->
-                   idft1dGPlan
-                     lock
-                     plan
-                     [numTheta0Freqs, numScale0Freqs, xLen, yLen]
-                     [2, 3]
-                     vec -- >>= \(plan, vec) ->
-                     -- dft1dGPlan
-                     --   lock
-                     --   plan
-                     --   [numTheta0Freqs, numScale0Freqs, xLen, yLen]
-                     --   [0, 1, 2, 3]
-                     --   vec >>= \(plan, vec) ->
-                     --   idft1dGPlan
-                     --     lock
-                     --     plan
-                     --     [numTheta0Freqs, numScale0Freqs, xLen, yLen]
-                     --     [0, 1, 2, 3]
-                     --     vec
-      >>= \(plan, vec) ->
-                         dft1dGPlan
-                           lock
-                           plan
-                           [numScale0Freqs, xLen, yLen]
-                           [1, 2]
-                           vec)
+                 dft1dGPlan lock plan [numScale0Freqs, xLen, yLen] [1, 2] vec)
+  exportFFTWWisdom wisdomFilePath
+  return plan
 
 
 makeImagePlan ::
@@ -164,3 +127,48 @@ makeImagePlan plan arr = do
     arr
   (newPlan, _) <- idft1dGPlan lock plan1 [channels, cols, rows] [1, 2] imgF
   return (newPlan, fromUnboxed (extent arr) . VS.convert $ imgF)
+
+
+-- For local eigenvetor
+
+make4DPlan ::
+     (R.Source r (Complex Double))
+  => DFTPlan
+  -> Bool
+  -> FilePath
+  -> R.Array r DIM4 (Complex Double)
+  -> IO DFTPlan
+make4DPlan oldPlan wisdomFlag wisdomFilePath arr = do
+  let (Z :. numThetaFreqs :. numScaleFreqs :. xLen :. yLen) = extent arr
+  when wisdomFlag (importFFTWWisdom wisdomFilePath)
+  lock <- getFFTWLock
+  let vecTemp1 = VS.convert . toUnboxed . computeS . delay $ arr 
+  plan <-
+    fst <$>
+    (dft1dGPlan
+       lock
+       oldPlan
+       [numThetaFreqs, numScaleFreqs, xLen, yLen]
+       [2,3]
+       vecTemp1 >>= \(plan, vec) ->
+       idft1dGPlan
+         lock
+         plan
+         [numThetaFreqs, numScaleFreqs, xLen, yLen]
+         [2,3]
+         vec >>= \(plan, vec) ->
+         dft1dGPlan lock plan [xLen, yLen] [0, 1] vec >>= \(plan, vec) ->
+           dft1dGPlan
+             lock
+             plan
+             [numThetaFreqs, numScaleFreqs, xLen, yLen]
+             [0, 1]
+             vecTemp1 >>= \(plan, vec) ->
+             idft1dGPlan
+               lock
+               plan
+               [numThetaFreqs, numScaleFreqs, xLen, yLen]
+               [0, 1]
+               vec)
+  exportFFTWWisdom wisdomFilePath
+  return plan

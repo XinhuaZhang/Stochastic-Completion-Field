@@ -274,6 +274,55 @@ resize25D newSize@(newNx, newNy) bound arr =
     ratioX = fromIntegral nx' / fromIntegral newNx
     ratioY = fromIntegral ny' / fromIntegral newNy
     
+{-# INLINE resize2DFixedRatio #-}
+resize2DFixedRatio ::
+     (Source s Double)
+  => Int
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array D DIM2 Double
+resize2DFixedRatio n bound arr =
+  normalizeValueRange bound $
+  bicubicInterpolation
+    (\(i, j) -> (ratio * fromIntegral i, ratio * fromIntegral j))
+    newSize
+    arr
+  where
+    (Z :. nx' :. ny') = extent arr
+    newSize =
+      if nx' > ny'
+        then (n, round $ fromIntegral ny' * ratio)
+        else (round $ fromIntegral nx' * ratio, n)
+    ratio = fromIntegral (max nx' ny') / fromIntegral n
+    
+{-# INLINE resize25DFixedRatio #-}
+resize25DFixedRatio ::
+     (Source s Double)
+  => Int
+  -> (Double, Double)
+  -> R.Array s DIM3 Double
+  -> R.Array D DIM3 Double
+resize25DFixedRatio n bound arr =
+  normalizeValueRange bound .
+  fromUnboxed (Z :. nf' :. newNx :. newNy) .
+  VU.concat .
+  L.map
+    (\i ->
+       toUnboxed .
+       bicubicInterpolation
+         (\(i, j) -> (ratio * fromIntegral i, ratio * fromIntegral j))
+         newSize .
+       R.slice arr $
+       (Z :. i :. R.All :. R.All)) $
+  [0 .. nf' - 1]
+  where
+    (Z :. nf' :. nx' :. ny') = extent arr
+    newSize@(newNx, newNy) =
+      if nx' > ny'
+        then (n, round $ fromIntegral ny' * ratio)
+        else (round $ fromIntegral nx' * ratio, n)
+    ratio = fromIntegral (max nx' ny') / fromIntegral n
+
 
 {-# INLINE rescale2D #-}
 rescale2D ::

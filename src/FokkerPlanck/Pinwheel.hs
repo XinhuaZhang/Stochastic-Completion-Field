@@ -1,15 +1,22 @@
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
-module FokkerPlanck.Pinwheel where
+{-# LANGUAGE TypeOperators    #-}
+module FokkerPlanck.Pinwheel
+  ( module Filter.Pinwheel
+  , module FokkerPlanck.Pinwheel
+  ) where
 
-import           Data.Array.Repa            as R
+import           Data.Array.Repa               as R
 import           Data.Complex
-import           Data.List                  as L
+import           Data.List                     as L
+import           Data.Vector.Unboxed           as VU
 import           Filter.Pinwheel
 import           FokkerPlanck.Interpolation
+import           Numeric.LinearAlgebra.Data    as NL
+import           Numeric.LinearAlgebra.HMatrix
 import           Types
+import           Utils.Array
 import           Utils.Coordinates
-
+import           Utils.Parallel
 
 {-# INLINE computeR2Z1T0ArrayRadial #-}
 computeR2Z1T0ArrayRadial ::
@@ -41,7 +48,8 @@ computeR2Z1T0ArrayRadial radialArr xLen yLen scaleFactor thetaFreqs theta0Freqs 
 {-# INLINE computeR2Z2T0S0ArrayRadial #-}
 computeR2Z2T0S0ArrayRadial ::
      (R.Source r Double)
-  => R.Array r DIM5 Double
+  => (Double -> Double -> Double -> Double -> Int -> Int -> Complex Double)
+  -> R.Array r DIM5 Double
   -> Int
   -> Int
   -> Double
@@ -51,7 +59,7 @@ computeR2Z2T0S0ArrayRadial ::
   -> [Double]
   -> [Double]
   -> R.Array D DIM6 (Complex Double)
-computeR2Z2T0S0ArrayRadial radialArr xLen yLen scaleFactor rMax thetaFreqs scaleFreqs theta0Freqs scale0Freqs = do
+computeR2Z2T0S0ArrayRadial pinwheelFunc radialArr xLen yLen scaleFactor rMax thetaFreqs scaleFreqs theta0Freqs scale0Freqs = 
   let pinwheelArr =
         traverse4
           (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
@@ -63,7 +71,7 @@ computeR2Z2T0S0ArrayRadial radialArr xLen yLen scaleFactor rMax thetaFreqs scale
               numScale0Freq :.
               xLen :.
               yLen)) $ \ft fs ft0 fs0 (Z :. t :. s :. t0 :. s0 :. i :. j) ->
-          pinwheel
+          pinwheelFunc
             (ft (Z :. t) - ft0 (Z :. t0))
             (fs (Z :. s) + fs0 (Z :. s0))
             rMax
@@ -71,7 +79,7 @@ computeR2Z2T0S0ArrayRadial radialArr xLen yLen scaleFactor rMax thetaFreqs scale
             (i - center xLen)
             (j - center yLen)
    in radialCubicInterpolation radialArr scaleFactor pinwheelArr
-   
+
 {-# INLINE computeR2Z2T0S0ArrayRadial' #-}
 computeR2Z2T0S0ArrayRadial' ::
      Int
@@ -83,7 +91,7 @@ computeR2Z2T0S0ArrayRadial' ::
   -> [Double]
   -> [Double]
   -> R.Array D DIM6 (Complex Double)
-computeR2Z2T0S0ArrayRadial' xLen yLen scaleFactor rMax thetaFreqs scaleFreqs theta0Freqs scale0Freqs = do
+computeR2Z2T0S0ArrayRadial' xLen yLen scaleFactor rMax thetaFreqs scaleFreqs theta0Freqs scale0Freqs =
   let pinwheelArr =
         traverse4
           (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
@@ -111,3 +119,120 @@ cutoff r arr =
     if e > r 
       then 0
       else f idx
+
+{-# INLINE computeLocalEigenVector #-}
+computeLocalEigenVector ::
+     (R.Source r Double)
+  => ParallelParams
+  -> (Double -> Double -> Double -> Double -> Int -> Int -> Complex Double)
+  -> R.Array r DIM5 Double
+  -> Int
+  -> Int
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> R.Array U DIM4 (Complex Double)
+computeLocalEigenVector parallelParams pinwheelFunc radialArr xLen yLen rMax thetaFreqs scaleFreqs =
+  let (Z :. numThetaFreq :. numScaleFreq :. _ :. _ :. _) = extent radialArr
+      len = numThetaFreq * numScaleFreq
+   in computeS .
+      rotate4D .
+      rotate4D .
+      fromUnboxed (Z :. xLen :. yLen :. numThetaFreq :. numScaleFreq) .
+      VU.concat .
+      parMapChunk
+        parallelParams
+        rdeepseq
+        (\(x, y) ->
+           let r =
+                 sqrt $
+                 (fromIntegral $ x - center xLen) ^ 2 +
+                 (fromIntegral $ y - center yLen) ^ 2
+               interpolatedArray = cubicInterpolation radialArr r
+               interpolatedPinwheel =
+                 R.traverse3
+                   interpolatedArray
+                   (fromListUnboxed (Z :. numThetaFreq) thetaFreqs)
+                   (fromListUnboxed (Z :. numScaleFreq) scaleFreqs)
+                   (\sh _ _ -> sh) $ \f ft fs idx@(Z :. t :. s :. t0 :. s0) ->
+                   (f idx :+ 0) *
+                   pinwheelFunc
+                     (ft (Z :. t) - ft (Z :. t0))
+                     (fs (Z :. s) + fs (Z :. s0))
+                     rMax
+                     0
+                     (x - center xLen)
+                     (y - center yLen)
+               (eigVal, eigVec) =
+                 eig . (len >< len) . R.toList $ interpolatedPinwheel
+               (val, vec) =
+                 L.head . L.reverse . L.sortOn (magnitude . fst) $
+                 L.zip (NL.toList eigVal) (toColumns $ eigVec)
+               dominantVec = VU.fromList . L.map (* val) . NL.toList $ vec
+            in -- VU.zipWith
+               --   (*)
+               --   (VU.fromList
+               --      [ exp
+               --        (0 :+
+               --         (tf) *
+               --         (angleFunctionRad
+               --            (fromIntegral $ x - center xLen)
+               --            (fromIntegral $ y - center yLen)))
+               --      | tf <- thetaFreqs
+               --      , sf <- scaleFreqs
+               --      ])
+               --   dominantVec
+               dominantVec
+        ) $
+      [(x, y) | x <- [0 .. xLen - 1], y <- [0 .. yLen - 1]]
+      
+{-# INLINE computeLocalEigenVectorSink #-}
+computeLocalEigenVectorSink ::
+     (R.Source r Double)
+  => ParallelParams
+  -> (Double -> Double -> Double -> Double -> Int -> Int -> Complex Double)
+  -> R.Array r DIM5 Double
+  -> Int
+  -> Int
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> R.Array U DIM4 (Complex Double)
+computeLocalEigenVectorSink parallelParams pinwheelFunc radialArr xLen yLen rMax thetaFreqs scaleFreqs =
+  let (Z :. numThetaFreq :. numScaleFreq :. _ :. _ :. _) = extent radialArr
+      len = numThetaFreq * numScaleFreq
+   in computeS .
+      rotate4D .
+      rotate4D .
+      fromUnboxed (Z :. xLen :. yLen :. numThetaFreq :. numScaleFreq) .
+      VU.concat .
+      parMapChunk
+        parallelParams
+        rdeepseq
+        (\(x, y) ->
+           let r =
+                 sqrt $
+                 (fromIntegral $ x - center xLen) ^ 2 +
+                 (fromIntegral $ y - center yLen) ^ 2
+               interpolatedArray = cubicInterpolation radialArr r
+               interpolatedPinwheel =
+                 R.traverse3
+                   interpolatedArray
+                   (fromListUnboxed (Z :. numThetaFreq) thetaFreqs)
+                   (fromListUnboxed (Z :. numScaleFreq) scaleFreqs)
+                   (\sh _ _ -> sh) $ \f ft fs idx@(Z :. t :. s :. t0 :. s0) ->
+                   (f idx :+ 0) * (exp (0 :+ (ft (Z :. t) - ft (Z :. t0)) * pi)) *
+                   pinwheelFunc 
+                     (ft (Z :. t) - ft (Z :. t0))
+                     (fs (Z :. s) + fs (Z :. s0))
+                     rMax
+                     0
+                     (x - center xLen)
+                     (y - center yLen)
+               (eigVal, eigVec) =
+                 eig . (len >< len) . R.toList $ interpolatedPinwheel
+               (val, vec) =
+                 L.head . L.reverse . L.sortOn (realPart . fst) $
+                 L.zip (NL.toList eigVal) (toColumns $ eigVec)
+            in VU.fromList . L.map (* val) . NL.toList $ vec) $
+      [(x, y) | x <- [0 .. xLen - 1], y <- [0 .. yLen - 1]]

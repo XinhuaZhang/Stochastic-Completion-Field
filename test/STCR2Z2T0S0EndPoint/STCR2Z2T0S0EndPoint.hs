@@ -22,7 +22,7 @@ import           Utils.Array
 import           Utils.Parallel
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:cStr:patchNormFlagStr:patchNormSizeStr:approximatedEigenValueStr:shape2DStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:cutoffRadiusEndPointStr:cutoffRadiusStr:reversalFactorStr:cStr:patchNormFlagStr:patchNormSizeStr:approximatedEigenValueStr:shape2DStr:segmentsFilePath:segIdxStr:useFFTWWisdomFlagStr:fftwWisdomFileName:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -51,6 +51,8 @@ main = do
       patchNormSize = read patchNormSizeStr :: Int
       approximatedEigenValue = read approximatedEigenValueStr :: Double
       shape2D@(Points _ minDist _) = read shape2DStr :: Points Shape2D
+      segIdx = read segIdxStr :: Int
+      useFFTWWisdomFlag = read useFFTWWisdomFlagStr :: Bool
       numThread = read numThreadStr :: Int
       folderPath = "output/test/STCR2Z2T0S0EndPoint"
       a = 20 :: Int
@@ -72,6 +74,7 @@ main = do
            b
            c
            reversalFactor)
+      fftwWisdomFilePath = folderPath </> fftwWisdomFileName
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   radialArr <-
@@ -106,6 +109,7 @@ main = do
   arrR2Z2T0S0 <-
     computeUnboxedP $
     computeR2Z2T0S0ArrayRadial
+      (pinwheelHollow 10)
       (cutoff cutoffRadius radialArr)
       numPoint
       numPoint
@@ -115,12 +119,15 @@ main = do
       scaleFreqs
       theta0Freqs
       scale0Freqs
-  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+  plan <-
+    makeR2Z2T0S0Plan emptyPlan useFFTWWisdomFlag fftwWisdomFilePath arrR2Z2T0S0
   -- (plan, pathNormMethod) <-
   --   makePatchNormFilter plan' numPoint numPoint patchNormFlag patchNormSize
       -- minDist = 8
       -- kanizsaTriangle1 =
       --   makeShape2D $ Points (-30, -30) minDist (Corner 30 60 80) --(PacMan 30 60 50)  --(Ehrenstein 8 15 40)  -- (IncompleteCircle 0 60 50 ) -- (TJunction 45 50) -- (PacMan 0 60 100 ) -- (Corner 0 60 100) --(KanizsaTriangle1 0 480 160 80)
+  -- ys <-
+  --   (\aa -> aa L.!! segIdx) <$> decodeFile segmentsFilePath :: IO [(Int, Int)]
   let pointSet = makeShape2D shape2D
       shapeArr =
         getShape2DRepaArray
@@ -133,7 +140,21 @@ main = do
       xs =
         L.map (\(x, y) -> R2S1RPPoint (x, y, 0, 1)) . getShape2DIndexList $
         pointSet
-      bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs xs
+      -- (xAvg, yAvg) =
+      --   (\(as, bs) ->
+      --      ( round $
+      --        (fromIntegral . L.sum $ as) / (fromIntegral . L.length $ as)
+      --      , round $
+      --        (fromIntegral . L.sum $ bs) / (fromIntegral . L.length $ bs))) .
+      --   L.unzip $
+      --   ys
+      -- centeredYs = L.map (\(x, y) -> (x - xAvg, y - yAvg)) ys
+      -- xs = L.map (\(x, y) -> R2S1RPPoint (x, y, 0, 1)) centeredYs
+      -- shapeArr =
+      --   L.head . cluster2Array numPoint numPoint $
+      --   [L.map (\(x, y) -> (x + div numPoint 2, y + div numPoint 2)) centeredYs]
+      -- pointSet = L.map (\(x, y) -> (fromIntegral x, fromIntegral y)) centeredYs
+  let bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs xs
       eigenVec =
         computeInitialEigenVectorR2T0S0
           numPoint
@@ -152,6 +173,8 @@ main = do
                arrR2Z2T0S0EndPoint <-
                  computeUnboxedP $
                  computeR2Z2T0S0ArrayRadial
+                   -- pinwheel
+                   (pinwheelHollowNonzeronCenter 16) 
                    (cutoff cutoffRadiusEndPoint radialArr)
                    numPoint
                    numPoint
@@ -191,7 +214,6 @@ main = do
                (R.foldAllP max 0 . R.map magnitude $ arrR2Z2T0S0EndPoint) >>=
                  print
                completionFieldR2Z2' <-
-                 computeS <$>
                  powerMethodR2Z2T0S0Reversal
                    plan
                    folderPath
@@ -221,7 +243,6 @@ main = do
                       reversalFactor)
                    0.5
                    reversalFactor
-                   approximatedEigenValue
                    bias
                    eigenVec
                -- writeRepaArray endPointFilePath completionFieldR2Z2'
@@ -288,4 +309,3 @@ main = do
   --        then 1 / (fromIntegral $ (L.length theta0Freqs * L.length scale0Freqs)) :+
   --             0
   --        else 0)
- 

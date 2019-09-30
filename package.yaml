@@ -32,9 +32,10 @@ dependencies:
 - dlist >= 0.8.0.5 && < 1.0
 - filepath >= 1.4.2.1 && < 1.5.0.0
 - gnuplot >= 0.5.6 && < 0.6
-- JuicyPixels >= 3.3.3 && < 4.0.0
 - hashable >= 1.2.7.0 && < 1.3.0.0
 - hmatrix >= 0.19.0.0 && < 0.20.0.0
+- JuicyPixels >= 3.3.3 && < 4.0.0
+- linear >= 1.20.9 && < 2
 - monad-parallel >= 0.7.2.3 && < 0.8.0.0
 - mwc-random >= 0.14.0.0 && < 0.15.0.0
 # - opencv >= 0.0.2.1 && < 0.1
@@ -120,23 +121,23 @@ executables:
   #   #- -optlo-O3
   #   dependencies:
   #   - Stochastic-Completion-Field
-  # PlotGreensFunctionR2Z2T0S0-exe:
-  #   main:                PlotGreensFunctionR2Z2T0S0.hs
-  #   source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2Z2T0S0
-  #   ghc-options:
-  #   - -threaded
-  #   - -rtsopts
-  #   - -with-rtsopts=-N
-  #   - -O2
-  #   - -j4
-  #   - -main-is PlotGreensFunctionR2Z2T0S0
-  #   - -fno-liberate-case
-  #   - -funfolding-use-threshold1000
-  #   - -funfolding-keeness-factor1000
-  #   #- -fllvm
-  #   #- -optlo-O3
-  #   dependencies:
-  #   - Stochastic-Completion-Field
+  PlotGreensFunctionR2Z2T0S0-exe:
+    main:                PlotGreensFunctionR2Z2T0S0.hs
+    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2Z2T0S0
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is PlotGreensFunctionR2Z2T0S0
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    #- -fllvm
+    #- -optlo-O3
+    dependencies:
+    - Stochastic-Completion-Field
 
 tests:
   R2Z1T0ToR2S1T0-test:
@@ -756,15 +757,101 @@ tests:
     - fftw3f
     - fftw3l
     - m
-    # - opencv_imgcodecs
-    # - opencv_core
-    # - opencv_features2d
-    # - opencv_highgui
-    # - opencv_calib3d
-    # - opencv_imgcodecs
-    # - opencv_photo
-    # - opencv_video
-    # - opencv_imgproc
-    # - opencv_videoio
+    dependencies:
+    - Stochastic-Completion-Field
+  CannyEdgeIllusoryContour-test:
+    main:                CannyEdgeIllusoryContour.hs
+    source-dirs:         test/CannyEdgeIllusoryContour
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is CannyEdgeIllusoryContour
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  PlotLocalEigenVector-test:
+    main:                PlotLocalEigenVector.hs
+    source-dirs:         test/PlotLocalEigenVector
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is PlotLocalEigenVector
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCLocalEigenVector-test:
+    main:                STCLocalEigenVector.hs
+    source-dirs:         test/STCLocalEigenVector
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is STCLocalEigenVector
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  STCLocalEigenVectorEndPoint-test:
+    main:                STCLocalEigenVectorEndPoint.hs
+    source-dirs:         test/STCLocalEigenVectorEndPoint
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is STCLocalEigenVectorEndPoint
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
     dependencies:
     - Stochastic-Completion-Field

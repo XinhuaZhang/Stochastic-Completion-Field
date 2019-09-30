@@ -26,3 +26,5 @@ Stochastic-Completion-Field.cabal
 *.tgz
 output
 send.sh
+.bak
+*.dat

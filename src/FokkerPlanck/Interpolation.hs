@@ -55,3 +55,32 @@ radialCubicInterpolation radialArr scaleFactor inputArr =
                                               (-0.5 * p0 + 0.5 * p2) * x +
                                               p1) :+
                                              0)
+
+{-# INLINE cubicInterpolation #-}
+cubicInterpolation ::
+     (R.Source s Double)
+  => R.Array s DIM5 Double
+  -> Double
+  -> R.Array D DIM4 Double
+cubicInterpolation arr r =
+  let (Z :. _ :. _ :. _ :. _ :. n) = extent arr
+   in R.traverse arr (\(sh :. _) -> sh) $ \f sh@(Z :. tf :. sf :. t0f :. s0f) ->
+        if r < 0 || r > (fromIntegral $ n - 1) -- out of boundary. When r = 0, log r makes no sense, and therefore the information at r = 0 should not be used to interpoalte 0 < r <= 1.
+          then 0
+          else if r <= 1 -- linear interpolation
+                 then (f (sh :. 1) + (r - 1) * (f (sh :. 2) - f (sh :. 1)))
+                 else if r >= (fromIntegral $ n - 2) -- linear interpolation
+                        then (f (sh :. n - 2) +
+                              (r - (fromIntegral $ n - 2)) *
+                              (f (sh :. n - 1) - f (sh :. n - 2)))
+                        else let x0 = floor r -- cubic interpolation
+                                 p0 = f (sh :. x0 - 1)
+                                 p1 = f (sh :. x0)
+                                 p2 = f (sh :. x0 + 1)
+                                 p3 = f (sh :. x0 + 2)
+                                 x = r - fromIntegral x0
+                              in ((-0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3) *
+                                  x ^ 3 +
+                                  (p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3) * x ^ 2 +
+                                  (-0.5 * p0 + 0.5 * p2) * x +
+                                  p1)
