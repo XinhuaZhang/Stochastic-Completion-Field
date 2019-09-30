@@ -28,3 +28,6 @@ output
 send.sh
 .bak
 *.dat
+# vim files
+*.swp
+
