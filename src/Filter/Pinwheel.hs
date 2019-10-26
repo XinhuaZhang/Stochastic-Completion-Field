@@ -3,8 +3,8 @@ module Filter.Pinwheel
   ( module Filter.Utils
   , PinwheelParams(..)
   , pinwheel
-  , pinwheelHollow
-  , pinwheelHollowNonzeronCenter
+  , PinwheelType(..)
+  , pinwheelFunc
   , pinwheelFilter
   , convolvePinwheel
   , frequencyDomainMultiply
@@ -26,6 +26,20 @@ data PinwheelParams = PinwheelParams
   , pinwheelParamsAngularFreqs :: ![Double]
   , pinwheelParamsRadialFreqs  :: ![Double]
   }
+  
+data PinwheelType
+  = Pinwheel
+  | PinwheelHollow0 !Double
+  | PinwheelHollow1 !Double
+  deriving (Read, Show)
+  
+{-# INLINE rFunc #-}
+rFunc :: Int -> Int -> Double
+rFunc x y = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+
+{-# INLINE thetaFunc #-}
+thetaFunc :: Int -> Int -> Double
+thetaFunc x y = angleFunctionRad (fromIntegral x) (fromIntegral y)
 
 {-# INLINE pinwheel #-}
 pinwheel :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
@@ -33,35 +47,45 @@ pinwheel af rf maxR alpha x y
   | r == 0 && af == 0 && rf == 0 = 1
   | r == 0 = 0
   | otherwise =
-    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) * exp (0 :+ af * theta)
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    exp (0 :+ af * (thetaFunc x y))
   where
-    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
-    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  
-    
-{-# INLINE pinwheelHollow #-}
-pinwheelHollow :: Double -> Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
-pinwheelHollow radius af rf maxR alpha x y
+    r = rFunc x y
+
+{-# INCLUDE pinwheelFunc #-}
+pinwheelFunc ::
+     PinwheelType
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> Complex Double
+pinwheelFunc Pinwheel af rf maxR alpha x y
+  | r == 0 && af == 0 && rf == 0 = 1
+  | r == 0 = 0
+  | otherwise =
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    exp (0 :+ af * (thetaFunc x y))
+  where
+    r = rFunc x y
+pinwheelFunc (PinwheelHollow0 radius) af rf maxR alpha x y
   | r < radius = 0.0
   | otherwise =
-    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) * exp (0 :+ af * theta)
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    exp (0 :+ af * (thetaFunc x y))
   where
-    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
-    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  
-    
-{-# INLINE pinwheelHollowNonzeronCenter #-}
-pinwheelHollowNonzeronCenter :: Double -> Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
-pinwheelHollowNonzeronCenter radius af rf maxR alpha x y =
-  if r == 0 && af == 0 && rf == 0
-    then 1
-    else if r < radius
-           then 0
-           else (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
-                exp (0 :+ af * theta)
+    r = rFunc x y
+pinwheelFunc (PinwheelHollow1 radius) af rf maxR alpha x y
+  | r == 0 && af == 0 && rf == 0 = 1
+  | r < radius = 0.0
+  | otherwise =
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    exp (0 :+ af * (thetaFunc x y))
   where
-    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
-    theta = angleFunctionRad (fromIntegral x) (fromIntegral y)  
-
-
+    r = rFunc x y
+              
 {-# INLINE pinwheelPI #-}
 pinwheelPI :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 pinwheelPI af rf maxR alpha x y

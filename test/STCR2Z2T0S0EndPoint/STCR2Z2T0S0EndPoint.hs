@@ -109,7 +109,7 @@ main = do
   arrR2Z2T0S0 <-
     computeUnboxedP $
     computeR2Z2T0S0ArrayRadial
-      (pinwheelHollow 10)
+      (PinwheelHollow0 10)
       (cutoff cutoffRadius radialArr)
       numPoint
       numPoint
@@ -174,7 +174,8 @@ main = do
                  computeUnboxedP $
                  computeR2Z2T0S0ArrayRadial
                    -- pinwheel
-                   (pinwheelHollowNonzeronCenter 16) 
+                   -- (pinwheelHollowNonzeronCenter 16) 
+                   (PinwheelHollow0 4)
                    (cutoff cutoffRadiusEndPoint radialArr)
                    numPoint
                    numPoint

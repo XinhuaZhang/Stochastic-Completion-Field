@@ -1,5 +1,7 @@
 module STCR2Z2T0S0Edge where
 
+import           Control.Arrow
+import           Control.Monad
 import           Data.Array.Repa         as R
 import           Data.Binary             (decodeFile)
 import           Data.Complex
@@ -19,7 +21,7 @@ import           Types
 
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:edgeFilePath:scaleFactorStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:thetaFreqsStr:scaleFreqsStr:histFilePath:numIterationStr:writeSourceFlagStr:edgeFilePath:numNoisePointStr:scaleFactorStr:useFFTWWisdomFlagStr:fftwWisdomFileName:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -31,19 +33,18 @@ main = do
       tao = read taoStr :: Double
       numTrail = read numTrailStr :: Int
       maxTrail = read maxTrailStr :: Int
-      theta0Freq = read theta0FreqsStr :: Double
-      theta0Freqs = [-theta0Freq .. theta0Freq]
       thetaFreq = read thetaFreqsStr :: Double
       thetaFreqs = [-thetaFreq .. thetaFreq]
-      scale0Freq = read scale0FreqsStr :: Double
       scaleFreq = read scaleFreqsStr :: Double
-      scale0Freqs = [-scale0Freq .. scale0Freq]
       scaleFreqs = [-scaleFreq .. scaleFreq]
       numIteration = read numIterationStr :: Int
       writeSourceFlag = read writeSourceFlagStr :: Bool
+      numNoisePoint = read numNoisePointStr :: Int
       scaleFactor = read scaleFactorStr :: Double
+      useFFTWWisdomFlag = read useFFTWWisdomFlagStr :: Bool
       numThread = read numThreadStr :: Int
       folderPath = "output/test/STCR2Z2T0S0Edge"
+      fftwWisdomFilePath = folderPath </> fftwWisdomFileName
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   radialArr <-
@@ -62,15 +63,15 @@ main = do
           scaleSigma
           maxScale
           tao
-          theta0Freqs
           thetaFreqs
-          scale0Freqs
+          thetaFreqs
+          scaleFreqs
           scaleFreqs
           histFilePath
           (emptyHistogram
              [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
-             , L.length scale0Freqs
-             , L.length theta0Freqs
+             , L.length scaleFreqs
+             , L.length thetaFreqs
              , L.length scaleFreqs
              , L.length thetaFreqs
              ]
@@ -78,6 +79,7 @@ main = do
   arrR2Z2T0S0 <-
     computeUnboxedP $
     computeR2Z2T0S0ArrayRadial
+      (PinwheelHollow0 4)
       radialArr
       numPoint
       numPoint
@@ -85,17 +87,22 @@ main = do
       maxScale
       thetaFreqs
       scaleFreqs
-      theta0Freqs
-      scale0Freqs
-  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+      thetaFreqs
+      scaleFreqs
+  plan <-
+    makeR2Z2T0S0Plan emptyPlan useFFTWWisdomFlag fftwWisdomFilePath arrR2Z2T0S0
   xs <- parseEdgeFile edgeFilePath
-  randomPonintSet <- generateRandomPointSet 40 numPoint numPoint
-  let ys =
+  randomPonintSet <- generateRandomPointSet numNoisePoint numPoint numPoint
+  let (centerX, centerY) =
+        join (***) (\x -> div x . L.length $ xs) .
+        L.foldl' (\(a, b) (R2S1RPPoint (c, d, _, _)) -> (a + c, b + d)) (0, 0) $
+        xs
+      ys =
         L.map
           (\(R2S1RPPoint (a, b, c, d)) ->
              (R2S1RPPoint
-                ( round $ (fromIntegral a - 150) / scaleFactor
-                , round $ (fromIntegral b - 150) / scaleFactor
+                ( round $ (fromIntegral $ a - centerX) / scaleFactor
+                , round $ (fromIntegral $ b - centerX) / scaleFactor
                 , c
                 , d)))
           xs
@@ -105,13 +112,13 @@ main = do
              (R2S1RPPoint (a - center numPoint, b - center numPoint, c, d)))
           randomPonintSet
       points = ys L.++ zs
-  let bias = computeBiasR2T0S0 numPoint numPoint theta0Freqs scale0Freqs points
+  let bias = computeBiasR2T0S0 numPoint numPoint thetaFreqs scaleFreqs points
       eigenVec =
         computeInitialEigenVectorR2T0S0
           numPoint
           numPoint
-          theta0Freqs
-          scale0Freqs
+          thetaFreqs
+          scaleFreqs
           thetaFreqs
           scaleFreqs
           points
@@ -122,15 +129,17 @@ main = do
     numPoint
     numOrientation
     thetaFreqs
-    theta0Freqs
     numScale
     scaleFreqs
-    scale0Freqs
+    maxScale
     arrR2Z2T0S0
     numIteration
     writeSourceFlag
-    -- (printf "_%d" (round scaleFactor :: Int))
-    (printf "_%d_%d_%.2f_%.2f" (round maxScale :: Int) (round tao :: Int) thetaSigma scaleSigma)
-    0.5
+    (printf
+       "_%d_%d_%.2f_%.2f"
+       (round maxScale :: Int)
+       (round tao :: Int)
+       thetaSigma
+       scaleSigma)
     bias
     eigenVec

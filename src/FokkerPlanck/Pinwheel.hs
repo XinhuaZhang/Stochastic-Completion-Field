@@ -48,7 +48,7 @@ computeR2Z1T0ArrayRadial radialArr xLen yLen scaleFactor thetaFreqs theta0Freqs 
 {-# INLINE computeR2Z2T0S0ArrayRadial #-}
 computeR2Z2T0S0ArrayRadial ::
      (R.Source r Double)
-  => (Double -> Double -> Double -> Double -> Int -> Int -> Complex Double)
+  => PinwheelType
   -> R.Array r DIM5 Double
   -> Int
   -> Int
@@ -59,7 +59,7 @@ computeR2Z2T0S0ArrayRadial ::
   -> [Double]
   -> [Double]
   -> R.Array D DIM6 (Complex Double)
-computeR2Z2T0S0ArrayRadial pinwheelFunc radialArr xLen yLen scaleFactor rMax thetaFreqs scaleFreqs theta0Freqs scale0Freqs = 
+computeR2Z2T0S0ArrayRadial pinwheelType radialArr xLen yLen scaleFactor rMax thetaFreqs scaleFreqs theta0Freqs scale0Freqs =
   let pinwheelArr =
         traverse4
           (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
@@ -72,13 +72,14 @@ computeR2Z2T0S0ArrayRadial pinwheelFunc radialArr xLen yLen scaleFactor rMax the
               xLen :.
               yLen)) $ \ft fs ft0 fs0 (Z :. t :. s :. t0 :. s0 :. i :. j) ->
           pinwheelFunc
+            pinwheelType
             (ft (Z :. t) - ft0 (Z :. t0))
             (fs (Z :. s) + fs0 (Z :. s0))
             rMax
             0
             (i - center xLen)
             (j - center yLen)
-   in radialCubicInterpolation radialArr scaleFactor pinwheelArr
+  in radialCubicInterpolation radialArr scaleFactor pinwheelArr
 
 {-# INLINE computeR2Z2T0S0ArrayRadial' #-}
 computeR2Z2T0S0ArrayRadial' ::

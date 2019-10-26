@@ -1,5 +1,6 @@
 module STC
   ( module STC.Bias
+  , module STC.Binary
   , module STC.CompletionField
   , module STC.Convolution
   , module STC.InitialDistribution
@@ -13,6 +14,7 @@ module STC
   ) where
 
 import           STC.Bias
+import           STC.Binary
 import           STC.CompletionField
 import           STC.Convolution
 import           STC.InitialDistribution

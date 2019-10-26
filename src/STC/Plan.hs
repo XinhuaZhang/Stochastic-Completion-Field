@@ -61,33 +61,33 @@ makeR2Z2T0S0Plan oldPlan wisdomFlag wisdomFilePath arr = do
   let vecTemp1 = VS.convert . toUnboxed . computeS . delay $ arr
   plan <-
     fst <$>
-    (-- dft1dGPlan
-     --   lock
-     --   oldPlan
-     --   [ numThetaFreqs
-     --   , numScaleFreqs
-     --   , numTheta0Freqs
-     --   , numScale0Freqs
-     --   , xLen
-     --   , yLen
-     --   ]
-     --   [4, 5]
-     --   vecTemp1 >>= \(plan, vec) ->
-     --   idft1dGPlan
-     --     lock
-     --     plan
-     --     [ numThetaFreqs
-     --     , numScaleFreqs
-     --     , numTheta0Freqs
-     --     , numScale0Freqs
-     --     , xLen
-     --     , yLen
-     --     ]
-     --     [4, 5]
-     --     vec >>= \(plan, vec) ->
+    (dft1dGPlan
+       lock
+       oldPlan
+       [ numThetaFreqs
+       , numScaleFreqs
+       , numTheta0Freqs
+       , numScale0Freqs
+       , xLen
+       , yLen
+       ]
+       [4, 5]
+       vecTemp1 >>= \(plan, vec) ->
+       idft1dGPlan
+         lock
+         plan
+         [ numThetaFreqs
+         , numScaleFreqs
+         , numTheta0Freqs
+         , numScale0Freqs
+         , xLen
+         , yLen
+         ]
+         [4, 5]
+         vec >>= \(plan, vec) ->
          dft1dGPlan
            lock
-           oldPlan
+           plan
            [numThetaFreqs, numScaleFreqs, xLen, yLen]
            [0, 1]
            vecTemp1 >>= \(plan, vec) ->

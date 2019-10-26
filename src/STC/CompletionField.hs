@@ -203,9 +203,11 @@ completionFieldR2Z2 ::
   -> R2T0S0Array
   -> R2T0S0Array
   -> IO (R.Array U DIM4 (Complex Double))
-completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale scaleFreqs source sink = do
-  -- completionField <- convolveR2Z2 plan source sink
-  completionField <- computeP $ source *^ sink
+completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale scaleFreqs source sink
+
+ = do
+  completionField <- convolveR2Z2 plan source sink
+  -- completionField <- computeP $ source *^ sink
   let (Z :. _ :. _ :. cols :. rows) = extent completionR2S1RP
       completionR2S1RP =
         r2z2Tor2s1rp
@@ -226,31 +228,28 @@ completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale sca
   --      normalizeList . R.toList . R.map magnitude . R.slice completionR2S1RP $
   --      (Z :. All :. i :. (div cols 2) :. (div rows 2)))
   --   [0 .. numScale - 1]
-  completionFieldR2 <-
-    (R.sumP . rotate4D . rotate4D $ completionR2S1RP) >>= R.sumP
+  completionFieldR2 <- (R.sumP . rotate4D2 $ completionR2S1RP) >>= R.sumP
   plotImageRepaComplex (folderPath </> printf "Completion%s.png" idStr) .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $
     completionFieldR2
-  (R.sumP . rotate4D . rotate4D $ completionField) >>= R.sumP >>=
+  (R.sumP . rotate4D2 $ completionField) >>= R.sumP >>=
     plotImageRepaComplex (folderPath </> printf "CompletionFreq%s.png" idStr) .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All)
-  (R.sumP . rotate4D . rotate4D . R.map (\x -> (magnitude x) ^ 2) $
-   completionField) >>=
+  (R.sumP . rotate4D2 . R.map (\x -> (magnitude x) ^ 2) $ completionField) >>=
     R.sumP >>=
     plotImageRepa (folderPath </> printf "CompletionFreqMag%s.png" idStr) .
     ImageRepa 8 .
     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map sqrt
-  (R.sumP . rotate4D . rotate4D . R.map (\x -> (magnitude x) ^ 2) $
-   completionR2S1RP) >>=
+  (R.sumP . rotate4D2 . R.map (\x -> (magnitude x) ^ 2) $ completionR2S1RP) >>=
     R.sumP >>=
     plotImageRepa (folderPath </> printf "CompletionMagnitude%s.png" idStr) .
     ImageRepa 8 .
     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map sqrt
-  (R.sumP . rotate4D . rotate4D $ completionR2S1RP) >>= R.sumP >>=
+  (R.sumP . rotate4D2 $ completionR2S1RP) >>= R.sumP >>=
     plotImageRepa (folderPath </> printf "CompletionRealPart%s.png" idStr) .
     ImageRepa 8 .
     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.map realPart
-  (R.sumP . rotate4D . rotate4D $ completionR2S1RP) >>= R.sumP >>=
+  (R.sumP . rotate4D2 $ completionR2S1RP) >>= R.sumP >>=
     plotImageRepa
       (folderPath </> printf "CompletionRealPartPositive%s.png" idStr) .
     ImageRepa 8 .
@@ -259,9 +258,9 @@ completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale sca
     R.map
       (\x ->
          let y = realPart x
-          in if y > 0
-               then y
-               else 0)
+         in if y > 0
+              then y
+              else 0)
   let avg = R.sumAllS completionFieldR2 / (fromIntegral $ rows * cols)
       (Z :. cols :. rows) = extent completionFieldR2
   plotImageRepa (folderPath </> printf "Completion_normalized%s.png" idStr) .
@@ -271,7 +270,7 @@ completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale sca
     R.map log . normalizeValueRange (1, 256) . R.map magnitude $
     completionFieldR2
   return completionField
-
+  
 {-# INLINE timeReverseR2Z1T0 #-}
 timeReverseR2Z1T0 ::
      (R.Source s (Complex Double))

@@ -52,6 +52,16 @@ rotate4D' arr =
         (Z :. j :. k :. l :. i)
         (\(Z :. a :. b :. c :. d) -> (Z :. b :. c :. d :. a))
         arr
+        
+
+{-# INLINE rotate4D2 #-}
+rotate4D2 :: (R.Source s e) => R.Array s DIM4 e -> R.Array D DIM4 e  
+rotate4D2 arr =
+  let (Z :. k :. l :. i :. j) = extent arr
+  in R.backpermute
+       (Z :. i :. j :. k :. l)
+       (\(Z :. a :. b :. c :. d) -> (Z :. c :. d :. a :. b))
+       arr
 
 {-# INLINE rotateR2Z1T0Array #-}
 rotateR2Z1T0Array :: (R.Source s e) => R.Array s DIM4 e -> R.Array D DIM4 e
@@ -82,6 +92,7 @@ rotateR2Z2T0S0ArrayDeconv arr =
        (\(Z :. a :. b :. c :. d :. e :. f) -> (Z :. e :. f :. a :. b :. c :. d))
        arr
 
+{-# INLINE writeRepaArray #-}
 writeRepaArray ::
      (Shape sh, Binary e, R.Source s e) => FilePath -> R.Array s sh e -> IO ()
 writeRepaArray filePath arr =
@@ -93,6 +104,7 @@ writeRepaArray filePath arr =
     BL.hPut h . encode . BL.length $ elemBS  -- ByteString lenght is 64 bits = 8 bytes
     BL.hPut h elemBS
 
+{-# INLINE readRepaArray #-}
 readRepaArray ::
      (R.Source U e, Binary e, Unbox e, Shape sh)
   => FilePath

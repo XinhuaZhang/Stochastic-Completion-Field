@@ -20,6 +20,7 @@ import           Image.IO                  (ImageRepa (..), plotImageRepa,
                                             plotImageRepaComplex)
 import           Image.Transform
 import           STC.Bias
+import           STC.Binary
 import           STC.CompletionField
 import           STC.InitialDistribution
 import           STC.Plan
@@ -28,6 +29,7 @@ import           STC.Reversal
 import           STC.Utils
 import           System.FilePath           ((</>))
 import           Text.Printf
+import           Utils.Parallel
 import           Utils.Time
 
 {-# INLINE eigenVectorR2Z1 #-}
@@ -166,19 +168,22 @@ eigenVectorR2Z2 plan folderPath numOrientation thetaFreqs numScale scaleFreqs ma
   printCurrentTime $ printf "iteration %d" n
   when
     (n == 1 || (writeFlag && odd n))
-    (let
-      in do sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr) >>= R.sumP
-            sourceR2S1RP <-
-              r2z2Tor2s1rpP numOrientation thetaFreqs numScale scaleFreqs maxScale $
-              sourceR2Z2
-            sourceField <-
-              (R.sumP . rotate4D . rotate4D $ sourceR2S1RP) >>=
-              fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
-              R.sumP
-            plotImageRepaComplex
-              (folderPath </> name L.++ "_" L.++ show n L.++ ".png") .
-              ImageRepa 8 $
-              sourceField)
+    (let sourceR2Z2 = inputR2Z2 -- sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr) >>= R.sumP
+     in do sourceR2S1RP <-
+             r2z2Tor2s1rpP
+               numOrientation
+               thetaFreqs
+               numScale
+               scaleFreqs
+               maxScale $
+             sourceR2Z2
+           sourceField <-
+             (R.sumP . rotate4D2 $ sourceR2S1RP) >>=
+             fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
+           plotImageRepaComplex
+             (folderPath </> name L.++ "_" L.++ show (n - 1) L.++ ".png") .
+             ImageRepa 8 $
+             sourceField)
   return sourceArr
 
 powerMethodR2Z2T0S0 ::
@@ -189,20 +194,17 @@ powerMethodR2Z2T0S0 ::
   -> Int
   -> Int
   -> [Double]
-  -> [Double]
   -> Int
-  -> [Double]
   -> [Double]
   -> Double
   -> R2Z2T0S0Array
   -> Int
   -> Bool
   -> String
-  -> Double
   -> R.Array s1 DIM4 (Complex Double)
   -> R.Array s2 DIM6 (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
-powerMethodR2Z2T0S0 plan folderPath cols rows numOrientation thetaFreqs theta0Freqs numScale scaleFreqs scale0Freqs maxScale filter numIteration writeFlag idStr threshold bias eigenVecSource = do
+powerMethodR2Z2T0S0 plan folderPath cols rows numOrientation thetaFreqs numScale scaleFreqs maxScale filter numIteration writeFlag idStr bias eigenVecSource = do
   filterF <- dftR2Z2T0S0 plan . computeS . makeFilter2D $ filter
   sourceR2Z2T0S0 <-
     M.foldM
@@ -224,27 +226,26 @@ powerMethodR2Z2T0S0 plan folderPath cols rows numOrientation thetaFreqs theta0Fr
       (computeS . delay $ eigenVecSource)
       [1 .. numIteration]
   let sinkR2Z2T0S0 =
-        computeSinkFromSourceR2Z2T0S0 thetaFreqs theta0Freqs sourceR2Z2T0S0
+        computeSinkFromSourceR2Z2T0S0 thetaFreqs thetaFreqs sourceR2Z2T0S0
   sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceR2Z2T0S0) >>= R.sumP
   sinkR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sinkR2Z2T0S0) >>= R.sumP
   sinkField <-
     (R.sumP .
-     rotate4D .
-     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D2 . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
      sinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s.png" idStr) . ImageRepa 8 $
     sinkField
   completionFieldR2Z2
-      plan
-      folderPath
-      idStr
-      numOrientation
-      thetaFreqs
-      numScale
-      scaleFreqs
-      sourceR2Z2
-      sinkR2Z2
+    plan
+    folderPath
+    idStr
+    numOrientation
+    thetaFreqs
+    numScale
+    scaleFreqs
+    sourceR2Z2
+    sinkR2Z2
 
 {-# INLINE eigenVectorR2Z2Bias #-}
 eigenVectorR2Z2Bias ::
@@ -1101,6 +1102,132 @@ powerMethodR2Z2 plan folderPath cols rows numOrientation thetaFreqs numScale sca
   --   ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) $
   --   sinkR2
   return sourceR2Z2
+  
+{-# INLINE eigenVectorBinary #-}
+eigenVectorBinary ::
+     (R.Source s1 (Complex Double), R.Source s2 (Complex Double))
+  => ParallelParams
+  -> DFTPlan
+  -> FilePath
+  -> Int
+  -> [Double]
+  -> Int
+  -> [Double]
+  -> Double
+  -> FilePath
+  -> Int
+  -> Bool
+  -> String
+  -> Bool
+  -> FilePath
+  -> R.Array s1 DIM4 (Complex Double)
+  -> R.Array s2 DIM4 (Complex Double)
+  -> IO R2Z2Array
+eigenVectorBinary parallelParams plan folderPath numOrientation thetaFreqs numScale scaleFreqs maxScale filterFilePath n writeFlag name saveEdgeDataFlag eigenVecFilePath bias inputR2Z2 = do
+  when saveEdgeDataFlag (writeRepaArray eigenVecFilePath inputR2Z2)
+  let (Z :. numThetaFreq :. numScaleFreq :. cols :. rows) = extent inputR2Z2
+      sourceDist = R.zipWith (*) bias inputR2Z2
+  s <- R.foldAllP max 0 . R.map magnitude $ sourceDist
+  let initialDist = computeS $ R.map (/ (s :+ 0)) sourceDist
+  sourceArr <-
+    convolutionBinary
+      False
+      parallelParams
+      plan
+      filterFilePath
+      thetaFreqs
+      initialDist
+  printCurrentTime $ printf "iteration %d" n
+  when
+    (n == 1 || writeFlag)
+    (let sourceR2Z2 = inputR2Z2 -- sourceR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sourceArr) >>= R.sumP
+     in do sourceR2S1RP <-
+             r2z2Tor2s1rpP
+               numOrientation
+               thetaFreqs
+               numScale
+               scaleFreqs
+               maxScale $
+             sourceR2Z2
+           sourceField <-
+             (R.sumP . rotate4D2 $ sourceR2S1RP) >>=
+             fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
+           plotImageRepaComplex
+             (folderPath </> name L.++ "_" L.++ show (n - 1) L.++ ".png") .
+             ImageRepa 8 $
+             sourceField)
+  return sourceArr
+  
+powerMethodBinary ::
+     (R.Source s1 (Complex Double), R.Source s2 (Complex Double))
+  => ParallelParams
+  -> DFTPlan
+  -> FilePath
+  -> Int
+  -> Int
+  -> Int
+  -> [Double]
+  -> Int
+  -> [Double]
+  -> Double
+  -> FilePath
+  -> Int
+  -> Bool
+  -> String
+  -> Bool
+  -> FilePath
+  -> R.Array s1 DIM4 (Complex Double)
+  -> R.Array s2 DIM4 (Complex Double)
+  -> IO (R.Array U DIM4 (Complex Double))
+powerMethodBinary parallelParams plan folderPath cols rows numOrientation thetaFreqs numScale scaleFreqs maxScale filterFilePath numIteration writeFlag idStr saveEdgeDataFlag eigenVecFilePath bias eigenVecSource = do
+  sourceR2Z2 <-
+    M.foldM
+      (\input n ->
+         eigenVectorBinary
+           parallelParams
+           plan
+           folderPath
+           numOrientation
+           thetaFreqs
+           numScale
+           scaleFreqs
+           maxScale
+           filterFilePath
+           n
+           writeFlag
+           ("Source" L.++ idStr)
+           saveEdgeDataFlag
+           eigenVecFilePath
+           bias
+           input)
+      (computeS . delay $ eigenVecSource)
+      [1 .. numIteration]
+  sinkR2Z2 <-
+    convolutionBinary
+      True
+      parallelParams
+      plan
+      filterFilePath
+      thetaFreqs
+      (computeS $ R.zipWith (*) bias sourceR2Z2)
+  sinkField <-
+    (r2z2Tor2s1rpP numOrientation thetaFreqs numScale scaleFreqs maxScale $
+     sinkR2Z2) >>=
+    (R.sumP . rotate4D2) >>=
+    fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
+  plotImageRepaComplex (folderPath </> printf "Sink%s.png" idStr) . ImageRepa 8 $
+    sinkField
+  completionFieldR2Z2
+    plan
+    folderPath
+    idStr
+    numOrientation
+    thetaFreqs
+    numScale
+    scaleFreqs
+    sourceR2Z2
+    sinkR2Z2
+
 
 -- {-# INLINE eigenVectorR2Z2EndModal #-}
 -- eigenVectorR2Z2EndModal ::
