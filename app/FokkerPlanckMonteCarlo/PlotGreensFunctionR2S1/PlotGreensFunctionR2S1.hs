@@ -2,6 +2,7 @@
 module PlotGreensFunctionR2S1 where
 
 import           Data.Array.Repa         as R
+import           Data.Complex
 import           Data.List               as L
 import           FokkerPlanck.MonteCarlo
 import           Image.IO
@@ -46,12 +47,12 @@ main = do
       tao
       numPoint
       ""
-      init
+      init 
   let arr' =
         computeS .
         -- reduceContrast 10 .
-        R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
+        R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . R.map magnitude . rotate3D $
         arr
       folderPath = "output/app/PlotGreensFunctionR2S1"
   createDirectoryIfMissing True folderPath
-  plotImageRepaComplex (folderPath </> "GreensR2S1.png") . ImageRepa 8 $ arr'
+  plotImageRepa (folderPath </> "GreensR2S1.png") . ImageRepa 8 $ arr'

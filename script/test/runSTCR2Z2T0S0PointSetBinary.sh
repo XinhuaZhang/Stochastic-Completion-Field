@@ -9,7 +9,7 @@ Tao=100
 Trails=1000000
 MaxTrails=10000
 ThetaFreqs=10
-ScaleFreqs=5
+ScaleFreqs=8
 HollowRadius=4
 CutoffRadius=32
 HistFileName=${Size}_${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${ThetaFreqs}_${ScaleFreqs}.dat  
@@ -23,7 +23,7 @@ Circle="(Circle{circleNum=8,circleRadius=35})"
 Shape2D="Points(0,0)2${Circle}"
 UseFFTWWisdomFlag=True
 FFTWWisdomFileName="fftwWisdom.dat"
-BatchSize=16
-Threads=16
+BatchSize=6
+Threads=6
 
 time stack test :STCR2Z2T0S0PointSetBinary-test --test-arguments "${Size} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Tao}  ${Trails} ${MaxTrails} ${ThetaFreqs} ${ScaleFreqs} ${HollowRadius} ${CutoffRadius} ${HistPath} ${FilterFileFolder} ${NumInteration} ${WriteSourceFlag} ${SaveEdgeDataFlag} ${LoadEdgeDataFlag} ${Shape2D} ${UseFFTWWisdomFlag} ${FFTWWisdomFileName} ${BatchSize} ${Threads} +RTS -N${Threads} -RTS" # --ghc-options -j8

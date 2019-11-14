@@ -1,11 +1,11 @@
 #!/bin/bash
-Size=128
+Size=256
 Orientations=16
-Sigma=0.2
+Sigma=0.1
 Tao=100
 Length=100
-Init=\(0,0,0,0,1.57,1\)
-Trails=100000
+Init=\(-100,0,0,0,0,1.3862943611198906\)
+Trails=1000000
 Threads=16
 
 stack build Stochastic-Completion-Field:PlotGreensFunctionR2S1-exe

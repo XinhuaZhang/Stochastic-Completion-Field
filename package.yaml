@@ -66,8 +66,8 @@ executables:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    #- -fllvm
-    #- -optlo-O3
+    - -fllvm
+    - -optlo-O3
     dependencies:
     - Stochastic-Completion-Field
   PlotGreensFunctionR2S1RP-exe:
@@ -895,6 +895,31 @@ tests:
     - -funfolding-keeness-factor1000
     # - -fllvm
     # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - gomp
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  PlotGreensFunctionR2Z2T0S0Gaussian-test:
+    main:                PlotGreensFunctionR2Z2T0S0Gaussian.hs
+    source-dirs:         test/PlotGreensFunctionR2Z2T0S0Gaussian
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    - -j4
+    - -main-is PlotGreensFunctionR2Z2T0S0Gaussian
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack

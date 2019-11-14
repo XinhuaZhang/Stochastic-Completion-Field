@@ -7,6 +7,7 @@ module FokkerPlanck.MonteCarlo
   , solveMonteCarloR2S1T0
   , solveMonteCarloR2Z1T0
   , solveMonteCarloR2Z2T0S0
+  , solveMonteCarloR2Z2T0S0Gaussian
   , solveMonteCarloR2Z1T0Radial
   , solveMonteCarloR2Z2T0S0Radial
   , solveMonteCarloR2Z2T0S0Radial'
@@ -145,7 +146,7 @@ solveMonteCarloR2S1 ::
   -> FilePath
   -> ParticleIndex
   -> IO R2S1Array
-solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao r histFilePath (_, _, _, _, t0, s0) = do
+solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao r histFilePath (x0, y0, _, _, t0, s0) = do
   gens <- M.replicateM numGen createSystemRandom
   let !xShift = div xLen 2
       func (a, b) =
@@ -185,7 +186,7 @@ solveMonteCarloR2S1 numGen numTrails xLen yLen numOrientations thetaSigma tao r 
                  tao
                  xRange
                  yRange
-                 (0, 0, t0 + deltaTheta, s0, t0 + deltaTheta, s0)))
+                 (x0, y0, t0 + deltaTheta, s0, t0 + deltaTheta, s0)))
       gens
   let ys = parMap rdeepseq (countR2S1 xRange' yRange' numOrientations) xs
       histogram = L.foldl1' addHistogram ys
@@ -681,6 +682,135 @@ solveMonteCarloR2Z2T0S0 numGen numTrails maxTrails xLen yLen thetaSigma scaleSig
                      xRange
                      yRange
                      (0, 0, t0, s0, t0, s0)))
+          gens
+      let ys =
+            parMap
+              rdeepseq
+              (countR2Z2T0S0
+                 xRange
+                 yRange
+                 theta0Freqs
+                 thetaFreqs
+                 scale0Freqs
+                 scaleFreqs
+                 maxScale)
+              xs
+          histogram' = L.foldl' addHistogram histogram ys
+          newHist =
+            if numMonteCarlo > 0
+              then histogram'
+              else addHistogram hist histogram'
+      unless (L.null filePath) (encodeFile filePath newHist)
+      return . getNormalizedHistogramArr $ newHist
+    else do
+      unless (L.null filePath) (encodeFile filePath histogram)
+      return . getNormalizedHistogramArr $ histogram
+      
+solveMonteCarloR2Z2T0S0Gaussian ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Int
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> Double
+  -> FilePath
+  -> Histogram (Complex Double)
+  -> IO R2Z2T0S0Array
+solveMonteCarloR2Z2T0S0Gaussian numGen numTrails maxTrails xLen yLen thetaSigma scaleSigma maxScale tao numSteps theta0Freqs thetaFreqs scale0Freqs scaleFreqs gaussianSigma filePath hist = do
+  let !xShift = div xLen 2
+      xRange =
+        if odd xLen
+          then (-xShift, xShift)
+          else (-xShift, xShift - 1)
+      !yShift = div yLen 2
+      yRange =
+        if odd yLen
+          then (-yShift, yShift)
+          else (-yShift, yShift - 1)
+      thetaDist = normalDistrE 0 thetaSigma
+      scaleDist = normalDistrE 0 scaleSigma
+      numMonteCarlo = div numTrails maxTrails
+      numLeft = mod numTrails maxTrails
+  printf
+    "%d trails, maximum %d each batch, %d batch in total.\n"
+    numTrails
+    maxTrails
+    (numMonteCarlo +
+     if numLeft > 0
+       then 1
+       else 0)
+  gensList <-
+    M.replicateM numMonteCarlo (M.replicateM numGen createSystemRandom)
+  histogram <-
+    M.foldM
+      (\h gens -> do
+         xs <-
+           MP.mapM
+             (\gen ->
+                M.replicateM
+                  (div maxTrails numGen)
+                  (do t0 <-
+                        genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                      s0 <-
+                        genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
+                      x0 <- genContVar (normalDistr 0 gaussianSigma) gen :: IO Double
+                      y0 <- genContVar (normalDistr 0 gaussianSigma) gen :: IO Double
+                      generatePath
+                        gen
+                        thetaDist
+                        scaleDist
+                        maxScale
+                        tao
+                        xRange
+                        yRange
+                        (x0, y0, t0, s0, t0, s0)))
+             gens
+         let ys =
+               parMap
+                 rdeepseq
+                 (countR2Z2T0S0
+                    xRange
+                    yRange
+                    theta0Freqs
+                    thetaFreqs
+                    scale0Freqs
+                    scaleFreqs
+                    maxScale)
+                 xs
+         return $! L.foldl' addHistogram h ys)
+      hist
+      gensList
+  if numLeft > 0
+    then do
+      gens <- M.replicateM numGen createSystemRandom
+      xs <-
+        MP.mapM
+          (\gen ->
+             M.replicateM
+               (div numLeft numGen)
+               (do t0 <- genContVar (uniformDistr 0 (2 * pi)) gen :: IO Double
+                   s0 <-
+                     genContVar (uniformDistr 0 (log maxScale)) gen :: IO Double
+                   x0 <- genContVar (normalDistr 0 gaussianSigma) gen :: IO Double
+                   y0 <- genContVar (normalDistr 0 gaussianSigma) gen :: IO Double
+                   generatePath
+                     gen
+                     thetaDist
+                     scaleDist
+                     maxScale
+                     tao
+                     xRange
+                     yRange
+                     (x0, y0, t0, s0, t0, s0)))
           gens
       let ys =
             parMap
@@ -1429,3 +1559,43 @@ solveMonteCarloR2Z2T0S0ReversalCornerRadial numGen numTrails maxTrails xLen yLen
     else do
       unless (L.null filePath) (encodeFile filePath histogram)
       return . R.map magnitude . getNormalizedHistogramArr $ histogram
+
+{-# INLINE runBatch #-}
+runBatch :: Int -> Int -> Int -> (Int -> a -> [GenIO] -> IO a) -> a -> IO a
+runBatch numGens numTrails batchSize mainFunc init = do
+  let (numBatch, numLeftover) = divMod numTrails batchSize
+  printf
+    "%d trails and batch size is %d, %d batch in total.\n"
+    numTrails
+    batchSize
+    (numBatch +
+     if numLeftover > 0
+       then 1
+       else 0)
+  gensList <- M.replicateM numBatch (M.replicateM numGens createSystemRandom)
+  x <- M.foldM (mainFunc batchSize) init gensList
+  if numLeftover > 0
+    then do
+      gens <- M.replicateM numGens createSystemRandom
+      mainFunc numLeftover x gens
+    else return x
+    
+{-# INLINE computeHistogramFromMonteCarloParallel #-}
+computeHistogramFromMonteCarloParallel ::
+     (NFData hist)
+  => FilePath
+  -> (GenIO -> IO points)
+  -> (points -> hist)
+  -> (hist -> hist -> hist)
+  -> Int
+  -> hist
+  -> [GenIO]
+  -> IO hist
+computeHistogramFromMonteCarloParallel filePath pointsGenerator histFunc addHist n initHist gens = do
+  xs <- MP.mapM pointsGenerator gens
+  let ys = parMap rdeepseq histFunc xs
+  return $! L.foldl' addHist initHist ys
+
+
+-- Shiftable, twistable and scalable
+   
