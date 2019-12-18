@@ -31,3 +31,4 @@ send.sh
 # vim files
 *.swp
 
+/stack.yaml.lock

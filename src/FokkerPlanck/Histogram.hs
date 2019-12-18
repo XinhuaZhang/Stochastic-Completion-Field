@@ -49,6 +49,19 @@ getNormalizedHistogramVec (Histogram size n vec)
     "\nVector length = " L.++
     (show . VU.length $ vec)
   | otherwise = VU.map (/ fromIntegral n) vec
+  
+{-# INLINE getHistogramArr #-}
+getHistogramArr ::
+     (Unbox a, Fractional a, Shape d) => Histogram a -> R.Array U d a
+getHistogramArr (Histogram size n vec)
+  | n == 0 = error "getHistogramArr: n == 0."
+  | (L.product size) /= (VU.length vec) =
+    error $
+    "getHistogramArr: size mismatch\nSize = " L.++ show size L.++ " = " L.++
+    (show . L.product $ size) L.++
+    "\nVector length = " L.++
+    (show . VU.length $ vec)
+  | otherwise = fromUnboxed (shapeOfList size) vec
 
 {-# INLINE getNormalizedHistogramArr #-}
 getNormalizedHistogramArr ::

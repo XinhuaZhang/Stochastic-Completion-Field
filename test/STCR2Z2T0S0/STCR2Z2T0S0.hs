@@ -21,7 +21,7 @@ import           Types
 import           Utils.Array
 
 main = do
-  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:initDistStr:histFilePath:alphaStr:pinwheelFlagStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:taoStr:numTrailStr:maxTrailStr:theta0FreqsStr:thetaFreqsStr:scale0FreqsStr:scaleFreqsStr:initDistStr:histFilePath:alphaStr:radialFlagStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -43,20 +43,83 @@ main = do
       scale0Freqs = [-scale0Freq .. scale0Freq]
       scaleFreqs = [-scaleFreq .. scaleFreq]
       alpha = read alphaStr :: Double
-      pinwheelFlag = read pinwheelFlagStr :: Bool
+      radialFlag = read radialFlagStr :: Bool
       numThread = read numThreadStr :: Int
       sourceDist = L.take 1 initDist
       sinkDist = L.drop 1 initDist
       folderPath = "output/test/STCR2Z2T0S0"
+      dirName = takeDirectory histFilePath
+      fileName = takeFileName histFilePath
+      newHistFilePath =
+        if radialFlag
+          then dirName </> ("Radial_" L.++ fileName)
+          else histFilePath
       (R2S1RPPoint (_, _, _, s)) = L.head sourceDist
-  flag <- doesFileExist histFilePath
-  radialArr <-
-    if flag
-      then R.map magnitude . getNormalizedHistogramArr <$>
-           decodeFile histFilePath
+  createDirectoryIfMissing True folderPath
+  arrR2Z2T0S0 <-
+    if radialFlag
+      then do
+        flag <- doesFileExist newHistFilePath
+        radialArr <-
+          if flag
+            then R.map magnitude . getNormalizedHistogramArr <$>
+                 decodeFile newHistFilePath
+            else do
+              putStrLn
+                "Couldn't find a Green's function data. Start simulation..."
+              solveMonteCarloR2Z2T0S0Radial
+                numThread
+                numTrail
+                maxTrail
+                numPoint
+                numPoint
+                thetaSigma
+                scaleSigma
+                maxScale
+                tao
+                theta0Freqs
+                thetaFreqs
+                scale0Freqs
+                scaleFreqs
+                newHistFilePath
+                (emptyHistogram
+                   [ if maxScale >= 2
+                        then round maxScale + 1
+                        else (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
+                   , L.length scale0Freqs
+                   , L.length theta0Freqs
+                   , L.length scaleFreqs
+                   , L.length thetaFreqs
+                   ]
+                   0)
+        computeUnboxedP $
+          computeR2Z2T0S0ArrayRadial
+            Pinwheel
+            radialArr
+            numPoint
+            numPoint
+            1
+            maxScale
+            thetaFreqs
+            scaleFreqs
+            theta0Freqs
+            scale0Freqs
       else do
-        putStrLn "Couldn't find a Green's function data. Start simulation..."
-        solveMonteCarloR2Z2T0S0Radial
+        flag <- doesFileExist newHistFilePath
+        hist <-
+          if flag
+            then decodeFile newHistFilePath
+            else return $
+                 emptyHistogram
+                   [ numPoint
+                   , numPoint
+                   , L.length scale0Freqs
+                   , L.length theta0Freqs
+                   , L.length scaleFreqs
+                   , L.length thetaFreqs
+                   ]
+                   0
+        solveMonteCarloR2Z2T0S0
           numThread
           numTrail
           maxTrail
@@ -70,50 +133,9 @@ main = do
           thetaFreqs
           scale0Freqs
           scaleFreqs
-          histFilePath
-          (emptyHistogram
-             [ (round . sqrt . fromIntegral $ 2 * (div numPoint 2) ^ 2)
-             , L.length scale0Freqs
-             , L.length theta0Freqs
-             , L.length scaleFreqs
-             , L.length thetaFreqs
-             ]
-             0)
-  arrR2Z2T0S0 <-
-    computeUnboxedP $
-    computeR2Z2T0S0ArrayRadial
-      radialArr
-      numPoint
-      numPoint
-      1
-      maxScale
-      thetaFreqs
-      scaleFreqs
-      theta0Freqs
-      scale0Freqs
-  createDirectoryIfMissing True folderPath
-  let arr4d =
-        R.slice
-          arrR2Z2T0S0
-          (Z :. All :. All :. (L.length theta0Freqs - 1) :.
-           (L.length scale0Freqs - 1) :.
-           All :.
-           All)
-  createDirectoryIfMissing True (folderPath </> "GreensR2Z2T0S0")
-  -- MP.mapM_
-  --   (\(i, j) ->
-  --      plotImageRepaComplex
-  --        (folderPath </> "GreensR2Z2T0S0" </> show (i + 1) L.++ "_" L.++
-  --         show (j + 1) L.++
-  --         ".png") .
-  --      ImageRepa 8 .
-  --      computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice arr4d $
-  --      (Z :. i :. j :. All :. All))
-  --   [ (i, j)
-  --   | i <- [0 .. (L.length thetaFreqs) - 1]
-  --   , j <- [0 .. (L.length scaleFreqs) - 1]
-  --   ]
-  plan <- makeR2Z2T0S0Plan emptyPlan arrR2Z2T0S0
+          newHistFilePath
+          hist
+  plan <- makeR2Z2T0S0Plan emptyPlan False "" arrR2Z2T0S0
   sourceDistArr <-
     computeInitialDistributionR2T0S0
       plan
@@ -141,8 +163,8 @@ main = do
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
     R.sumP .
     R.sumS .
-    rotate4D .
-    rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+    rotate4D2 .
+    r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
     sourceR2Z2
   plotImageRepaComplex (folderPath </> printf "Source%.0f.png" s) . ImageRepa 8 $
     sourceField
@@ -154,8 +176,8 @@ main = do
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) .
     R.sumP .
     R.sumS .
-    rotate4D .
-    rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+    rotate4D2 .
+    r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
     sinkR2Z2
   plotImageRepaComplex (folderPath </> printf "Sink%.0f.png" s) . ImageRepa 8 $
     sinkField
@@ -164,8 +186,8 @@ main = do
   completionFiledR2 <-
     R.sumP .
     R.sumS .
-    rotate4D .
-    rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+    rotate4D2 .
+    r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
     completionFiled
   plotImageRepaComplex (folderPath </> printf "Completion%.0f.png" s) .
     ImageRepa 8 . computeS . R.extend (Z :. (1 :: Int) :. All :. All) $

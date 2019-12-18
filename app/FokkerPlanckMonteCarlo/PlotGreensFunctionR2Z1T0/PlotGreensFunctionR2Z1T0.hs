@@ -29,6 +29,8 @@ main = do
       thetaFreqs = read thetaFreqsStr :: [Double]
       numThread = read numThreadStr :: Int
       -- computeR2Z1T0Array numPoint numPoint (-1) thetaFreqs theta0Freqs
+      folderPath = "output/app/PlotGreensFunctionR2Z1T0"
+  createDirectoryIfMissing True (folderPath </> "GreensR2Z1T0")
   arr <-
     solveMonteCarloR2Z1T0
       numThread
@@ -38,7 +40,7 @@ main = do
       numPoint
       sigma
       tao
-      1
+      0
       len
       theta0Freqs
       thetaFreqs
@@ -48,11 +50,9 @@ main = do
          0)
   let arr3d =
         rotate3D . R.slice arr $
-        (Z :. All :. (L.length theta0Freqs - 1) :. All :. All)
+        (Z :. (L.length thetaFreqs - 1) :. All :. All :. All)
       arr' =
-        computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS $ arr3d
-      folderPath = "output/app/PlotGreensFunctionR2Z1T0"
-  createDirectoryIfMissing True (folderPath </> "GreensR2Z1T0")
+        computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS $ arr3d      
   plotImageRepaComplex (folderPath </> "GreensR2Z1T0.png") . ImageRepa 8 $ arr'
   MP.mapM_
     (\i ->
@@ -61,4 +61,4 @@ main = do
        ImageRepa 8 .
        computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice arr3d $
        (Z :. All :. All :. i))
-    [0 .. (L.length thetaFreqs) - 1]
+    [0 .. (L.length theta0Freqs) - 1]

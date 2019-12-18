@@ -74,7 +74,7 @@ computeR2Z2T0S0ArrayRadial pinwheelType radialArr xLen yLen scaleFactor rMax the
           pinwheelFunc
             pinwheelType
             (ft (Z :. t) - ft0 (Z :. t0))
-            (fs (Z :. s) + fs0 (Z :. s0))
+            (fs (Z :. s) - fs0 (Z :. s0))
             rMax
             0
             (i - center xLen)

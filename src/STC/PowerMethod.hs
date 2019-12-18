@@ -231,7 +231,7 @@ powerMethodR2Z2T0S0 plan folderPath cols rows numOrientation thetaFreqs numScale
   sinkR2Z2 <- (R.sumP . rotateR2Z2T0S0Array $ sinkR2Z2T0S0) >>= R.sumP
   sinkField <-
     (R.sumP .
-     rotate4D2 . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D2 . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
      sinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s.png" idStr) . ImageRepa 8 $
@@ -244,6 +244,7 @@ powerMethodR2Z2T0S0 plan folderPath cols rows numOrientation thetaFreqs numScale
     thetaFreqs
     numScale
     scaleFreqs
+    maxScale
     sourceR2Z2
     sinkR2Z2
 
@@ -342,7 +343,7 @@ powerMethodR2Z2T0S0Bias plan folderPath cols rows numOrientation thetaFreqs thet
   sinkField <-
     (R.sumP .
      rotate4D .
-     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
      sinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s.png" idStr) . ImageRepa 8 $
@@ -355,6 +356,7 @@ powerMethodR2Z2T0S0Bias plan folderPath cols rows numOrientation thetaFreqs thet
     thetaFreqs
     numScale
     scaleFreqs
+    maxScale
     sourceR2Z2
     sinkR2Z2
 
@@ -583,7 +585,8 @@ powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs 
   sinkField <-
     (R.sumP .
      rotate4D .
-     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D .
+     r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
      sinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s.png" idStr) . ImageRepa 8 $
@@ -598,6 +601,7 @@ powerMethodR2Z2T0S0Reversal plan folderPath cols rows numOrientation thetaFreqs 
       thetaFreqs
       numScale
       scaleFreqs
+      maxScale
       sourceR2Z2
       sinkR2Z2
   return sourceR2Z2
@@ -711,7 +715,8 @@ powerMethodR2Z2T0S0BiasReversal plan folderPath cols rows numOrientation thetaFr
   sinkField <-
     (R.sumP .
      rotate4D .
-     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D .
+     r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
      sinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s.png" idStr) . ImageRepa 8 $
@@ -726,6 +731,7 @@ powerMethodR2Z2T0S0BiasReversal plan folderPath cols rows numOrientation thetaFr
       thetaFreqs
       numScale
       scaleFreqs
+      maxScale
       sourceR2Z2
       sinkR2Z2
 
@@ -945,7 +951,7 @@ powerMethodR2Z2T0S0EndModal plan folderPath cols rows numOrientation thetaFreqs 
   modalSinkField <-
     (R.sumP .
      rotate4D .
-     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
      modalSinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s_Modal.png" idStr) .
@@ -958,7 +964,7 @@ powerMethodR2Z2T0S0EndModal plan folderPath cols rows numOrientation thetaFreqs 
   endSinkField <-
     (R.sumP .
      rotate4D .
-     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs $
+     rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
      endSinkR2Z2) >>=
     fmap (computeS . R.extend (Z :. (1 :: Int) :. All :. All)) . R.sumP
   plotImageRepaComplex (folderPath </> printf "Sink%s.png_EndPoint" idStr) .
@@ -974,6 +980,7 @@ powerMethodR2Z2T0S0EndModal plan folderPath cols rows numOrientation thetaFreqs 
       thetaFreqs
       numScale
       scaleFreqs
+      maxScale
       modalSourceR2Z2
       modalSinkR2Z2
   completionEnd <-
@@ -986,6 +993,7 @@ powerMethodR2Z2T0S0EndModal plan folderPath cols rows numOrientation thetaFreqs 
       thetaFreqs
       numScale
       scaleFreqs
+      maxScale
       endSourceR2Z2
       endSinkR2Z2
   return (completionEnd, completionModal)
@@ -1014,11 +1022,7 @@ eigenVector4D plan folderPath numOrientation thetaFreqs numScale scaleFreqs maxS
   let biasedInputR2Z2 = R.zipWith (*) bias inputR2Z2
   s <- fmap sqrt . R.sumAllP . R.map (\x -> (magnitude x) ^ 2) $ biasedInputR2Z2
   let normalizedBiasedInputR2Z2 = R.map (/ (s :+ 0)) $ biasedInputR2Z2
-  sourceR2Z2 <-
-    convolve4D
-      plan
-      filterF
-      (computeS normalizedBiasedInputR2Z2)
+  sourceR2Z2 <- convolve4D plan filterF (computeS normalizedBiasedInputR2Z2)
       -- (computeS $
       --  R.traverse2
       --    normalizedBiasedInputR2Z2
@@ -1049,9 +1053,8 @@ eigenVector4D plan folderPath numOrientation thetaFreqs numScale scaleFreqs maxS
           extend (Z :. (1 :: Int) :. All :. All) .
           sumS .
           sumS .
-          rotate4D .
-          rotate4D . r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs  
-          $
+          rotate4D2 .
+          r2z2Tor2s1rp numOrientation thetaFreqs numScale scaleFreqs maxScale $
           sourceR2Z2)
   return sourceR2Z2
 
@@ -1225,6 +1228,7 @@ powerMethodBinary parallelParams plan folderPath cols rows numOrientation thetaF
     thetaFreqs
     numScale
     scaleFreqs
+    maxScale
     sourceR2Z2
     sinkR2Z2
 

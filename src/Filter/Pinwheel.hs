@@ -66,26 +66,38 @@ pinwheelFunc Pinwheel af rf maxR alpha x y
   | r == 0 && af == 0 && rf == 0 = 1
   | r == 0 = 0
   | otherwise =
-    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / logMaxR) *
     exp (0 :+ af * (thetaFunc x y))
   where
     r = rFunc x y
+    logMaxR =
+      if maxR == 1
+        then 1
+        else log maxR
 pinwheelFunc (PinwheelHollow0 radius) af rf maxR alpha x y
   | r < radius = 0.0
   | otherwise =
-    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / logMaxR) *
     exp (0 :+ af * (thetaFunc x y))
   where
     r = rFunc x y
+    logMaxR =
+      if maxR == 1
+        then 1
+        else log maxR
 pinwheelFunc (PinwheelHollow1 radius) af rf maxR alpha x y
   | r == 0 && af == 0 && rf == 0 = 1
   | r < radius = 0.0
   | otherwise =
-    (r :+ 0) ** (alpha :+ rf * 2 * pi / log maxR) *
+    (r :+ 0) ** (alpha :+ rf * 2 * pi / logMaxR) *
     exp (0 :+ af * (thetaFunc x y))
   where
     r = rFunc x y
-              
+    logMaxR =
+      if maxR == 1
+        then 1
+        else log maxR
+
 {-# INLINE pinwheelPI #-}
 pinwheelPI :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 pinwheelPI af rf maxR alpha x y

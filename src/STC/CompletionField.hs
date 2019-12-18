@@ -200,21 +200,21 @@ completionFieldR2Z2 ::
   -> [Double]
   -> Int
   -> [Double]
+  -> Double
   -> R2T0S0Array
   -> R2T0S0Array
   -> IO (R.Array U DIM4 (Complex Double))
-completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale scaleFreqs source sink
-
- = do
+completionFieldR2Z2 plan folderPath idStr numOrientation thetaFreqs numScale scaleFreqs maxScale source sink = do
   completionField <- convolveR2Z2 plan source sink
   -- completionField <- computeP $ source *^ sink
-  let (Z :. _ :. _ :. cols :. rows) = extent completionR2S1RP
+  let (Z :. _ :. _ :. cols :. rows) = extent completionField
       completionR2S1RP =
         r2z2Tor2s1rp
           numOrientation
           thetaFreqs
           numScale
           scaleFreqs
+          maxScale
           completionField
       orientationSampleDeg =
         [ 360 * fromIntegral i / fromIntegral numOrientation

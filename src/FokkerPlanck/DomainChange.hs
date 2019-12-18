@@ -115,10 +115,12 @@ r2z2Tor2s1rp ::
   -> [Double]
   -> Int
   -> [Double]
+  -> Double
   -> R.Array s DIM4 (Complex Double)
   -> R.Array U DIM4 (Complex Double)
-r2z2Tor2s1rp numOrientations thetaFreqs numScales scaleFreqs arr =
+r2z2Tor2s1rp numOrientations thetaFreqs numScales scaleFreqs maxScale arr =
   let deltaTheta = 2 * pi / (fromIntegral numOrientations)
+      deltaScale = log maxScale / (fromIntegral numScales)
       (Z :. numThetaFreq :. numScaleFreq :. xLen :. yLen) = extent arr
       mat1 =
         ((numOrientations * numScales) >< (numThetaFreq * numScaleFreq)) .
@@ -135,12 +137,12 @@ r2z2Tor2s1rp numOrientations thetaFreqs numScales scaleFreqs arr =
                (0 :+
                 (1) *
                 ((deltaTheta * fromIntegral i) * f2 (Z :. k) +
-                 (2 * pi * fromIntegral j / fromIntegral numScales) *
+                 (2 * pi * fromIntegral j * deltaScale / (log maxScale)) *
                  f3 (Z :. l))))
       mat2 = ((numThetaFreq * numScaleFreq) >< (xLen * yLen)) . R.toList $ arr
-   in fromListUnboxed (Z :. numOrientations :. numScales :. xLen :. yLen) .
-      NL.toList . flatten $
-      mat1 NL.<> mat2
+  in fromListUnboxed (Z :. numOrientations :. numScales :. xLen :. yLen) .
+     NL.toList . flatten $
+     mat1 NL.<> mat2
       
 
 {-# INLINE r2z2Tor2s1rpP #-}
@@ -155,6 +157,7 @@ r2z2Tor2s1rpP ::
   -> IO (R.Array U DIM4 (Complex Double))
 r2z2Tor2s1rpP numOrientations thetaFreqs numScales scaleFreqs maxR arr = do
   let deltaTheta = 2 * pi / (fromIntegral numOrientations)
+      deltaScale = log maxR / (fromIntegral numOrientations)
       (Z :. numThetaFreq :. numScaleFreq :. xLen :. yLen) = extent arr
       mat2 = ((numThetaFreq * numScaleFreq) >< (xLen * yLen)) . R.toList $ arr
   mat1 <-
@@ -174,8 +177,7 @@ r2z2Tor2s1rpP numOrientations thetaFreqs numScales scaleFreqs maxR arr = do
            (0 :+
             (1) *
             ((deltaTheta * fromIntegral i) * f2 (Z :. k) +
-             (2 * pi * fromIntegral j / fromIntegral numScales) *
-             f3 (Z :. l))))
+             (2 * pi * fromIntegral j * deltaScale / (log maxR)) * f3 (Z :. l))))
   return .
     fromListUnboxed (Z :. numOrientations :. numScales :. xLen :. yLen) .
     NL.toList . flatten $
@@ -287,3 +289,133 @@ r2s1rps1rpTor2z2t0s0 numOrientations thetaFreqs theta0Freqs numScales scaleFreqs
          yLen) .
       NL.toList . flatten $
       mat1 NL.<> mat2
+
+-- x y t s
+{-# INLINE stsTor2s1rp #-}
+stsTor2s1rp ::
+     Int
+  -> Double
+  -> [Double]
+  -> Int
+  -> Double
+  -> [Double]
+  -> Int
+  -> [Double]
+  -> Int
+  -> [Double]
+  -> Double
+  -> R.Array U DIM4 (Complex Double)
+  -> IO (R.Array U DIM4 (Complex Double))
+stsTor2s1rp numX xLen xFreqs numY yLen yFreqs numOrientations thetaFreqs numScales scaleFreqs maxScale arr = do
+  let deltaX = xLen / fromIntegral numX
+      deltaY = yLen / fromIntegral numY
+      deltaTheta = 2 * pi / fromIntegral numOrientations
+      deltaScale = (log maxScale) / fromIntegral numScales
+      centerX = div numX 2
+      centerY = div numY 2
+      vec = NL.fromList . R.toList $ arr
+  transformMat <-
+    fmap
+      (((numX * numY * numOrientations * numScales) ><
+        (L.product . listOfShape . extent $ arr)) .
+       R.toList) .
+    computeUnboxedP .
+    R.traverse4
+      (fromListUnboxed (Z :. L.length xFreqs) xFreqs)
+      (fromListUnboxed (Z :. L.length yFreqs) yFreqs)
+      (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
+      (fromListUnboxed (Z :. L.length scaleFreqs) scaleFreqs)
+      (\(Z :. numXFreq) (Z :. numYFreq) (Z :. numThetaFreq) (Z :. numScaleFreq) ->
+         (Z :. numX :. numY :. numOrientations :. numScales :. numXFreq :.
+          numYFreq :.
+          numThetaFreq :.
+          numScaleFreq)) $ \fx fy fo fs (Z :. x :. y :. o :. s :. xf :. yf :. orif :. sf) ->
+      exp
+        (0 :+
+         (fo (Z :. orif) * fromIntegral o * deltaTheta +
+          2 * pi *
+          (fs (Z :. sf) * fromIntegral s * deltaScale / (log maxScale) +
+           fx (Z :. xf) * fromIntegral ((x :: Int) - centerX) * deltaX / xLen +
+           fy (Z :. yf) * fromIntegral ((y :: Int) - centerY) * deltaY / yLen)))
+  return .
+    fromListUnboxed (Z :. numX :. numY :. numOrientations :. numScales) .
+    NL.toList $
+    transformMat NL.#> vec
+    
+
+{-# INLINE stsTor2 #-}
+stsTor2 ::
+     Int
+  -> Double
+  -> [Double]
+  -> Int
+  -> Double
+  -> [Double]
+  -> R.Array U DIM4 (Complex Double)
+  -> IO (R.Array U DIM2 (Complex Double))
+stsTor2 numX xLen xFreqs numY yLen yFreqs arr = do
+  let deltaX = xLen / fromIntegral numX
+      deltaY = yLen / fromIntegral numY
+      centerX = div numX 2
+      centerY = div numY 2
+  vec <-
+    fmap (NL.fromList . R.toList) .
+    sumP . sumS . R.map (\x -> (magnitude x) ^ 2 :+ 0) $
+    arr
+  transformMat <-
+    fmap
+      (((numX * numY) >< (L.product . L.drop 2 . listOfShape . extent $ arr)) .
+       R.toList) .
+    computeUnboxedP .
+    R.traverse2
+      (fromListUnboxed (Z :. L.length xFreqs) xFreqs)
+      (fromListUnboxed (Z :. L.length yFreqs) yFreqs)
+      (\(Z :. numXFreq) (Z :. numYFreq) ->
+         (Z :. numX :. numY :. numXFreq :. numYFreq)) $ \fx fy (Z :. x :. y :. xf :. yf) ->
+      exp
+        (0 :+
+         (2 * pi *
+          (fx (Z :. xf) * fromIntegral (x - centerX) * deltaX / xLen +
+           fy (Z :. yf) * fromIntegral (y - centerY) * deltaY / yLen)))
+  return . fromListUnboxed (Z :. numX :. numY) . NL.toList $
+    transformMat NL.#> vec
+
+
+{-# INLINE stsTor2' #-}
+stsTor2' ::
+     Int
+  -> Double
+  -> [Double]
+  -> Int
+  -> Double
+  -> [Double]
+  -> R.Array U DIM4 (Complex Double)
+  -> IO (R.Array U DIM2 Double)
+stsTor2' numX xLen xFreqs numY yLen yFreqs arr = do
+  let deltaX = xLen / fromIntegral numX
+      deltaY = yLen / fromIntegral numY
+      centerX = div numX 2
+      centerY = div numY 2
+      (Z :. numXF :. numYF :. numTF :. numSF) = extent arr
+      mat = ((numXF * numYF) >< (numTF * numSF)) (R.toList arr)
+  transformMat <-
+    fmap
+      (((numX * numY) >< (L.product . L.drop 2 . listOfShape . extent $ arr)) .
+       R.toList) .
+    computeUnboxedP .
+    R.traverse2
+      (fromListUnboxed (Z :. L.length xFreqs) xFreqs)
+      (fromListUnboxed (Z :. L.length yFreqs) yFreqs)
+      (\(Z :. numXFreq) (Z :. numYFreq) ->
+         (Z :. numX :. numY :. numXFreq :. numYFreq)) $ \fx fy (Z :. x :. y :. xf :. yf) ->
+      exp
+        (0 :+
+         (2 * pi *
+          (fx (Z :. xf) * fromIntegral (x - centerX) * deltaX / xLen +
+           fy (Z :. yf) * fromIntegral (y - centerY) * deltaY / yLen)))
+  return .
+    sumS .
+    sumS .
+    R.map (\x -> (magnitude x) ^ 2) .
+    fromListUnboxed (Z :. numX :. numY :. numTF :. numSF) . NL.toList . flatten $
+    transformMat NL.<> mat

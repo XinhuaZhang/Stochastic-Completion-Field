@@ -9,6 +9,7 @@ import           Image.IO
 import           System.Directory
 import           System.Environment
 import           System.FilePath
+import           Text.Printf
 import           Utils.Array
 
 {-# INLINE reduceContrast #-}
@@ -33,7 +34,7 @@ main = do
       sigma = read sigmaStr :: Double
       tao = read taoStr :: Double
       len = read lenStr :: Int
-      init = read initStr :: (Double, Double, Double, Double, Double, Double)
+      init@ (_,_,_,_,_,s0) = read initStr :: (Double, Double, Double, Double, Double, Double)
       numTrail = read numTrailStr :: Int
       numThread = read numThreadStr :: Int
   arr <-
@@ -47,7 +48,7 @@ main = do
       tao
       numPoint
       ""
-      init 
+      init
   let arr' =
         computeS .
         -- reduceContrast 10 .
@@ -55,4 +56,4 @@ main = do
         arr
       folderPath = "output/app/PlotGreensFunctionR2S1"
   createDirectoryIfMissing True folderPath
-  plotImageRepa (folderPath </> "GreensR2S1.png") . ImageRepa 8 $ arr'
+  plotImageRepa (folderPath </> printf "GreensR2S1_%.0f.png" s0) . ImageRepa 8 $ arr'

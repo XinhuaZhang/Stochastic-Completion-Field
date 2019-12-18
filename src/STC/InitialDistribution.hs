@@ -110,7 +110,7 @@ computeInitialDistributionR2T0S0 plan xLen yLen theta0Freqs scale0Freqs maxScale
                    in ( (x, y)
                       , exp
                           (0 :+
-                           (-1) *
+                           (1) *
                            (t0f * (theta / 180 * pi) +
                             s0f * 2 * pi * scale / log maxScale)))) $
              xs) $
