@@ -5,6 +5,6 @@ type ParticleIndex
      , Double -- y
      , Double -- theta
      , Double -- scale
-     , Double -- theta_0
-     , Double -- scale_0
+     , Double
+     , Double
       )

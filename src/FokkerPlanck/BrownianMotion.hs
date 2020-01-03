@@ -1,14 +1,13 @@
 {-# LANGUAGE BangPatterns #-}
-module FokkerPlanck.BrownianMotion 
-  ( generatePath
-  , generatePathRaidalRounded
-  , generatePathRaidalAntiAliasing
+module FokkerPlanck.BrownianMotion
+  ( Particle(..)
+  , generatePath
+  , moveParticle
   ) where
 
 import           Data.DList                          as DL
 import           Data.Ix
 import           Data.List                           as L
-import           FokkerPlanck.Types
 import           Statistics.Distribution
 import           Statistics.Distribution.Exponential
 import           Statistics.Distribution.Normal
@@ -16,17 +15,28 @@ import           Statistics.Distribution.Uniform
 import           System.Random.MWC
 import           Text.Printf
 
+data Particle =
+  Particle {-# UNPACK #-}!Double -- \phi
+           {-# UNPACK #-}!Double -- \rho
+           {-# UNPACK #-}!Double -- \theta
+           {-# UNPACK #-}!Double -- r
+  deriving (Show)
+
+{-# INLINE getParticleRho #-}
+getParticleRho :: Particle -> Double
+getParticleRho (Particle _ rho _ _ ) = rho
+
 {-# INLINE thetaCheck #-}
 thetaCheck :: Double -> Double
 thetaCheck theta =
   if theta >= 0 && theta <= (2 * pi)
     then theta
     else error (printf "thetaCheck: %.2f is out of boundary (0,2pi)\n" theta)
-    
+
 {-# INLINE scaleCheck #-}
 scaleCheck :: Double -> Double -> Double
 scaleCheck maxScale scale =
-  if scale >= 0 && scale <= maxScale
+  if scale >= (1 / maxScale) && scale <= maxScale
     then scale
     else error
            (printf
@@ -36,41 +46,59 @@ scaleCheck maxScale scale =
 
 {-# INLINE thetaPlus #-}
 thetaPlus :: Double -> Double -> Double
-thetaPlus x y
+thetaPlus !x !y
   | z < 0 = z + a
   | z >= a = z - a
   | otherwise = z
   where
-    z = x + y
-    a = 2 * pi
-
-{-# INLINE scalePlus #-}
-scalePlus :: Double -> Double -> Double -> Double
-scalePlus maxScale x y
-  | z < 0 = 0
-  | z >= maxScale = maxScale
-  | otherwise = z
-  where
-    z = x + y
+    !z = x + y
+    !a = 2 * pi
 
 {-# INLINE scalePlusPeriodic #-}
 scalePlusPeriodic :: Double -> Double -> Double -> Double
-scalePlusPeriodic maxScale x y
-  | z < 0 = maxScale + z
-  | z >= maxScale = z - maxScale
+scalePlusPeriodic !maxScale !x !y
+  | z < m = maxScale - (m - z)
+  | z >= maxScale = z - maxScale + m
   | otherwise = z
   where
-    z = x + y
+    !m = 1 / maxScale
+    !z = x + y
+
+{-# INLINE scalePlusPeriodic' #-}
+scalePlusPeriodic' :: Double -> Double -> Double  
+scalePlusPeriodic' !maxScale !z
+  | z < m = maxScale - (m - z)
+  | z >= maxScale = z - maxScale + m
+  | otherwise = z
+  where
+    m = 1 / maxScale
 
 {-# INLINE generateRandomNumber #-}
 generateRandomNumber ::
      (Distribution d, ContGen d) => GenIO -> Maybe d -> IO Double
-generateRandomNumber gen dist =
+generateRandomNumber !gen dist =
   case dist of
     Nothing -> return 0
     Just d -> genContVar d gen
+    
+{-# INLINE moveParticle #-}  
+moveParticle :: Particle -> Particle
+moveParticle (Particle phi rho theta r) =
+  let x = theta - phi
+      cosX = cos x
+      newPhi = phi `thetaPlus` atan2 (r * sin x) (rho + r * cosX)
+      newRho = sqrt (rho * rho + r * r + 2 * r * rho * cosX)
+  in Particle newPhi newRho theta r
 
-{-# INLINE brownianMotion #-}
+{-# INLINE diffuseParticle #-}
+diffuseParticle :: Double -> Double -> Double -> Particle -> Particle
+diffuseParticle !deltaTheta !deltaScale !maxScale (Particle phi rho theta r) =
+  Particle
+    phi
+    rho
+    (theta `thetaPlus` deltaTheta)
+    (scalePlusPeriodic maxScale r deltaScale)
+
 brownianMotion ::
      (Distribution d, ContGen d)
   => GenIO
@@ -78,179 +106,45 @@ brownianMotion ::
   -> Maybe d
   -> Double
   -> Double
-  -> Double
-  -> (Double -> Double -> Bool)
-  -> ParticleIndex
-  -> DList ParticleIndex
-  -> IO (DList ParticleIndex)
-brownianMotion randomGen thetaDist scaleDist maxScale tao deltaDist checkRange (!x, !y, !theta, !scale, theta0, scale0) xs = do
+  -> Particle
+  -> DList Particle
+  -> IO (DList Particle)
+brownianMotion !randomGen !thetaDist !scaleDist !maxScale !tao !particle !xs = do
   deltaTheta <- generateRandomNumber randomGen thetaDist
   deltaScale <- generateRandomNumber randomGen scaleDist
-  let newTheta = theta `thetaPlus` deltaTheta
-      newScale = scalePlus maxScale scale deltaScale
-      cosTheta = cos theta
-      sinTheta = sin theta
-      newX = x + scale * cosTheta
-      newY = y + scale * sinTheta
-      newIndex = (newX, newY, newTheta, newScale, theta0, scale0)
+  let !newParticle@(Particle _ !rho _ _) =
+        diffuseParticle deltaTheta deltaScale maxScale . moveParticle $ particle
       ys =
-        if checkRange newX newY
-          then DL.cons newIndex xs
+        if 1 / maxScale <= rho && rho <= maxScale
+          then DL.cons newParticle xs
           else xs
-      iDeltaDist i = deltaDist * fromIntegral i
-      zs =
-        DL.append ys .
-        DL.fromList . L.filter (\(a, b, _, _, _, _) -> checkRange a b) $
-        [ ( x + iDeltaDist i * cosTheta
-          , y + iDeltaDist i * sinTheta
-          , theta
-          , iDeltaDist i
-          , theta0
-          , scale0)
-        | i <- [1 .. (floor $ scale / deltaDist) - 1]
-        ]
   t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
-  if t < (1 - exp ((-1) / tao))
-    then return zs
+  if t > exp (1 / (-tao))
+    then return ys
     else brownianMotion
            randomGen
            thetaDist
            scaleDist
            maxScale
            tao
-           deltaDist
-           checkRange
-           newIndex
-           zs
+           newParticle
+           ys
 
 {-# INLINE generatePath #-}
 generatePath ::
      (Distribution d, ContGen d)
-  => GenIO
+  => Maybe d
   -> Maybe d
-  -> Maybe d
   -> Double
   -> Double
-  -> Double
-  -> (Int, Int)
-  -> (Int, Int)
-  -> ParticleIndex
-  -> IO (DList ParticleIndex)
-generatePath randomGen thetaDist scaleDist maxScale tao deltaDist xRange yRange init@(x', y', theta', scale', theta0', scale0') =
+  -> GenIO
+  -> IO (DList Particle)
+generatePath thetaDist scaleDist maxScale tao randomGen =
   brownianMotion
     randomGen
     thetaDist
     scaleDist
     maxScale
     tao
-    deltaDist
-    (\a b ->
-       (inRange xRange (round a)) &&
-       (inRange yRange (round b)) && (round a /= 0 || round b /= 0))
-    ( x'
-    , y'
-    , thetaCheck theta'
-    , scaleCheck maxScale scale'
-    , thetaCheck theta0'
-    , scaleCheck maxScale scale0')
+    (Particle 0 0 0 1)
     DL.empty
-
--- Only simulate the radial part
-{-# INLINE generatePathRaidalRounded #-}
-generatePathRaidalRounded ::
-     (Distribution d, ContGen d)
-  => GenIO
-  -> Maybe d
-  -> Maybe d
-  -> Double
-  -> Double
-  -> Double
-  -> (Int, Int)
-  -> ParticleIndex
-  -> IO (DList ParticleIndex)
-generatePathRaidalRounded randomGen thetaDist scaleDist maxScale tao deltaDist rRange init@(x', y', theta', scale', theta0', scale0') =
-  brownianMotion
-    randomGen
-    thetaDist
-    scaleDist
-    maxScale
-    tao
-    deltaDist
-    (\a b -> (inRange rRange (round a)) && (round b == 0) && (round a /= 0))
-    ( x'
-    , y'
-    , thetaCheck theta'
-    , scaleCheck maxScale scale'
-    , thetaCheck theta0'
-    , scaleCheck maxScale scale0')
-    DL.empty
-    
-
-{-# INLINE generatePathRaidalAntiAliasing #-}
-generatePathRaidalAntiAliasing ::
-     (Distribution d, ContGen d)
-  => GenIO
-  -> Maybe d
-  -> Maybe d
-  -> Double
-  -> Double
-  -> Double
-  -> (Int, Int)
-  -> ParticleIndex
-  -> IO (DList ParticleIndex)
-generatePathRaidalAntiAliasing randomGen thetaDist scaleDist maxScale tao deltaDist rRange init@(x', y', theta', scale', theta0', scale0') =
-  brownianMotion
-    randomGen
-    thetaDist
-    scaleDist
-    maxScale
-    tao
-    deltaDist
-    (\x y ->
-       x > fromIntegral (rMin - 1) &&
-       x < fromIntegral (rMax + 1) && y < 1 && y > -1)
-    ( x'
-    , y'
-    , thetaCheck theta'
-    , scaleCheck maxScale scale'
-    , thetaCheck theta0'
-    , scaleCheck maxScale scale0')
-    DL.empty
-  where
-    (rMin, rMax) = rRange
-
-
-{-# INLINE generatePathRaidalGaussian #-}
-generatePathRaidalGaussian ::
-     (Distribution d, ContGen d)
-  => GenIO
-  -> Maybe d
-  -> Maybe d
-  -> Double
-  -> Double
-  -> Double
-  -> (Int, Int)
-  -> Double
-  -> ParticleIndex
-  -> IO (DList ParticleIndex)
-generatePathRaidalGaussian randomGen thetaDist scaleDist maxScale tao deltaDist rRange gaussianRadius init@(x', y', theta', scale', theta0', scale0') =
-  brownianMotion
-    randomGen
-    thetaDist
-    scaleDist
-    maxScale
-    tao
-    deltaDist
-    (\x y ->
-       x >= -gaussianRadius &&
-       x <= gaussianRadius + fromIntegral rMax &&
-       y <= gaussianRadius && y >= -gaussianRadius)
-    ( x'
-    , y'
-    , thetaCheck theta'
-    , scaleCheck maxScale scale'
-    , thetaCheck theta0'
-    , scaleCheck maxScale scale0')
-    DL.empty
-  where
-    (rMin, rMax) = rRange

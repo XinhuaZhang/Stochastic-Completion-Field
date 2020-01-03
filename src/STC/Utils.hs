@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 module STC.Utils where
 
@@ -112,3 +113,11 @@ increasePixelDistanceRandom n arr = do
   where
     (Z :. rows :. cols) = extent arr
     range = [-n .. n]
+
+{-# INLINE computeRange #-}
+computeRange :: Int -> (Int,Int)
+computeRange !n =
+  let !m = div n 2
+  in if odd n
+       then (-m, m)
+       else (-m, m - 1)

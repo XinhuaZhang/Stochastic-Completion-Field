@@ -308,7 +308,10 @@ dft1dGPlan ::
   -> [Int]
   -> VS.Vector (Complex Double)
   -> IO (DFTPlan, VS.Vector (Complex Double))
-dft1dGPlan lock' hashMap dims dftIndex vec =
+dft1dGPlan lock' hashMap dims dftIndex vec = do
+  when
+    (L.product dims /= VS.length vec)
+    (error "dft1dGPlan: input vector length and dims don't match.")
   case HM.lookup planID hashMap of
     Nothing -> do
       (p, v) <- dft1dGGeneric lock' dims dftIndex vec DFTForward measure
@@ -327,7 +330,10 @@ idft1dGPlan ::
   -> [Int]
   -> VS.Vector (Complex Double)
   -> IO (DFTPlan, VS.Vector (Complex Double))
-idft1dGPlan lock' hashMap dims dftIndex vec =
+idft1dGPlan lock' hashMap dims dftIndex vec = do
+  when
+    (L.product dims /= VS.length vec)
+    (error "idft1dGPlan: input vector length and dims don't match.")
   case HM.lookup planID hashMap of
     Nothing -> do
       (p, v) <- dft1dGGeneric lock' dims dftIndex vec DFTBackward measure

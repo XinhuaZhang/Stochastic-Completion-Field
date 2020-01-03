@@ -419,3 +419,4 @@ stsTor2' numX xLen xFreqs numY yLen yFreqs arr = do
     R.map (\x -> (magnitude x) ^ 2) .
     fromListUnboxed (Z :. numX :. numY :. numTF :. numSF) . NL.toList . flatten $
     transformMat NL.<> mat
+

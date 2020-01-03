@@ -34,7 +34,6 @@ main = do
       sigma = read sigmaStr :: Double
       tao = read taoStr :: Double
       len = read lenStr :: Int
-      init@ (_,_,_,_,_,s0) = read initStr :: (Double, Double, Double, Double, Double, Double)
       numTrail = read numTrailStr :: Int
       numThread = read numThreadStr :: Int
   arr <-
@@ -48,12 +47,12 @@ main = do
       tao
       numPoint
       ""
-      init
   let arr' =
         computeS .
         -- reduceContrast 10 .
-        R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . R.map magnitude . rotate3D $
+        R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
         arr
       folderPath = "output/app/PlotGreensFunctionR2S1"
   createDirectoryIfMissing True folderPath
-  plotImageRepa (folderPath </> printf "GreensR2S1_%.0f.png" s0) . ImageRepa 8 $ arr'
+  plotImageRepa (folderPath </> printf "GreensR2S1.png") . ImageRepa 8 $
+    arr'

@@ -1,0 +1,21 @@
+#!/bin/bash
+Size=512
+Delta=0.25
+Orientations=8
+Scales=1
+ThetaSigma=0.1
+ScaleSigma=0.0
+MaxScale=64
+DeltaLog=0.1
+Tao=5
+Trails=60000
+MaxTrails=2400
+PhiFreqs=15
+RhoFreqs=7
+ThetaFreqs=15
+ScaleFreqs=7
+InitDist="[(-60,0,30,1),(60,0,330,1)]"
+HistFileName=${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${PhiFreqs}_${RhoFreqs}_${ThetaFreqs}_${ScaleFreqs}.dat
+HistPath=output/test/STCFourierSeries/${HistFileName}
+Threads=24
+time stack test :STCFourierSeries-test --test-arguments "${Size} ${Delta} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${DeltaLog} ${Tao}  ${Trails} ${MaxTrails} ${PhiFreqs} ${RhoFreqs} ${ThetaFreqs} ${ScaleFreqs} ${InitDist} ${HistPath} ${Threads} +RTS -N${Threads} -RTS"

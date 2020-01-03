@@ -9,6 +9,7 @@ data UnboxedArray i e =
   UnboxedArray !i
                !i
                (Vector e)
+               
 instance (Ix a1, Ix a2, Ix a3, Ix a4, Ix a5, Ix a6) =>
          Ix (a1, a2, a3, a4, a5, a6) where
   range ((l1, l2, l3, l4, l5, l6), (u1, u2, u3, u4, u5, u6)) =
