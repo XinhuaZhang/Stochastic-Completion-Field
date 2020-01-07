@@ -63,6 +63,13 @@ scalePlusPeriodic !maxScale !x !y
   where
     !m = 1 / maxScale
     !z = x + y
+    
+{-# INLINE rhoCutoff #-}
+rhoCutoff :: Double -> Double
+rhoCutoff !rho =
+  if rho < 0
+    then 0
+    else rho
 
 {-# INLINE scalePlusPeriodic' #-}
 scalePlusPeriodic' :: Double -> Double -> Double  
@@ -71,7 +78,7 @@ scalePlusPeriodic' !maxScale !z
   | z >= maxScale = z - maxScale + m
   | otherwise = z
   where
-    m = 1 / maxScale
+    !m = 1 / maxScale
 
 {-# INLINE generateRandomNumber #-}
 generateRandomNumber ::
@@ -84,10 +91,10 @@ generateRandomNumber !gen dist =
 {-# INLINE moveParticle #-}  
 moveParticle :: Particle -> Particle
 moveParticle (Particle phi rho theta r) =
-  let x = theta - phi
-      cosX = cos x
-      newPhi = phi `thetaPlus` atan2 (r * sin x) (rho + r * cosX)
-      newRho = sqrt (rho * rho + r * r + 2 * r * rho * cosX)
+  let !x = theta - phi
+      !cosX = cos x
+      !newPhi = phi + atan2 (r * sin x) (rho + r * cosX)
+      !newRho = rhoCutoff . sqrt $ (rho * rho + r * r + 2 * r * rho * cosX)
   in Particle newPhi newRho theta r
 
 {-# INLINE diffuseParticle #-}
@@ -96,7 +103,7 @@ diffuseParticle !deltaTheta !deltaScale !maxScale (Particle phi rho theta r) =
   Particle
     phi
     rho
-    (theta `thetaPlus` deltaTheta)
+    (theta + deltaTheta)
     (scalePlusPeriodic maxScale r deltaScale)
 
 brownianMotion ::
@@ -146,5 +153,5 @@ generatePath thetaDist scaleDist maxScale tao randomGen =
     scaleDist
     maxScale
     tao
-    (Particle 0 0 0 1)
+    (Particle 0 1 0 1)
     DL.empty

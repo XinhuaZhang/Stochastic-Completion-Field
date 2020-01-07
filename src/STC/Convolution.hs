@@ -11,10 +11,12 @@ import           Data.Ix
 import           Data.List                  as L
 import           Data.Vector.Storable       as VS
 import           Data.Vector.Unboxed        as VU
+import           Debug.Trace
 import           DFT.Plan
 import           Filter.Utils
 import           FokkerPlanck.FourierSeries
 import           Image.IO
+import           STC.DFTArray
 import           Types
 import           Utils.Parallel
 
@@ -23,64 +25,6 @@ data Field
   | Sink
   deriving (Read, Show)
 
-data DFTArray =
-  DFTArray !Int -- rows
-           !Int -- cols
-           ![Double] -- thetaFreqs
-           ![Double] -- rFreqs
-           ![VS.Vector (Complex Double)]
-
-{-# INLINE getDFTArrayVector #-}
-getDFTArrayVector :: DFTArray -> [VS.Vector (Complex Double)]
-getDFTArrayVector (DFTArray _ _ _ _ vecs) = vecs
-
-{-# INLINE dftArrayToRepa #-}
-dftArrayToRepa :: DFTArray -> R.Array U DIM4 (Complex Double)
-dftArrayToRepa (DFTArray rows cols thetaFreqs rFreqs vecs) =
-  fromUnboxed (Z :. (L.length rFreqs) :. (L.length thetaFreqs) :. cols :. rows) .
-  VS.convert . VS.concat $vecs
-
-{-# INLINE repaToDFTArray #-}
-repaToDFTArray ::
-     [Double] -> [Double] -> R.Array U DIM4 (Complex Double) -> DFTArray
-repaToDFTArray thetaFreqs rFreqs arr =
-  let (Z :. (!numRFreq) :. (!numThetaFreq) :. cols :. rows) = extent arr
-  in DFTArray rows cols thetaFreqs rFreqs .
-     L.map
-       (\(!rf, !tf) ->
-          VS.convert . toUnboxed . computeS . R.slice arr $
-          (Z :. rf :. tf :. All :. All)) $
-     (,) <$> [0 .. numRFreq - 1] <*> [0 .. numThetaFreq - 1]
-
-{-# INLINE parMapDFTArray #-}
-parMapDFTArray ::
-     (VS.Vector (Complex Double) -> VS.Vector (Complex Double))
-  -> DFTArray
-  -> DFTArray
-parMapDFTArray f (DFTArray rows cols thetaFreqs rFreqs vecs) =
-  DFTArray rows cols thetaFreqs rFreqs . parMap rdeepseq f $ vecs
-
-{-# INLINE plotDFTArrayPower #-}
-plotDFTArrayPower :: FilePath -> Int -> Int -> DFTArray -> IO ()
-plotDFTArrayPower !filePath !rows !cols =
-  plotImageRepa filePath .
-  ImageRepa 8 .
-  fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
-  VS.convert .
-  VS.map sqrt .
-  L.foldl1' (VS.zipWith (+)) .
-  parMap rdeepseq (VS.map (\x -> (magnitude x) ^ 2)) . getDFTArrayVector
-  
-{-# INLINE plotDFTArrayThetaR #-}
-plotDFTArrayThetaR :: FilePath -> Int -> Int -> [[Complex Double]] -> DFTArray -> IO ()
-plotDFTArrayThetaR filePath rows cols thetaRHarmonics =
-  plotImageRepaComplex filePath .
-  ImageRepa 8 .
-  fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
-  VS.convert .
-  L.foldl1' (VS.zipWith (+)) .
-  computeFourierSeriesThetaR thetaRHarmonics . getDFTArrayVector
-  
 {-# INLINE dftHarmonicsArray #-}
 dftHarmonicsArray ::
      DFTPlan
@@ -146,8 +90,10 @@ convolve !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols the
                          Sink ->
                            (coefficients R.! (Z :. r :. theta :. rho :. phi)) *
                            (cis $ (-(thetaFreq + phiFreq)) * pi))) .
-                 VS.zipWith (*) inputVec $
-                 (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq)))
+                 VS.zipWith
+                   (*)
+                   (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq) $
+                 inputVec))
            initVec .
          L.zip idx $
          dftVecs) $

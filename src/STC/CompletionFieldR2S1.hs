@@ -145,7 +145,7 @@ computeInitialDistribution xLen yLen numOrientation xs =
         AU.accum (+) 0 ((0, xMin, yMin), (numOrientation - 1, xMax, yMax)) .
         L.map
           (\(R2S1RPPoint (x, y, theta, _)) ->
-             ( ((floor $ theta / 360 * fromIntegral numOrientation), x, y)
+             ( ((floor $ theta * pi / 180 / deltaTheat), x, y)
              , (1 / (fromIntegral . L.length $ xs)))) $
         xs
    in fromUnboxed (Z :. numOrientation :. xLen :. yLen) vec

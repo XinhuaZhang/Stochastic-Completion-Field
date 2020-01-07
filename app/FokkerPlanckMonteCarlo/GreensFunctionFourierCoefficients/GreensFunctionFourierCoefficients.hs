@@ -10,9 +10,11 @@ import           System.Environment
 import           Utils.Time
 
 main = do
-  args@(thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:histFilePath:numThreadStr:_) <-
+  args@(gpuIDStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:histFilePath:numThreadStr:_) <-
     getArgs
-  let thetaSigma = read thetaSigmaStr :: Double
+  print args
+  let gpuID = read gpuIDStr :: [Int]
+      thetaSigma = read thetaSigmaStr :: Double
       scaleSigma = read scaleSigmaStr :: Double
       tao = read taoStr :: Double
       numTrail = read numTrailStr :: Int
@@ -34,9 +36,10 @@ main = do
   flag <- doesFileExist histFilePath
   initHist <-
     if flag
-      then do printCurrentTime $
-                "read Fourier coefficients data from" L.++ histFilePath
-              decodeFile histFilePath
+      then do
+        printCurrentTime $
+          "read Fourier coefficients data from " L.++ histFilePath
+        decodeFile histFilePath
       else return
              (emptyHistogram
                 [ L.length phiFreqs
@@ -45,7 +48,8 @@ main = do
                 , L.length scaleFreqs
                 ]
                 0)
-  runMonteCarloFourierCoefficients
+  runMonteCarloFourierCoefficientsGPU
+    gpuID
     numThread
     numTrail
     maxTrail

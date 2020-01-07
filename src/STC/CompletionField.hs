@@ -9,6 +9,7 @@ import           Data.Vector.Storable   as VS
 import           DFT.Plan
 import           Filter.Utils
 import           STC.Convolution
+import           STC.DFTArray
 import           STC.Plan
 import           Utils.Parallel
 
@@ -30,32 +31,15 @@ completionField !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = d
               d)) .
         dftArrayToRepa $
         source
-  dftSource <-
-    dftExecute
-      plan
-      (DFTPlanID
-         DFT1DG
-         [L.length rFreqs, L.length thetaFreqs, cols, rows]
-         [0, 1]) $
-    sourceFilter
-  dftSink <-
-    dftExecute
-      plan
-      (DFTPlanID
-         DFT1DG
-         [L.length rFreqs, L.length thetaFreqs, cols, rows]
-         [0, 1]) .
-    VS.concat . getDFTArrayVector $
-    sink
+      !dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
+  dftSource <- dftExecute plan dftID $ sourceFilter
+  dftSink <- dftExecute plan dftID . VS.concat . getDFTArrayVector $ sink
   arr <-
     fmap
       (fromUnboxed (Z :. numRFreq :. numThetaFreq :. cols :. rows) . VS.convert) .
     dftExecute
       plan
-      (DFTPlanID
-         IDFT1DG
-         [L.length rFreqs, L.length thetaFreqs, cols, rows]
-         [0, 1]) .
+      (DFTPlanID IDFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]) .
     VS.zipWith (*) dftSource $
     dftSink
   return $! repaToDFTArray thetaFreqs rFreqs $ arr

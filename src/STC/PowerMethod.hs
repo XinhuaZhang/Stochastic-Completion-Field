@@ -1,18 +1,19 @@
 {-# LANGUAGE BangPatterns #-}
 module STC.PowerMethod where
 
-import           Control.Monad           as M
-import           Data.Array.IArray       as IA
-import           Data.Array.Repa         as R
+import           Control.Monad        as M
+import           Data.Array.IArray    as IA
+import           Data.Array.Repa      as R
 import           Data.Complex
-import           Data.List               as L
-import           Data.Vector.Storable    as VS
+import           Data.List            as L
+import           Data.Vector.Storable as VS
 import           DFT.Plan
 import           Image.IO
 import           STC.CompletionField
 import           STC.Convolution
+import           STC.DFTArray
 import           STC.Plan
-import           System.FilePath         ((</>))
+import           System.FilePath      ((</>))
 import           Text.Printf
 import           Utils.Parallel
 import           Utils.Time
@@ -30,7 +31,8 @@ powerMethod ::
 powerMethod _ _ _ _ _ _ 0 !arr = return arr
 powerMethod !plan !folderPath !writeFlag !coefficients !harmonicsArray !bias !numStep !input@(DFTArray rows cols _ _ _) = do
   printCurrentTime (show numStep)
-  convolvedArr <- convolve Source plan coefficients harmonicsArray input
+  convolvedArr <-
+    convolve Source plan coefficients harmonicsArray input
   let !biasedConvolvedArr = parMapDFTArray (VS.zipWith (*) bias) convolvedArr
       !maxMag =
         L.maximum .
@@ -38,16 +40,12 @@ powerMethod !plan !folderPath !writeFlag !coefficients !harmonicsArray !bias !nu
         biasedConvolvedArr
       !normalizedBiasedConvolvedArr =
         parMapDFTArray (VS.map (/ (maxMag :+ 0))) biasedConvolvedArr
-  when
-    writeFlag
-    (plotImageRepa (folderPath </> (printf "Source_%03d.png" numStep)) .
-     ImageRepa 8 .
-     fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
-     VS.convert .
-     VS.map sqrt .
-     L.foldl1' (VS.zipWith (+)) .
-     parMap rdeepseq (VS.map (\x -> (magnitude x) ^ 2)) . getDFTArrayVector $
-     convolvedArr)
+  when writeFlag .
+    plotDFTArrayPower
+      (folderPath </> (printf "Source_%03d.png" numStep))
+      cols
+      rows $
+    convolvedArr
   powerMethod
     plan
     folderPath
@@ -84,5 +82,5 @@ computeContour !plan !folderPath !writeFlag !coefficients !harmonicsArray !bias 
   sink <- convolve Sink plan coefficients harmonicsArray eigenVector
   completion <- completionField plan source sink
   plotDFTArrayPower (folderPath </> "Sink.png") rows cols sink
-  plotDFTArrayPower (folderPath </> "CompletionMag.png") rows cols completion
+  plotDFTArrayPower (folderPath </> "CompletionPower.png") rows cols completion
   return completion

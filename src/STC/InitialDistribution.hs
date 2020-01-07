@@ -6,6 +6,7 @@ import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Generic as VG
 import           STC.Convolution
+import           STC.DFTArray
 import           STC.Point
 import           STC.Utils
 import           Utils.Parallel
@@ -29,7 +30,7 @@ computeInitialDistribution rows cols thetaFreqs rFreqs halfLogPeriod points =
                    (\(Point x y theta scale) ->
                       ( (x, y)
                       , cis $
-                        (pi * log scale) * rFreq / halfLogPeriod -
+                        (-pi * log scale) * rFreq / halfLogPeriod -
                         (thetaFreq * theta * pi / 180))) $
                  points) $
             (,) <$> rFreqs <*> thetaFreqs
@@ -47,7 +48,8 @@ computeInitialDistributionPowerMethod rows cols thetaFreqs rFreqs halfLogPeriod 
        else DFTArray rows cols thetaFreqs rFreqs .
             L.map
               (\(!rFreq, !thetaFreq) ->
-                 if rFreq == 0 && thetaFreq == 0
+                 if -- rFreq == 0 &&
+                 thetaFreq == 0
                    then VG.convert .
                         toUnboxedVector .
                         AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .

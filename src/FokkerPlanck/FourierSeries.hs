@@ -3,7 +3,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveAnyClass #-}
 module FokkerPlanck.FourierSeries
-  ( computeFourierCoefficients
+  ( sampleScale
+  , computeFourierCoefficients
   , computeHarmonicsArray
   , getHarmonics
   , computeThetaRHarmonics
@@ -21,7 +22,7 @@ import           Data.DList                  as DL
 import           Data.List                   as L
 import           Data.Vector.Generic         as VG
 import           Data.Vector.Unboxed         as VU
-import           FokkerPlanck.BrownianMotion
+import           FokkerPlanck.BrownianMotion 
 import           FokkerPlanck.Histogram
 import           GHC.Generics                (Generic)
 import           Text.Printf
@@ -72,20 +73,21 @@ computeFourierCoefficients !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPerio
       , L.length thetaFreqs
       , L.length rhoFreqs
       , L.length phiFreqs)) .
-  L.concatMap
+  L.concat .
+  parMap
+    rdeepseq
     (\(particle@(Particle phi rho theta r)) ->
        let !n = floor $ (log r + halfLogPeriod) / deltaLogRho
            !samples =
+             L.map moveParticle $
              particle :
-             (L.map
-                moveParticle
-                [ (Particle
-                     phi
-                     rho
-                     theta
-                     (exp $ (fromIntegral i * deltaLogRho - halfLogPeriod)))
-                | i <- [0 .. n]
-                ])
+             [ (Particle
+                  phi
+                  rho
+                  theta
+                  (exp $ (fromIntegral i * deltaLogRho - halfLogPeriod)))
+             | i <- [0 .. n]
+             ]
        in L.map
             (\((rFreq, i), (thetaFreq, j), (rhoFreq, k), (phiFreq, l)) ->
                ( (i, j, k, l)
@@ -130,8 +132,8 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
         [round (L.head xs - L.last ys) .. round (L.last xs - L.head ys)]
       rangeFunc2 xs ys =
         (round (L.head xs - L.last ys), round (L.last xs - L.head ys))
-      (!tfLB, !tfUB) = rangeFunc2 thetaFreqs phiFreqs
-      (!rfLB, !rfUB) = rangeFunc2 rFreqs rhoFreqs
+      (!tfLB, !tfUB) = rangeFunc2 phiFreqs thetaFreqs
+      (!rfLB, !rfUB) = rangeFunc2 rhoFreqs rFreqs
       !xs =
         parMap
           rdeepseq
@@ -150,8 +152,8 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
                                halfLogPeriod
              in ((tf, rf), vec))
           [ (tf, rf)
-          | tf <- rangeFunc1 thetaFreqs phiFreqs
-          , rf <- rangeFunc1 rFreqs rhoFreqs
+          | tf <- rangeFunc1 phiFreqs thetaFreqs
+          , rf <- rangeFunc1 rhoFreqs rFreqs
           ]
   in IA.array ((tfLB, rfLB), (tfUB, rfUB)) xs
   
@@ -209,20 +211,32 @@ computeThetaRHarmonics !numOrientation !numScale !thetaFreqs !rFreqs !halfLogPer
       !deltaScale = 2 * halfLogPeriod / fromIntegral numScale
       !numRFreq = L.length rFreqs
       !numThetaFreq = L.length thetaFreqs
-  in parMap
-       rdeepseq
-       (\(!o, !s) ->
-          R.toList .
-          R.traverse2
-            (fromListUnboxed (Z :. numRFreq) rFreqs)
-            (fromListUnboxed (Z :. numThetaFreq) thetaFreqs)
-            (\_ _ -> (Z :. numRFreq :. numThetaFreq)) $ \fRFreq fThetaFreq idx@(Z :. rFreq :. thetaFreq) ->
-            cis
-              (pi * (fRFreq (Z :. rFreq)) *
-               (fromIntegral s * deltaScale - halfLogPeriod) /
-               halfLogPeriod +
-               fThetaFreq (Z :. thetaFreq) * fromIntegral o * deltaTheta)) $
-     (,) <$> [0 .. numOrientation - 1] <*> [0 .. numScale - 1]
+  in if numScale == 1
+       then parMap
+              rdeepseq
+              (\(!o) ->
+                 R.toList .
+                 R.traverse2
+                   (fromListUnboxed (Z :. numRFreq) rFreqs)
+                   (fromListUnboxed (Z :. numThetaFreq) thetaFreqs)
+                   (\_ _ -> (Z :. numRFreq :. numThetaFreq)) $ \fRFreq fThetaFreq idx@(Z :. _ :. thetaFreq) ->
+                   cis
+                     (fThetaFreq (Z :. thetaFreq) * fromIntegral o * deltaTheta)) $
+            [0 .. numOrientation - 1]
+       else parMap
+              rdeepseq
+              (\(!o, !s) ->
+                 R.toList .
+                 R.traverse2
+                   (fromListUnboxed (Z :. numRFreq) rFreqs)
+                   (fromListUnboxed (Z :. numThetaFreq) thetaFreqs)
+                   (\_ _ -> (Z :. numRFreq :. numThetaFreq)) $ \fRFreq fThetaFreq idx@(Z :. rFreq :. thetaFreq) ->
+                   cis
+                     ((pi) * (fRFreq (Z :. rFreq)) *
+                      (fromIntegral s * deltaScale - halfLogPeriod) /
+                      halfLogPeriod +
+                      fThetaFreq (Z :. thetaFreq) * fromIntegral o * deltaTheta)) $
+            (,) <$> [0 .. numOrientation - 1] <*> [0 .. numScale - 1]
 
 
 {-# INLINE computeFourierSeriesThetaR #-}

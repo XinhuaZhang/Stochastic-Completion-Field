@@ -3,6 +3,7 @@ module STCFourierSeries where
 
 import           Control.Monad               as M
 import           Data.Array.Repa             as R
+import Data.Array.IArray
 import           Data.Binary
 import           Data.Complex
 import           Data.List                   as L
@@ -12,11 +13,7 @@ import           FokkerPlanck.FourierSeries
 import           FokkerPlanck.Histogram
 import           FokkerPlanck.MonteCarlo
 import           Image.IO
-import           STC.Convolution
-import           STC.InitialDistribution
-import           STC.Plan
-import           STC.Point
-import           STC.CompletionField
+import           STC
 import           System.Directory
 import           System.Environment
 import           System.FilePath
@@ -51,12 +48,14 @@ main = do
       maxScale = read maxScaleStr :: Double
       halfLogPeriod = log maxScale
       deltaLog = read deltaLogStr :: Double
-      -- (_, _, t0, s0) = initDist
+  removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   hist <-
     if flag
-      then decodeFile histFilePath
+      then do
+        printCurrentTime $ "read data from " L.++ histFilePath
+        decodeFile histFilePath
       else runMonteCarloFourierCoefficients
              numThread
              numTrail
@@ -103,6 +102,7 @@ main = do
           thetaFreqs
           scaleFreqs
           halfLogPeriod
+  print . extent $ coefficients
   plan <-
     makePlan
       emptyPlan
@@ -127,38 +127,23 @@ main = do
   --Source
   printCurrentTime "Source"
   sourceArr <- convolve Source plan coefficients harmonicsArray initSource
-  -- plotImageRepaComplex (folderPath </> (printf "Source.png")) .
-  --   ImageRepa 8 .
-  --   fromUnboxed (Z :. (1 :: Int) :. numPoint :. numPoint) .
-  --   VG.convert .
-  --   L.foldl1' (VG.zipWith (+)) .
-  --   computeFourierSeriesThetaR thetaRHarmonics . getDFTArrayVector $
-  --   sourceArr
+  plotDFTArrayPower
+    (folderPath </> (printf "SourcePower.png"))
+    numPoint
+    numPoint $
+    sourceArr
   --Sink
   printCurrentTime "Sink"
   sinkArr <- convolve Sink plan coefficients harmonicsArray initSink
-  -- plotImageRepaComplex (folderPath </> (printf "Sink.png")) .
-  --   ImageRepa 8 .
-  --   fromUnboxed (Z :. (1 :: Int) :. numPoint :. numPoint) .
-  --   VG.convert .
-  --   L.foldl1' (VG.zipWith (+)) .
-  --   computeFourierSeriesThetaR thetaRHarmonics . getDFTArrayVector $
-  --   sinkArr
+  plotDFTArrayPower (folderPath </> (printf "SinkPower.png")) numPoint numPoint $
+    sinkArr
   printCurrentTime "Completion"
   completionArr <- completionField plan sourceArr sinkArr
-  let !convertedArr =
-        L.foldl1' (VG.zipWith (+)) .
-        computeFourierSeriesThetaR thetaRHarmonics . getDFTArrayVector $
-        completionArr
-  plotImageRepaComplex (folderPath </> (printf "Completion.png")) .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoint :. numPoint) . VG.convert $
-    convertedArr
-  plotImageRepa (folderPath </> (printf "CompletionMag.png")) .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoint :. numPoint) .
-    VG.convert . VG.map magnitude $
-    convertedArr
+  plotDFTArrayPower
+    (folderPath </> (printf "CompletionPower.png"))
+    numPoint
+    numPoint
+    completionArr
   printCurrentTime ""
   -- M.mapM_
   --   (\s -> do

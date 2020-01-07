@@ -2,6 +2,7 @@ module STC
   ( module STC.Bias
   , module STC.CompletionField
   , module STC.Convolution
+  , module STC.DFTArray
   , module STC.InitialDistribution
   , module STC.Plan
   , module STC.PowerMethod
@@ -14,6 +15,7 @@ module STC
 import           STC.Bias
 import           STC.CompletionField
 import           STC.Convolution
+import           STC.DFTArray
 import           STC.InitialDistribution
 import           STC.Plan
 import           STC.Point

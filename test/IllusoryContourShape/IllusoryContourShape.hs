@@ -89,6 +89,13 @@ main = do
           points
       !coefficients =
         getNormalizedHistogramArr hist :: R.Array U DIM4 (Complex Double)
+      -- !coefficients =
+      --   computeUnboxedS .
+      --   R.backpermute
+      --     (extent coefficients')
+      --     (\(Z :. i :. j :. k :. l) ->
+      --        (Z :. (L.length scaleFreqs - i - 1) :. j :. k :. l)) $
+      --   coefficients'
       !thetaRHarmonics =
         computeThetaRHarmonics
           numOrientation
@@ -121,7 +128,7 @@ main = do
     computeContour
       plan
       folderPath
-      writeFlag
+      writeFlag thetaFreqs scaleFreqs
       coefficients
       harmonicsArray
       bias

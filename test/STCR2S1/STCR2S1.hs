@@ -16,6 +16,7 @@ import           System.Environment
 import           System.FilePath
 import           Types
 import           Utils.Array
+import STC.Utils
 
 main = do
   args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initDistStr:initOriStr:initSpeedStr:rStr:numThreadStr:_) <-
@@ -54,29 +55,25 @@ main = do
       tao
       r
       ""
-      (0, 0, 0, 0, initOri / 180 * pi, initSpeed)
   plan <- makeR2S1Plan emptyPlan arrG
   -- Source Field
-  source <- shareWeightST plan sourceDist . computeUnboxedS . R.map magnitude $ arrG
+  source <- shareWeightST plan sourceDist arrG
   plotImageRepa
     (folderPath </> "Source.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D . reduceContrast 50$
      source)
   -- Sink Field
-  sink <-
-    shareWeightST plan sinkDist .
-    rotateST (computeUnboxedS . R.map magnitude $ arrG) $
-    div numOrientation 2
+  sink <- shareWeightST plan sinkDist . rotateST arrG $ div numOrientation 2
   plotImageRepa
     (folderPath </> "Sink.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D . reduceContrast 50$
      sink)
   -- Completion Field
   let completion = R.zipWith (*) source . timeReversal $ sink
   plotImageRepa
     (folderPath </> "Completion.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D . reduceContrast 50 $
      completion)
