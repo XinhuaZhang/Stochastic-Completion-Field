@@ -139,14 +139,13 @@ parVectorChunk n strat xs
   | otherwise =
     fmap V.concat $ parTraversable (evalTraversable strat) (vectorChunk n xs)
 
-{-# INLINE parConduit #-}
 parConduit ::
      (NFData b) => ParallelParams -> (a -> b) -> ConduitT a b (ResourceT IO) ()
 parConduit parallelParams func = do
   xs <- C.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do sourceList $ parMapChunk parallelParams rdeepseq func xs
+    (do sourceList $ parMap rdeepseq func xs
         parConduit parallelParams func)
 
 {-# INLINE parConduitIO #-}

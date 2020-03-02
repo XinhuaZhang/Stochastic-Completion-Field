@@ -16,7 +16,9 @@ import           System.Environment
 import           System.FilePath
 import           Types
 import           Utils.Array
+import           Utils.Time
 import STC.Utils
+import Text.Printf
 
 main = do
   args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initDistStr:initOriStr:initSpeedStr:rStr:numThreadStr:_) <-
@@ -31,7 +33,7 @@ main = do
       initDist = read initDistStr :: [R2S1RPPoint]
       initOri = read initOriStr :: Double
       initSpeed = read initSpeedStr :: Double
-      r = read rStr :: Int
+      r = read rStr :: Double
       numThread = read numThreadStr :: Int
       sourceDist =
         computeInitialDistribution numPoint numPoint numOrientation . L.take 1 $
@@ -55,25 +57,44 @@ main = do
       tao
       r
       ""
+  printCurrentTime "Done."
   plan <- makeR2S1Plan emptyPlan arrG
   -- Source Field
   source <- shareWeightST plan sourceDist arrG
   plotImageRepa
     (folderPath </> "Source.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D . reduceContrast 50$
+     computeS .
+     R.extend (Z :. (1 :: Int) :. All :. All) .
+     reduceContrast 100 . R.sumS . rotate3D $
      source)
+  MP.mapM_
+    (\i ->
+       plotImageRepa
+         (folderPath </> printf "Source_%d.png" i)
+         (ImageRepa 8 .
+          computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice source $
+          (Z :. i :. All :. All)))
+    [0 .. numOrientation - 1]
   -- Sink Field
-  sink <- shareWeightST plan sinkDist . rotateST arrG $ div numOrientation 2
+  sink <- shareWeightST plan sinkDist arrG  -- . rotateST arrG $ div numOrientation 2
   plotImageRepa
     (folderPath </> "Sink.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D . reduceContrast 50$
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . reduceContrast 100 . R.sumS . rotate3D $
      sink)
+  MP.mapM_
+    (\i ->
+       plotImageRepa
+         (folderPath </> printf "Sink_%d.png" i)
+         (ImageRepa 8 .
+          computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice sink $
+          (Z :. i :. All :. All)))
+    [0 .. numOrientation - 1]
   -- Completion Field
   let completion = R.zipWith (*) source . timeReversal $ sink
   plotImageRepa
     (folderPath </> "Completion.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D . reduceContrast 50 $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
      completion)

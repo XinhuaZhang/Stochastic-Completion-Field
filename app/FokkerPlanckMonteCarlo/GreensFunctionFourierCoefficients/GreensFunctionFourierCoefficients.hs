@@ -10,7 +10,7 @@ import           System.Environment
 import           Utils.Time
 
 main = do
-  args@(gpuIDStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:histFilePath:numThreadStr:_) <-
+  args@(gpuIDStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:histFilePath:initScaleStr:numThreadStr:_) <-
     getArgs
   print args
   let gpuID = read gpuIDStr :: [Int]
@@ -27,6 +27,7 @@ main = do
       thetaFreqs = [-thetaFreq .. thetaFreq]
       scaleFreq = read scaleFreqsStr :: Double
       scaleFreqs = [-scaleFreq .. scaleFreq]
+      initScale = read initScaleStr :: Double
       numThread = read numThreadStr :: Int
       folderPath = "output/app/GreensFunctionFourierCoefficients"
       maxScale = read maxScaleStr :: Double
@@ -62,5 +63,6 @@ main = do
     thetaFreqs
     scaleFreqs
     deltaLog
+    initScale
     histFilePath
     initHist

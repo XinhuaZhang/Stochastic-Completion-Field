@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MonoLocalBinds    #-}
@@ -124,3 +125,41 @@ readRepaArray filePath =
             (L.length elem)))
     return $ fromListUnboxed sh elem
 
+
+{-# INLINE pad #-}
+pad ::
+     (Source s e, Shape sh)
+  => [Int]
+  -> e
+  -> R.Array s sh e
+  -> R.Array D sh e
+pad newDims padVal arr
+  | L.length newDims /= L.length oldDimList =
+    error $
+    printf
+      "pad: Dimensions are different. (%d vs. %d)"
+      (L.length oldDimList)
+      (L.length newDims)
+  | L.all (== 0) diff = delay arr
+  | otherwise =
+    backpermuteDft
+      (fromFunction (shapeOfList dimList) (const padVal))
+      (\sh' ->
+         let idx = L.zipWith (-) (listOfShape sh') diff
+         in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
+              then Nothing
+              else Just $ shapeOfList idx)
+      arr
+  where
+    !oldDimList = listOfShape . extent $ arr
+    !dimList = L.zipWith max newDims oldDimList
+    !diff =
+      L.zipWith
+        (\a b ->
+           if a - b <= 0
+             then 0
+             else if a - b == 1
+                    then 1
+                    else div (a - b) 2)
+        newDims
+        oldDimList

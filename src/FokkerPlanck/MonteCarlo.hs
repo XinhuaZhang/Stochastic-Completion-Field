@@ -9,7 +9,7 @@ import           Array.UnboxedArray              as UA
 import           Control.DeepSeq
 import           Control.Monad                   as M
 import           Control.Monad.Parallel          as MP
-import           Data.Array.Accelerate           (constant)
+import           Data.Array.Accelerate           (constant, use)
 import           Data.Array.Accelerate.LLVM.PTX
 import           Data.Array.Repa                 as R
 import           Data.Binary
@@ -88,13 +88,14 @@ computeHistogramFromMonteCarloParallelSingleGPU ::
   -> ([particle] -> hist)
   -> (hist -> hist -> hist)
   -> Int
+  -> Int
   -> hist
   -> [GenIO]
   -> IO hist
-computeHistogramFromMonteCarloParallelSingleGPU !filePath pointsGenerator histFunc addHist !n !initHist !gens = do
-  xs <- MP.mapM (M.replicateM (div n . L.length $ gens) . pointsGenerator) gens
+computeHistogramFromMonteCarloParallelSingleGPU !filePath pointsGenerator histFunc addHist !deviceID !n !initHist !gens = do
+  xs <- MP.mapM (M.replicateM (div n . L.length $ gens) . pointsGenerator) gens  
   let tmpFilePath = (filePath L.++ "_tmp")
-      hist = addHist initHist . histFunc . L.concat $ xs
+      !hist = addHist initHist . histFunc . L.concat $ xs
   unless
     (L.null filePath)
     (do encodeFile tmpFilePath hist
@@ -103,7 +104,7 @@ computeHistogramFromMonteCarloParallelSingleGPU !filePath pointsGenerator histFu
   
 {-# INLINE computeHistogramFromMonteCarloParallelMultipleGPU #-}
 computeHistogramFromMonteCarloParallelMultipleGPU ::
-     (NFData hist, Binary hist, Show hist)
+     (NFData hist, Binary hist, Show hist, NFData particle)
   => FilePath
   -> (GenIO -> IO particle)
   -> (PTX -> [particle] -> hist)
@@ -113,10 +114,11 @@ computeHistogramFromMonteCarloParallelMultipleGPU ::
   -> hist
   -> [GenIO]
   -> IO hist
-computeHistogramFromMonteCarloParallelMultipleGPU !filePath pointsGenerator histFunc addHist !ctxs !n !initHist !gens = do
+computeHistogramFromMonteCarloParallelMultipleGPU !filePath pointsGenerator histFunc addHist !ptxs !n !initHist !gens = do
   xs <- MP.mapM (M.replicateM (div n . L.length $ gens) . pointsGenerator) gens
   let tmpFilePath = (filePath L.++ "_tmp")
-      hist = L.foldl' addHist initHist . parZipWith rdeepseq histFunc ctxs $ xs
+      !hist =
+        L.foldl' addHist initHist . parZipWith rdeepseq histFunc ptxs $!! xs
   unless
     (L.null filePath)
     (do encodeFile tmpFilePath hist
@@ -147,7 +149,7 @@ runMonteCarloFourierCoefficients !numGens !numTrails !batchSize !thetaSigma !sca
      printf "runMonteCarloFourierCoefficients error: maxScale(%f) <= 1" maxScale)
   let !thetaDist = normalDistrE 0 thetaSigma
       !scaleDist = normalDistrE 0 scaleSigma
-      pointsGenerator = generatePath thetaDist scaleDist maxScale tao
+      pointsGenerator = generatePath thetaDist scaleDist maxScale tao 1
       histFunc =
         computeFourierCoefficients
           phiFreqs
@@ -166,6 +168,118 @@ runMonteCarloFourierCoefficients !numGens !numTrails !batchSize !thetaSigma !sca
   return hist
 
 
+{-# INLINE runMonteCarloFourierCoefficientsSingleGPU #-}
+runMonteCarloFourierCoefficientsSingleGPU ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> Double -> Double
+  -> FilePath
+  -> Histogram (Complex Double)
+  -> IO (Histogram (Complex Double))
+runMonteCarloFourierCoefficientsSingleGPU !deviceID !numGens !numTrails !batchSize !thetaSigma !scaleSigma !maxScale !tao !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !deltaLog !initScale !filePath !initHist = do
+  when
+    (maxScale <= 1)
+    (error $
+     printf "runMonteCarloFourierCoefficients error: maxScale(%f) <= 1" maxScale)
+  initialise []
+  dev <- device deviceID
+  ctx <- CUDA.create dev []
+  ptx <- createTargetFromContext ctx
+  let !thetaDist = normalDistrE 0 thetaSigma
+      !scaleDist = normalDistrE 0 scaleSigma
+      !freqArr = computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
+      pointsGenerator = generatePath thetaDist scaleDist maxScale tao initScale
+      histFuncSingleGPU =
+        computeFourierCoefficientsGPU
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          rFreqs
+          (log maxScale)
+          deltaLog
+          (use freqArr)
+          (constant maxScale)
+          (constant (log maxScale))
+          (constant (deltaLog :+ 0))
+          ptx
+      monterCarloHistFuncSingleGPU =
+        computeHistogramFromMonteCarloParallelSingleGPU
+          filePath
+          pointsGenerator
+          histFuncSingleGPU
+          addHistogramUnsafe
+          deviceID
+  hist <-
+    runBatch numGens numTrails batchSize monterCarloHistFuncSingleGPU initHist
+  -- deepseq hist (destroy ctx)
+  return hist
+
+{-# INLINE runMonteCarloFourierCoefficientsMultipleGPU #-}
+runMonteCarloFourierCoefficientsMultipleGPU ::
+     [Int]
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> Double
+  -> Double
+  -> FilePath
+  -> Histogram (Complex Double)
+  -> IO (Histogram (Complex Double))
+runMonteCarloFourierCoefficientsMultipleGPU !deviceIDs !numGens !numTrails !batchSize !thetaSigma !scaleSigma !maxScale !tao !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !deltaLog !initScale !filePath !initHist = do
+  when
+    (maxScale <= 1)
+    (error $
+     printf "runMonteCarloFourierCoefficients error: maxScale(%f) <= 1" maxScale)
+  initialise []
+  devs <- M.mapM device deviceIDs
+  ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
+  ptxs <- M.mapM createTargetFromContext ctxs
+  let !thetaDist = normalDistrE 0 thetaSigma
+      !scaleDist = normalDistrE 0 scaleSigma
+      !freqArr = computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
+      pointsGenerator = generatePath thetaDist scaleDist maxScale tao initScale
+      histFuncMultipleGPU =
+        computeFourierCoefficientsGPU
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          rFreqs
+          (log maxScale)
+          deltaLog
+          (use freqArr)
+          (constant maxScale)
+          (constant (log maxScale))
+          (constant (deltaLog :+ 0))
+      monterCarloHistFuncMultipleGPU =
+        computeHistogramFromMonteCarloParallelMultipleGPU
+          filePath
+          pointsGenerator
+          histFuncMultipleGPU
+          addHistogramUnsafe
+          ptxs
+  hist <-
+    runBatch numGens numTrails batchSize monterCarloHistFuncMultipleGPU initHist
+  deepseq hist (M.mapM destroy ctxs)
+  return hist
+  
 {-# INLINE runMonteCarloFourierCoefficientsGPU #-}
 runMonteCarloFourierCoefficientsGPU ::
      [Int]
@@ -181,71 +295,14 @@ runMonteCarloFourierCoefficientsGPU ::
   -> [Double]
   -> [Double]
   -> Double
+  -> Double
   -> FilePath
   -> Histogram (Complex Double)
   -> IO (Histogram (Complex Double))
-runMonteCarloFourierCoefficientsGPU !deviceIDs !numGens !numTrails !batchSize !thetaSigma !scaleSigma !maxScale !tao !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !deltaLog !filePath !initHist = do
-  when
-    (maxScale <= 1)
-    (error $
-     printf "runMonteCarloFourierCoefficients error: maxScale(%f) <= 1" maxScale)
-  initialise []
-  devs <- M.mapM device deviceIDs
-  ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
-  ptxs <- M.mapM createTargetFromContext ctxs
-  let !thetaDist = normalDistrE 0 thetaSigma
-      !scaleDist = normalDistrE 0 scaleSigma
-      !freqArr = computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
-      pointsGenerator = generatePath thetaDist scaleDist maxScale tao
-      histFuncSingleGPU =
-        computeFourierCoefficientsGPU
-          freqArr
-          phiFreqs
-          rhoFreqs
-          thetaFreqs
-          rFreqs
-          (log maxScale)
-          deltaLog
-          (constant maxScale)
-          (constant (log maxScale))
-          (constant (deltaLog :+ 0))
-          (L.head ptxs)
-      histFuncMultipleGPU =
-        computeFourierCoefficientsGPU
-          freqArr
-          phiFreqs
-          rhoFreqs
-          thetaFreqs
-          rFreqs
-          (log maxScale)
-          deltaLog
-          (constant maxScale)
-          (constant (log maxScale))
-          (constant (deltaLog :+ 0))
-      monterCarloHistFuncSingleGPU =
-        computeHistogramFromMonteCarloParallelSingleGPU
-          filePath
-          pointsGenerator
-          histFuncSingleGPU
-          addHistogramUnsafe
-      monterCarloHistFuncMultipleGPU =
-        computeHistogramFromMonteCarloParallelMultipleGPU
-          filePath
-          pointsGenerator
-          histFuncMultipleGPU
-          addHistogramUnsafe
-          ptxs
-  hist <-
-    runBatch
-      numGens
-      numTrails
-      batchSize
-      (if L.length deviceIDs == 1
-         then monterCarloHistFuncSingleGPU
-         else monterCarloHistFuncMultipleGPU)
-      initHist
-  M.mapM destroy ctxs
-  return hist
+runMonteCarloFourierCoefficientsGPU !deviceIDs = -- runMonteCarloFourierCoefficientsSingleGPU (L.head deviceIDs)
+  if L.length deviceIDs == 1
+    then runMonteCarloFourierCoefficientsSingleGPU (L.head deviceIDs)
+    else runMonteCarloFourierCoefficientsMultipleGPU deviceIDs
 
 {-# INLINE countR2S1 #-}
 countR2S1 :: (Int, Int) -> (Int, Int) -> Int -> [DList Particle] -> Histogram Double
@@ -254,9 +311,13 @@ countR2S1 xRange@(!xMin, !xMax) yRange@(!yMin, !yMax) !numOrientations !xs =
       ys =
         L.filter (\((_, x, y), _) -> (inRange xRange x) && (inRange yRange y)) .
         L.map
-          (\(Particle phi rho theta _) ->
+          (\(Particle phi rho theta' _) ->
              let !x = rho * cos phi
                  !y = rho * sin phi
+                 !theta =
+                   if theta' < 0
+                     then theta' + 2 * pi
+                     else theta'
              in ((floor $ theta / deltaTheta, round x, round y), 1)) .
         DL.toList . DL.concat $
         xs
@@ -277,7 +338,7 @@ solveMonteCarloR2S1 ::
   -> Int
   -> Double
   -> Double
-  -> Int
+  -> Double
   -> FilePath
   -> IO (R.Array U DIM3 Double)
 solveMonteCarloR2S1 numGens numTrails xLen yLen numOrientations thetaSigma tao r histFilePath = do
@@ -297,8 +358,9 @@ solveMonteCarloR2S1 numGens numTrails xLen yLen numOrientations thetaSigma tao r
         generatePath
           thetaDist
           scaleDist
-          (sqrt . fromIntegral $ xLen ^ 2 + yLen ^ 2)
+          r -- (sqrt . fromIntegral $ xLen ^ 2 + yLen ^ 2)
           tao
+          1
       histFunc = countR2S1 xRange' yRange' numOrientations
       monterCarloHistFunc =
         computeHistogramFromMonteCarloParallel

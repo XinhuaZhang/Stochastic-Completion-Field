@@ -16,11 +16,13 @@ import           System.FilePath
 import           Text.Printf
 import           Utils.Array
 import           Utils.Time
+import qualified Data.Array.IArray as IA
 
 main = do
-  args@(numPointStr:deltaXStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:shape2DStr:histFilePath:writeFlagStr:numIterationStr:numThreadStr:_) <-
+  args@(gpuIDStr:numPointStr:deltaXStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:cutoffStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initScaleStr:shape2DStr:histFilePath:writeFlagStr:numIterationStr:suffix:stdStr:numThreadStr:_) <-
     getArgs
-  let numPoint = read numPointStr :: Int
+  let gpuID = read gpuIDStr :: [Int]
+      numPoint = read numPointStr :: Int
       deltaX = read deltaXStr :: Double
       numOrientation = read numOrientationStr :: Int
       numScale = read numScaleStr :: Int
@@ -37,16 +39,23 @@ main = do
       thetaFreqs = [-thetaFreq .. thetaFreq]
       scaleFreq = read scaleFreqsStr :: Double
       scaleFreqs = [-scaleFreq .. scaleFreq]
+      initScale = read initScaleStr :: Double
       shape2D@(Points _ minDist _) = read shape2DStr :: Points Shape2D
       numThread = read numThreadStr :: Int
       folderPath =
-        "output/test/IllusoryContourShape" </> takeBaseName histFilePath
+        "output/test/IllusoryContourShape" </> (takeBaseName histFilePath) L.++
+        "_" L.++
+        cutoffStr L.++
+        "_" L.++
+        deltaXStr
       maxScale = read maxScaleStr :: Double
+      cutoff = read cutoffStr :: Double
       halfLogPeriod = log maxScale
       deltaLog = read deltaLogStr :: Double
       writeFlag = read writeFlagStr :: Bool
+      std = read stdStr :: Double
       numIteration = read numIterationStr :: Int
-  removePathForcibly folderPath
+  print thetaFreqs
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   hist <-
@@ -55,7 +64,8 @@ main = do
         printCurrentTime $
           "read Fourier coefficients data from " L.++ histFilePath
         decodeFile histFilePath
-      else runMonteCarloFourierCoefficients
+      else runMonteCarloFourierCoefficientsGPU
+             gpuID
              numThread
              numTrail
              maxTrail
@@ -68,6 +78,7 @@ main = do
              thetaFreqs
              scaleFreqs
              deltaLog
+             initScale
              histFilePath
              (emptyHistogram
                 [ L.length phiFreqs
@@ -79,23 +90,12 @@ main = do
   let !points =
         L.map (\(!x, !y) -> Point x y 0 1) . getShape2DIndexList . makeShape2D $
         shape2D
-      !initSource =
-        computeInitialDistributionPowerMethod
-          numPoint
-          numPoint
-          phiFreqs
-          rhoFreqs
-          halfLogPeriod
-          points
-      !coefficients =
-        getNormalizedHistogramArr hist :: R.Array U DIM4 (Complex Double)
-      -- !coefficients =
-      --   computeUnboxedS .
-      --   R.backpermute
-      --     (extent coefficients')
-      --     (\(Z :. i :. j :. k :. l) ->
-      --        (Z :. (L.length scaleFreqs - i - 1) :. j :. k :. l)) $
-      --   coefficients'
+      !xs = getShape2DIndexList . makeShape2D $ shape2D
+      !coefficients -- = getNormalizedHistogramArr $ hist :: R.Array U DIM4 (Complex Double)
+       =
+        normalizeFreqArr' std phiFreqs rhoFreqs thetaFreqs .
+        getNormalizedHistogramArr $
+        hist
       !thetaRHarmonics =
         computeThetaRHarmonics
           numOrientation
@@ -103,40 +103,87 @@ main = do
           thetaFreqs
           scaleFreqs
           halfLogPeriod
-      !bias = computeBias numPoint numPoint points
+  print xs
   plan <-
     makePlan
+      folderPath
       emptyPlan
       numPoint
       numPoint
       (L.length thetaFreqs)
       (L.length scaleFreqs)
-  harmonicsArray <-
-    dftHarmonicsArray
-      plan
-      numPoint
-      deltaX
-      numPoint
-      deltaX
-      phiFreqs
-      rhoFreqs
-      thetaFreqs
-      scaleFreqs
-      halfLogPeriod
-      maxScale
+  let !initSourceSparse =
+        computeInitialDistributionPowerMethodSparse' phiFreqs rhoFreqs points
+      !harmonicsArraySparse =
+        computeHarmonicsArraySparse
+          numPoint
+          deltaX
+          numPoint
+          deltaX
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          scaleFreqs
+          halfLogPeriod
+          cutoff
+  -- let !initSource =
+  --       computeInitialDistributionPowerMethod'
+  --         numPoint
+  --         numPoint
+  --         phiFreqs
+  --         rhoFreqs
+  --         thetaFreqs
+  --         scaleFreqs
+  --         points
+  --     !bias = computeBias numPoint numPoint points
+  -- harmonicsArray <-
+  --   dftHarmonicsArray
+  --     plan
+  --     numPoint
+  --     deltaX
+  --     numPoint
+  --     deltaX
+  --     phiFreqs
+  --     rhoFreqs
+  --     thetaFreqs
+  --     scaleFreqs
+  --     halfLogPeriod
+  --     cutoff
+  -- print . IA.indices $ harmonicsArraySparse
   completion <-
-    computeContour
+    computeContourSparse'
       plan
       folderPath
-      writeFlag thetaFreqs scaleFreqs
       coefficients
-      harmonicsArray
-      bias
+      harmonicsArraySparse
+      thetaRHarmonics
+      (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
+      (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
+      cutoff
+      xs
       numIteration
-      initSource
+      suffix
+      initSourceSparse
+  -- completion <-
+  --   computeContour'
+  --     plan
+  --     folderPath
+  --     writeFlag
+  --     coefficients
+  --     harmonicsArray
+  --     bias
+  --     numIteration
+  --     suffix
+  --     initSource
   plotDFTArrayThetaR
-    (folderPath </> (printf "Completion.png"))
+    (folderPath </> (printf "Completion_%s.png" suffix))
     numPoint
     numPoint
     thetaRHarmonics
     completion
+  -- plotDFTArrayThetaRMag
+  --   (folderPath </> (printf "CompletionMax_%s.png" suffix))
+  --   numPoint
+  --   numPoint
+  --   thetaRHarmonics
+  --   completion

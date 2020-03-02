@@ -7,6 +7,7 @@ module Image.IO
   , plotImageRepa
   , complexImageToColorImage
   , plotImageRepaComplex
+  , plotImageRepaComplexGray
   ) where
 
 import           Codec.Picture                
@@ -331,5 +332,21 @@ normalizeComplexImage (ImageRepa depth img) =
 {-# INLINE plotImageRepaComplex #-}
 plotImageRepaComplex :: FilePath -> ImageRepa (Complex Double) -> IO ()
 plotImageRepaComplex filePath img =
-  plotImageRepa filePath . complexImageToColorImage . normalizeComplexImage $
+  plotImageRepa filePath . complexImageToColorImage -- . normalizeComplexImage
+  $
   img
+  
+{-# INLINE plotImageRepaComplexGray #-}
+plotImageRepaComplexGray :: FilePath -> ImageRepa (Complex Double) -> IO ()
+plotImageRepaComplexGray filePath img =
+  let (ImageRepa depth arr) = complexImageToColorImage img
+      (Z :. chs :. cols :. rows) = extent arr
+  in plotImageRepa filePath .
+     ImageRepa depth .
+     computeS .
+     extend (Z :. (1 :: Int) :. All :. All) .
+     R.sumS .
+     R.backpermute
+       (Z :. cols :. rows :. chs)
+       (\(Z :. c :. r :. k) -> (Z :. k :. c :. r)) $
+     arr

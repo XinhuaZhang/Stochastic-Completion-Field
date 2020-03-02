@@ -71,6 +71,11 @@ removeDuplicate len (x:xs) =
 getShape2DIndexList :: [(Double, Double)] -> [(Int, Int)]
 getShape2DIndexList  =
   L.map (\(x, y) -> (round x, round y))
+        
+{-# INLINE getShape2DIndexList' #-}
+getShape2DIndexList' :: [(Double, Double)] -> [(Double, Double)]
+getShape2DIndexList'  =
+  L.map (\(x, y) -> ( x,  y))
 
 -- {-# INLINE getShape2DIndexListDouble #-}
 -- getShape2DIndexListDouble :: [(Double, Double)] -> [(Double, Double)]
