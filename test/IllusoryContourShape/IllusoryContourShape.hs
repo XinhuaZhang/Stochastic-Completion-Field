@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns #-} 
 module IllusoryContourShape where
 
 import           Control.Monad               as M
@@ -91,11 +91,12 @@ main = do
         L.map (\(!x, !y) -> Point x y 0 1) . getShape2DIndexList . makeShape2D $
         shape2D
       !xs = getShape2DIndexList . makeShape2D $ shape2D
-      !coefficients -- = getNormalizedHistogramArr $ hist :: R.Array U DIM4 (Complex Double)
-       =
-        normalizeFreqArr' std phiFreqs rhoFreqs thetaFreqs .
-        getNormalizedHistogramArr $
-        hist
+      !coefficients 
+       -- =
+        -- normalizeFreqArr' std phiFreqs rhoFreqs .
+        -- getNormalizedHistogramArr $
+        -- hist
+       = getNormalizedHistogramArr $ hist :: R.Array U DIM4 (Complex Double)
       !thetaRHarmonics =
         computeThetaRHarmonics
           numOrientation
@@ -132,8 +133,8 @@ main = do
   --         numPoint
   --         phiFreqs
   --         rhoFreqs
-  --         thetaFreqs
-  --         scaleFreqs
+  --         -- thetaFreqs
+  --         -- scaleFreqs
   --         points
   --     !bias = computeBias numPoint numPoint points
   -- harmonicsArray <-

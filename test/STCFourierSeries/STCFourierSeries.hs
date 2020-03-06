@@ -94,7 +94,7 @@ main = do
           numPoint
           phiFreqs
           rhoFreqs
-          thetaFreqs
+          -- thetaFreqs
           halfLogPeriod
           [L.head initPoints]
       !initSink =
@@ -103,11 +103,11 @@ main = do
           numPoint
           phiFreqs
           rhoFreqs
-          thetaFreqs
+          -- thetaFreqs
           halfLogPeriod
           [L.last initPoints]
       !coefficients =
-        normalizeFreqArr' std phiFreqs rhoFreqs thetaFreqs .
+        normalizeFreqArr' std phiFreqs rhoFreqs .
         getNormalizedHistogramArr $
         hist
        -- = getNormalizedHistogramArr $ hist :: R.Array U DIM4 (Complex Double)

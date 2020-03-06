@@ -1,16 +1,16 @@
 #!/bin/bash
 GPUID="[7]"
 Size=256
-Delta=0.2 #0.03125 #0.0625
+Delta=0.0625 #0.03125 #0.0625
 Orientations=36
 Scales=1
-ThetaSigma=0.04
+ThetaSigma=0.055
 ScaleSigma=0.0
 MaxScale=32
 Cutoff=46 #49 #46 
 DeltaLog=1
 Tao=40
-Trails=480000
+Trails=96000
 MaxTrails=48000
 PhiFreqs=20
 RhoFreqs=20

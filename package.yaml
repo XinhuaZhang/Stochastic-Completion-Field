@@ -63,23 +63,23 @@ library:
   source-dirs: src
 
 executables:
-  PlotGreensFunctionR2S1-exe:
-    main:                PlotGreensFunctionR2S1.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -O2
-    - -j4
-    - -main-is PlotGreensFunctionR2S1
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
-    dependencies:
-    - Stochastic-Completion-Field
+  # PlotGreensFunctionR2S1-exe:
+  #   main:                PlotGreensFunctionR2S1.hs
+  #   source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   - -O2
+  #   - -j4
+  #   - -main-is PlotGreensFunctionR2S1
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   dependencies:
+  #   - Stochastic-Completion-Field
   GreensFunctionFourierCoefficients-exe:
     main:                GreensFunctionFourierCoefficients.hs
     source-dirs:         app/FokkerPlanckMonteCarlo/GreensFunctionFourierCoefficients

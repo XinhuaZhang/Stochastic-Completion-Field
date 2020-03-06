@@ -46,8 +46,8 @@ computeFourierCoefficientsGPU !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPe
                 -- L.map FokkerPlanck.BrownianMotion.moveParticle
              $
                 (Particle phi rho theta r) :
-                [ (Particle phi rho theta (Prelude.fromIntegral i * deltaLogRho))
-                | i <- [1 .. n - 1]
+                [ -- (Particle phi rho theta (Prelude.fromIntegral i * deltaLogRho))
+                -- | i <- [1 .. n - 1]
                 ]) $
         particles
       -- !scaleSampledParticles =

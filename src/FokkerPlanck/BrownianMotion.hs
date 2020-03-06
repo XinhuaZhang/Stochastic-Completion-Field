@@ -107,7 +107,7 @@ generateRandomNumber !gen dist =
 {-# INLINE moveParticle #-}
 moveParticle :: Particle -> Particle
 moveParticle (Particle phi rho theta r) =
-  let !x = theta - phi
+  let !x = (theta) - phi
       !cosX = cos x
       !newPhi = phi `thetaPlus` atan2 (r * sin x) (rho + r * cosX)
       !newRho = sqrt $ (rho * rho + r * r + 2 * r * rho * cosX)
@@ -144,11 +144,11 @@ brownianMotion !randomGen !thetaDist !scaleDist !maxScale !tao !particle !xs = d
   deltaTheta <- generateRandomNumber randomGen thetaDist
   deltaScale <- generateRandomNumber randomGen scaleDist
   let !newParticle@(Particle !phi !rho !theta !r) =
-            diffuseParticle deltaTheta deltaScale maxScale . moveParticle  $  particle
-      ys = -- DL.cons (Particle phi (rho) theta (r)) xs
-        if rho > 0 -- && r > 0
-          then DL.cons (Particle phi (rho) theta (r)) xs
-          else xs
+                diffuseParticle deltaTheta deltaScale maxScale . moveParticle  $ particle
+      ys = DL.cons (Particle phi (rho) theta (r)) xs
+        -- if rho > 0 -- && r > 0
+        --   then DL.cons (Particle phi (rho) theta (r)) xs
+        --   else xs
   t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
   if t > exp (1 / (-tao))
     then return ys
@@ -158,10 +158,10 @@ brownianMotion !randomGen !thetaDist !scaleDist !maxScale !tao !particle !xs = d
            scaleDist
            maxScale
            tao
-           (newParticle)
+           (  newParticle)
            ys
 
-{-# INLINE generatePath #-}
+-- {-# INLINE generatePath #-}
 generatePath ::
      (Distribution d, ContGen d)
   => Maybe d
@@ -181,5 +181,3 @@ generatePath thetaDist scaleDist maxScale tao initScale randomGen = do
     tao
     (Particle 0 1 0 initScale)
     DL.empty
-    -- (DL.fromList [(Particle 0 0 0 1)])
-

@@ -58,26 +58,26 @@ computeInitialDistribution' rows cols phiFreqs rhoFreqs  halfLogPeriod points =
             phiFreqs
 
 
--- {-# INLINE computeInitialDistributionPowerMethod #-}
--- computeInitialDistributionPowerMethod ::
---      Int -> Int -> [Double] -> [Double] -> Double -> [Point] -> DFTArray
--- computeInitialDistributionPowerMethod rows cols thetaFreqs rFreqs halfLogPeriod points =
---   let (!minR, !maxR) = computeRange rows
---       (!minC, !maxC) = computeRange cols
---       !zeroVec = VG.replicate (rows * cols) 0
---   in if L.any (\(Point _ _ _ s) -> s <= 0) points
---        then error $ "computeInitialDistributionPowerMethod: initial scale <= 0."
---        else DFTArray rows cols thetaFreqs rFreqs .
---             L.map
---               (\(!rFreq, !thetaFreq) ->
---                  if rFreq == 0 && thetaFreq == 0
---                    then VG.convert .
---                         toUnboxedVector .
---                         AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
---                         L.map (\(Point x y theta scale) -> ((x, y), 1)) $
---                         points
---                    else zeroVec) $
---             (,) <$> rFreqs <*> thetaFreqs
+{-# INLINE computeInitialDistributionPowerMethod #-}
+computeInitialDistributionPowerMethod ::
+     Int -> Int -> [Double] -> [Double] -> Double -> [Point] -> DFTArray
+computeInitialDistributionPowerMethod rows cols thetaFreqs rFreqs halfLogPeriod points =
+  let (!minR, !maxR) = computeRange rows
+      (!minC, !maxC) = computeRange cols
+      !zeroVec = VG.replicate (rows * cols) 0
+  in if L.any (\(Point _ _ _ s) -> s <= 0) points
+       then error $ "computeInitialDistributionPowerMethod: initial scale <= 0."
+       else DFTArray rows cols thetaFreqs rFreqs .
+            L.map
+              (\(!rFreq, !thetaFreq) ->
+                 if rFreq == 0 && thetaFreq == 0
+                   then VG.convert .
+                        toUnboxedVector .
+                        AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
+                        L.map (\(Point x y theta scale) -> ((x, y), 1)) $
+                        points
+                   else zeroVec) $
+            (,) <$> rFreqs <*> thetaFreqs
 
 {-# INLINE computeInitialDistributionPowerMethod' #-}
 computeInitialDistributionPowerMethod' ::
@@ -101,20 +101,20 @@ computeInitialDistributionPowerMethod' rows cols phiFreqs rhoFreqs points =
             phiFreqs
 
 
--- {-# INLINE computeInitialDistributionPowerMethodSparse #-}
--- computeInitialDistributionPowerMethodSparse ::
---      [Double] -> [Double] -> [Point] -> [R.Array U DIM2 (Complex Double)]
--- computeInitialDistributionPowerMethodSparse thetaFreqs rFreqs points =
---   let !numThetaFreq = L.length thetaFreqs
---       !numRFreq = L.length rFreqs
---       !thetaCenter = div numThetaFreq 2
---       !rCenter = div numRFreq 2
---       !initArr =
---         computeUnboxedS . fromFunction (Z :. numRFreq :. numThetaFreq) $ \(Z :. i :. j) ->
---           if i == rCenter && j == thetaCenter
---             then 1
---             else 0
---   in L.replicate (L.length points) initArr
+{-# INLINE computeInitialDistributionPowerMethodSparse #-}
+computeInitialDistributionPowerMethodSparse ::
+     [Double] -> [Double] -> [Point] -> [R.Array U DIM2 (Complex Double)]
+computeInitialDistributionPowerMethodSparse thetaFreqs rFreqs points =
+  let !numThetaFreq = L.length thetaFreqs
+      !numRFreq = L.length rFreqs
+      !thetaCenter = div numThetaFreq 2
+      !rCenter = div numRFreq 2
+      !initArr =
+        computeUnboxedS . fromFunction (Z :. numRFreq :. numThetaFreq) $ \(Z :. i :. j) ->
+          if i == rCenter && j == thetaCenter
+            then 1
+            else 0
+  in L.replicate (L.length points) initArr
                  
   
 {-# INLINE computeInitialDistributionPowerMethodSparse' #-}

@@ -54,7 +54,7 @@ parMapDFTArray ::
 parMapDFTArray f (DFTArray rows cols thetaFreqs rFreqs vecs) =
   DFTArray rows cols thetaFreqs rFreqs . parMap rdeepseq f $ vecs
 
-{-# INLINE plotDFTArrayPower #-}
+-- {-# INLINE plotDFTArrayPower #-}
 plotDFTArrayPower :: FilePath -> Int -> Int -> DFTArray -> IO ()
 plotDFTArrayPower !filePath !rows !cols =
   plotImageRepa filePath .
@@ -64,19 +64,24 @@ plotDFTArrayPower !filePath !rows !cols =
   L.foldl1' (VS.zipWith (+)) .
   parMap rdeepseq (VS.map (\x -> (magnitude x)^2 )) . getDFTArrayVector
 
-{-# INLINE plotDFTArrayThetaR #-}
+-- {-# INLINE plotDFTArrayThetaR #-}
 plotDFTArrayThetaR :: FilePath -> Int -> Int -> [[Complex Double]] -> DFTArray -> IO ()
 plotDFTArrayThetaR !filePath !rows !cols !thetaRHarmonics arr = do
   let vecs =
-        computeFourierSeriesThetaR thetaRHarmonics . getDFTArrayVector $ arr
+        computeFourierSeriesThetaR thetaRHarmonics .
+        getDFTArrayVector $
+        arr
       img =
         VS.convert . L.foldl1' (VS.zipWith (+)) . L.map (VS.map magnitude) $
         vecs
       m = VU.maximum img
   plotImageRepa filePath .
-    ImageRepa 8 . computeS . reduceContrast 100 .
+    ImageRepa 8 .
+    -- computeS .
+    -- reduceContrast 100 .
     fromUnboxed (Z :. (1 :: Int) :. cols :. rows) -- . VU.map (\x -> (x / m)^5)
-    $ img
+   $
+    img
     -- VS.convert . L.foldl1' (VS.zipWith (+)) . L.map (VS.map magnitude) $
     -- vecs
   -- M.zipWithM_
@@ -160,11 +165,13 @@ sparseArrayToDFTArray' rows cols thetaFreqs rFreqs xs sparseArray =
              R.toList . R.traverse arr id $ \f idx@(Z :. j) ->
                ((j, x, y), f idx))
           xs -- .
-         $
+        -- L.map
+        --   (\arr ->
+        --      let !s =
+        --            VU.maximum .
+        --            toUnboxed . computeS . R.map (\x -> (magnitude x)) $
+        --            arr
+        --      in R.map (/ (s :+ 0)) arr)
+        $
         sparseArray
-  in repaToDFTArray thetaFreqs rFreqs arr -- . computeS . R.traverse arr id $ \fArr idx@(Z :. _ :. theta :. c :. r) ->
-       -- let m = div numThetaFreq 2
-       --     n = 2 * theta - m
-       -- in if n < 0 || n >= numThetaFreq
-       --      then 0
-       --      else fArr idx
+  in repaToDFTArray thetaFreqs rFreqs arr 

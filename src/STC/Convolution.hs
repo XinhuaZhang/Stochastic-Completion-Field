@@ -67,71 +67,71 @@ dftHarmonicsArray !plan !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreq
     IA.elems $
     arr
 
--- {-# INLINE convolve #-}
--- convolve ::
---      Field
---   -> DFTPlan 
---   -> R.Array U DIM4 (Complex Double)
---   -> IA.Array (Int, Int) (VS.Vector (Complex Double))
---   -> DFTArray
---   -> IO DFTArray
--- convolve !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols thetaFreqs rFreqs vecs) = do
---   dftVecs <- dftExecuteBatchP plan (DFTPlanID DFT1DG [cols, rows] [0, 1]) vecs
---   let !initVec = VS.replicate (VS.length . L.head $ vecs) 0
---       idx = (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
---   case field of
---     Source ->
---       fmap (DFTArray rows cols thetaFreqs rFreqs) .
---       dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
---       parMap
---         rdeepseq
---         (\((!r, !rFreq), (!theta, !thetaFreq)) ->
---            L.foldl'
---              (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
---                 VS.zipWith
---                   (+)
---                   vec
---                   (VS.map (* (coefficients R.! (Z :. r :. theta :. rho :. phi))) .
---                    VS.zipWith
---                      (*)
---                      (getHarmonics
---                         harmonicsArray
---                         phiFreq
---                         rhoFreq
---                         thetaFreq
---                         rFreq) $
---                    inputVec))
---              initVec .
---            L.zip idx $
---            dftVecs) $
---       idx
---     Sink ->
---       fmap (DFTArray rows cols thetaFreqs rFreqs) .
---       dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
---       parMap
---         rdeepseq
---         (\((!r, !rFreq), (!theta, !thetaFreq)) ->
---            L.foldl'
---              (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
---                 VS.zipWith
---                   (+)
---                   vec
---                   (VS.map
---                      (* ((coefficients R.! (Z :. r :. theta :. rho :. phi)) *
---                          (cis $ ((phiFreq - thetaFreq / 4)) * pi))) .
---                    VS.zipWith
---                      (*)
---                      (getHarmonics
---                         harmonicsArray
---                         phiFreq
---                         rhoFreq
---                         thetaFreq
---                         rFreq) $
---                    inputVec))
---              initVec .
---            L.zip idx $
---            dftVecs) $
---       idx
+{-# INLINE convolve #-}
+convolve ::
+     Field
+  -> DFTPlan 
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> DFTArray
+  -> IO DFTArray
+convolve !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols thetaFreqs rFreqs vecs) = do
+  dftVecs <- dftExecuteBatchP plan (DFTPlanID DFT1DG [cols, rows] [0, 1]) vecs
+  let !initVec = VS.replicate (VS.length . L.head $ vecs) 0
+      idx = (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
+  case field of
+    Source ->
+      fmap (DFTArray rows cols thetaFreqs rFreqs) .
+      dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
+      parMap
+        rdeepseq
+        (\((!r, !rFreq), (!theta, !thetaFreq)) ->
+           L.foldl'
+             (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
+                VS.zipWith
+                  (+)
+                  vec
+                  (VS.map (* (coefficients R.! (Z :. r :. theta :. rho :. phi))) .
+                   VS.zipWith
+                     (*)
+                     (getHarmonics
+                        harmonicsArray
+                        phiFreq
+                        rhoFreq
+                        thetaFreq
+                        rFreq) $
+                   inputVec))
+             initVec .
+           L.zip idx $
+           dftVecs) $
+      idx
+    Sink ->
+      fmap (DFTArray rows cols thetaFreqs rFreqs) .
+      dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
+      parMap
+        rdeepseq
+        (\((!r, !rFreq), (!theta, !thetaFreq)) ->
+           L.foldl'
+             (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
+                VS.zipWith
+                  (+)
+                  vec
+                  (VS.map
+                     (* ((coefficients R.! (Z :. r :. theta :. rho :. phi)) *
+                         (cis $ ((phiFreq - thetaFreq)) * pi))) .
+                   VS.zipWith
+                     (*)
+                     (getHarmonics
+                        harmonicsArray
+                        phiFreq
+                        rhoFreq
+                        thetaFreq
+                        rFreq) $
+                   inputVec))
+             initVec .
+           L.zip idx $
+           dftVecs) $
+      idx
 
 
 
@@ -313,79 +313,79 @@ convolve' !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols th
 --     --   idx
 
 
--- {-# INLINE convolveSingle #-}
--- convolveSingle ::
---      Field
---   -> R.Array U DIM4 (Complex Double)
---   -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
---   -> R.Array U DIM1 Double
---   -> R.Array U DIM1 Double
---   -> Int
---   -> Int
---   -> R.Array U DIM2 (Complex Double)
---   -> VU.Vector (Complex Double)
--- convolveSingle !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !x !y !input =
---   let (Z :. cols :. rows) = extent (harmonicsArray IA.! (0, 0))
---       rowCenter = div rows 2
---       colCenter = div cols 2
---       (Z :. _ :. _ :. numRFreq :. numThetaFreq) = extent coefficients
---       harmonics =
---         R.traverse2 thetaFreqs rFreqs (\_ _ -> extent coefficients) $ \fThetaFreq fRFreq (Z :. r :. theta :. rho :. phi) ->
---           (harmonicsArray IA.!
---            ( round (fRFreq (Z :. rho) - fRFreq (Z :. r))
---            , round $ (fThetaFreq (Z :. phi) - (fThetaFreq (Z :. theta)) / 4) * 4)) R.!
---           (Z :. (x + colCenter) :. (y + rowCenter))
---       product =
---         R.traverse2 (R.zipWith (*) coefficients harmonics) input const $ \fCoefficient fInput idx@(Z :. _ :. _ :. rho :. phi) ->
---           fCoefficient idx * fInput (Z :. rho :. phi)
---       arr =
---         case field of
---           Source -> product
---           Sink ->
---             R.traverse2 product thetaFreqs const $ \fProd fThetaFreq idx@(Z :. r :. theta :. rho :. phi) ->
---               fProd idx *
---               (cis $ (-(fThetaFreq (Z :. phi) - fThetaFreq (Z :. theta))) * pi)
---   in if x == 0 && y == 0
---        then VU.replicate (numRFreq * numThetaFreq) 0
---        else toUnboxed . sumS . sumS $ arr
+{-# INLINE convolveSingle #-}
+convolveSingle ::
+     Field
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
+  -> R.Array U DIM1 Double
+  -> R.Array U DIM1 Double
+  -> Int
+  -> Int
+  -> R.Array U DIM2 (Complex Double)
+  -> VU.Vector (Complex Double)
+convolveSingle !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !x !y !input =
+  let (Z :. cols :. rows) = extent (harmonicsArray IA.! (0, 0))
+      rowCenter = div rows 2
+      colCenter = div cols 2
+      (Z :. _ :. _ :. numRFreq :. numThetaFreq) = extent coefficients
+      harmonics =
+        R.traverse2 thetaFreqs rFreqs (\_ _ -> extent coefficients) $ \fThetaFreq fRFreq (Z :. r :. theta :. rho :. phi) ->
+          (harmonicsArray IA.!
+           ( round (fRFreq (Z :. rho) - fRFreq (Z :. r))
+           , round $ (fThetaFreq (Z :. phi) - (fThetaFreq (Z :. theta))))) R.!
+          (Z :. (x + colCenter) :. (y + rowCenter))
+      product =
+        R.traverse2 (R.zipWith (*) coefficients harmonics) input const $ \fCoefficient fInput idx@(Z :. _ :. _ :. rho :. phi) ->
+          fCoefficient idx * fInput (Z :. rho :. phi)
+      arr =
+        case field of
+          Source -> product
+          Sink ->
+            R.traverse2 product thetaFreqs const $ \fProd fThetaFreq idx@(Z :. r :. theta :. rho :. phi) ->
+              fProd idx *
+              (cis $ (-(fThetaFreq (Z :. phi) - fThetaFreq (Z :. theta))) * pi)
+  in if x == 0 && y == 0
+       then VU.replicate (numRFreq * numThetaFreq) 0
+       else toUnboxed . sumS . sumS $ arr
 
--- -- {-# INLINE convolveSparse #-}
--- convolveSparse ::
---      Field
---   -> R.Array U DIM4 (Complex Double)
---   -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
---   -> R.Array U DIM1 Double
---   -> R.Array U DIM1 Double
---   -> Double
---   -> [(Int, Int)]
---   -> [R.Array U DIM2 (Complex Double)]
---   -> [R.Array U DIM2 (Complex Double)]
--- convolveSparse !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !cutoff !xs !inputs =
---   L.map (fromUnboxed (extent . L.head $ inputs)) .
---   parMap
---     rdeepseq
---     (\(x, y) ->
---        L.foldl1' (VU.zipWith (+)) .
---        L.zipWith
---          (\(x', y') input ->
---             let !x'' = x - x'
---                 !y'' = y - y'
---                 (!a, !b) =
---                   if (fromIntegral $ x'' ^ 2 + y'' ^ 2) <= cutoff ^ 2
---                     then (x'', y'')
---                     else (0, 0)
---             in convolveSingle
---                  field
---                  coefficients
---                  harmonicsArray
---                  thetaFreqs
---                  rFreqs
---                  a
---                  b
---                  input)
---          xs $
---        inputs) $
---   xs
+-- {-# INLINE convolveSparse #-}
+convolveSparse ::
+     Field
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
+  -> R.Array U DIM1 Double
+  -> R.Array U DIM1 Double
+  -> Double
+  -> [(Int, Int)]
+  -> [R.Array U DIM2 (Complex Double)]
+  -> [R.Array U DIM2 (Complex Double)]
+convolveSparse !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !cutoff !xs !inputs =
+  L.map (fromUnboxed (extent . L.head $ inputs)) .
+  parMap
+    rdeepseq
+    (\(x, y) ->
+       L.foldl1' (VU.zipWith (+)) .
+       L.zipWith
+         (\(x', y') input ->
+            let !x'' = x - x'
+                !y'' = y - y'
+                (!a, !b) =
+                  if (fromIntegral $ x'' ^ 2 + y'' ^ 2) <= cutoff ^ 2
+                    then (x'', y'')
+                    else (0, 0)
+            in convolveSingle
+                 field
+                 coefficients
+                 harmonicsArray
+                 thetaFreqs
+                 rFreqs
+                 a
+                 b
+                 input)
+         xs $
+       inputs) $
+  xs
 
 
 {-# INLINE convolveSingle' #-}
@@ -419,7 +419,7 @@ convolveSingle' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs !x !y !
           Sink ->
             R.traverse2 product phiFreqs const $ \fProd fPhiFreq idx@(Z :. _ :. theta :. _ :. phi) ->
               fProd idx *
-              (cis $ (-(fPhiFreq (Z :. phi) + fPhiFreq (Z :. theta))) * pi)
+              (cis $ (-(fPhiFreq (Z :. phi) - fPhiFreq (Z :. theta))) * pi)
   in if x == 0 && y == 0
        then VU.replicate (numRhoFreq * numPhiFreq) 0
        else toUnboxed . sumS . sumS $ arr

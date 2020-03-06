@@ -145,26 +145,24 @@ normalizeFreqArr' ::
      Double
   -> [Double]
   -> [Double]
-  -> [Double]
   -> R.Array U DIM4 (Complex Double)
   -> R.Array U DIM4 (Complex Double)
-normalizeFreqArr' !std !phiFreqs !rhoFreqs !thetaFreqs arr =
+normalizeFreqArr' !std !phiFreqs !rhoFreqs  arr =
   computeUnboxedS .
-  R.traverse4
+  R.traverse3
     arr
     (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
     (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
-    (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs)
-    (\sh _ _ _ -> sh) $ \fArr fPhi fRho fTheta idx@(Z :. _ :. theta :. rho :. phi) ->
+    (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. _ :. theta :. rho :. phi) ->
     fArr idx *
     ((exp $
       (-1) *
-      ((fPhi (Z :. phi)) ^ 2 + (fTheta (Z :. theta)) ^ 2 + (fRho (Z :. rho)) ^ 2) /
+      ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2 + (fRho (Z :. rho)) ^ 2) /
       2 /
       (std ^ 2)) :+
      0)
 
-{-# INLINE computeHarmonicsArray #-}
+-- {-# INLINE computeHarmonicsArray #-}
 computeHarmonicsArray ::
      (VG.Vector vector (Complex Double), NFData (vector (Complex Double)))
   => Int
@@ -182,17 +180,8 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
   let !centerRow = div numRows 2
       !centerCol = div numCols 2
       rangeFunc1 xs ys = [(L.head xs - L.last ys) .. (L.last xs - L.head ys)]
-      -- rangeFunc1' xs ys =
-      --   [(L.head xs - (L.last ys / 2)),(L.head xs - (L.last ys / 2) + 0.5) .. (L.last
-      --                                                                            xs -
-      --                                                                          (L.head
-      --                                                                             ys /
-      --                                                                           2))]
       rangeFunc2 xs ys =
         (round (L.head xs - L.last ys), round (L.last xs - L.head ys))
-      -- rangeFunc2' xs ys =
-      --   ( (round $ (L.head xs - (L.last ys / 2)) * 2)
-      --   , (round $ (L.last xs - (L.head ys / 2)) * 2))
       (!tfLB, !tfUB) = rangeFunc2 phiFreqs thetaFreqs
       (!rfLB, !rfUB) = rangeFunc2 rhoFreqs rFreqs
       !logDR = halfLogPeriod / fromIntegral (min centerRow centerCol)
@@ -205,38 +194,30 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
                    toUnboxed . computeS . fromFunction (Z :. numCols :. numRows) $ \(Z :. c :. r) ->
                      let !x = fromIntegral (c - centerCol) * deltaCol
                          !y = fromIntegral (r - centerRow) * deltaRow
-                         !rho = (sqrt $ x ^ 2 + y ^ 2)
+                         !rho = 1 + (sqrt $ x ^ 2 + y ^ 2)
                          !rho2 =
                            fromIntegral $
                            (c - centerCol) ^ 2 + (r - centerRow) ^ 2
-                     in if (rho == 0) || rho2 > cutoff ^ 2
+                     in if (rho2 <= 2) || rho2 > cutoff ^ 2
                           then 0
-                          else -- exp $
+                          else (x :+ y) ** (tf :+ 0) *
+                               ((x ^ 2 + y ^ 2) :+ 0) **
+                               (((-tf - 0.5) :+ rf) / 2)
+                               -- exp $
                                -- (-0.5 * log rho) :+
                                -- -- cis $
-                               --     (tf * atan2 y x + rf * log rho -- * pi / halfLogPeriod
-                               --     )
-                                           (x :+ y) **
-                                         ( tf :+ 0) *
-                                         ((x ^ 2 + y ^ 2) :+ 0) **
-                                         (((-tf - 0.5) :+
-                                            rf) /
-                                          2)
-                               -- cis $
-                                      -- (tf * atan2 y x +
-                                      --  rf * log rho / halfLogPeriod)
-                               -- cis $
-                               -- fromIntegral tf * atan2 y x +
-                               -- (pi * fromIntegral rf * (log (sqrt r2) ) /
-                               --  (halfLogPeriod))
-             in ((round rf, round (tf * 1)), vec))
+                               -- (tf * atan2 y x +
+                               --  rf * log rho -- * pi / halfLogPeriod
+                               -- )
+             in ((round rf, round tf), vec))
           [ (rf, tf)
           | rf <- rangeFunc1 rhoFreqs rFreqs
           , tf <- rangeFunc1 phiFreqs thetaFreqs
           ]
   in IA.array ((rfLB, tfLB), (rfUB, tfUB)) xs
   
-{-# INLINE computeHarmonicsArraySparse #-}
+
+-- {-# INLINE computeHarmonicsArraySparse #-}
 computeHarmonicsArraySparse ::
      Int
   -> Double
@@ -252,18 +233,10 @@ computeHarmonicsArraySparse ::
 computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPeriod !cutoff =
   let !centerRow = div numRows 2
       !centerCol = div numCols 2
-      rangeFunc1 xs ys = [(round $ L.head xs - L.last ys) .. (round $ L.last xs - L.head ys)]
-      -- rangeFunc1' xs ys =
-      --   [(L.head xs - (L.last ys / 2)),(L.head xs - (L.last ys / 2) + 0.5) .. (L.last
-      --                                                                            xs -
-      --                                                                          (L.head
-      --                                                                             ys) /
-      --                                                                          2)]
+      rangeFunc1 xs ys =
+        [(round $ L.head xs - L.last ys) .. (round $ L.last xs - L.head ys)]
       rangeFunc2 xs ys =
         ((round $ (L.head xs - L.last ys)), (round $ (L.last xs - L.head ys)))
-      -- rangeFunc2' xs ys =
-      --   ( (round $ (L.head xs - (L.last ys / 2)) * 2)
-      --   , (round $ (L.last xs - (L.head ys / 2)) * 2))
       (!tfLB, !tfUB) = rangeFunc2 phiFreqs thetaFreqs
       (!rfLB, !rfUB) = rangeFunc2 rhoFreqs rFreqs
       !logDR = halfLogPeriod / fromIntegral (min centerRow centerCol)
@@ -272,32 +245,26 @@ computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rho
           rseq
           (\(!rf, !tf) ->
              let !arr =
-                   computeS . fromFunction (Z :. numCols :. numRows) $ \(Z :. c :. r) ->
+                   computeS . fromFunction (Z :. numCols :. numRows) $ \(Z :. c :. r)
+                    ->
                      let !x = fromIntegral (c - centerCol) * deltaCol
                          !y = fromIntegral (r - centerRow) * deltaRow
-                         !rho =  1 + (sqrt $ x ^ 2 + y ^ 2)
+                         !rho = (4) + (sqrt $ x ^ 2 + y ^ 2)
                          !rho2 =
                            fromIntegral $
                            (c - centerCol) ^ 2 + (r - centerRow) ^ 2
-                     in if (rho2 <= 1) || rho2 > cutoff ^ 2
+                     in if (rho2 <= 0) || rho2 > cutoff ^ 2 
                           then 0
-                          else -- if rho2 == 0
-                               --   then 0 -- cis $ (fromIntegral tf * atan2 y x)
-                               --   else
-                                      exp $
-                                      (-0.5 * log rho) :+
-                                      -- cis $ 
-                                      (fromIntegral tf * atan2 y x + fromIntegral rf * (log rho) -- * pi / halfLogPeriod
-                                      )
-                         -- (x :+ y) ** (fromIntegral tf :+ 0) *
-                         --       (((x ^ 2 + y ^ 2) :+ 0) **
-                         --        (((-(fromIntegral tf) - 0.5) :+ fromIntegral rf) /
-                         --         2))
-                                -- *
-                               -- if rho2 == 1
-                               --    then cis $ fromIntegral tf * atan2 y x
-                               --    else
-                                 -- exp $ (-0.5 * log rho) :+ (fromIntegral tf * atan2 y x + fromIntegral rf * log rho)
+                          else -- exp $
+                               -- (-0.5 * log rho) :+                              
+                               cis $ 
+                               (fromIntegral tf * atan2 y x + fromIntegral rf * (log rho) *  pi / (halfLogPeriod)
+                               )
+                               -- (x :+ y) ** (fromIntegral tf :+ 0) *
+                               -- (((x^2 + y^2) :+ 0) **
+                               --  (((-(fromIntegral tf) - 0.5) :+ fromIntegral rf) /
+                               --   2
+                               --  ))
              in deepSeqArray arr ((rf, tf), arr))
           [ (rf, tf)
           | rf <- rangeFunc1 rhoFreqs rFreqs
@@ -361,7 +328,7 @@ getHarmonics ::
   -> Double
   -> vector (Complex Double)
 getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq =
-  harmonicsArray IA.! (round (rhoFreq - rFreq), round $ (phiFreq  - thetaFreq))
+  harmonicsArray IA.! (round (rhoFreq - rFreq), round $ (phiFreq - thetaFreq))
 
 
 {-# INLINE computeFourierSeriesR2 #-}
