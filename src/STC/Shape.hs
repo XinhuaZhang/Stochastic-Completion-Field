@@ -71,7 +71,32 @@ removeDuplicate len (x:xs) =
 getShape2DIndexList :: [(Double, Double)] -> [(Int, Int)]
 getShape2DIndexList  =
   L.map (\(x, y) -> (round x, round y))
-        
+  
+{-# INLINE getShape2DIndexListGaussian #-}
+getShape2DIndexListGaussian ::
+     Int -> Double -> [(Double, Double)] -> [(Int, Int, Double)]
+getShape2DIndexListGaussian n std xs =
+  let m = div n 2
+      idx =
+        if odd m
+          then [-m .. m]
+          else [-m .. m - 1]
+      idx2D = [(i, j) | i <- idx, j <- idx]
+  in L.concatMap
+       (\(x', y') ->
+          L.map
+            (\(i, j) ->
+               let x = round $ x' + fromIntegral i :: Int
+                   y = round $ y' + fromIntegral j :: Int
+                   v =
+                     (exp $
+                      ((fromIntegral x - x') ^ 2 + (fromIntegral y - y') ^ 2) /
+                      (-2 * std ^ 2)) /
+                     (std ^ 2 * 2 * pi)
+               in (x, y, v))
+            idx2D)
+       xs
+
 {-# INLINE getShape2DIndexList' #-}
 getShape2DIndexList' :: [(Double, Double)] -> [(Double, Double)]
 getShape2DIndexList'  =

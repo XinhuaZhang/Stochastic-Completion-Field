@@ -8,6 +8,7 @@ module FokkerPlanck.GPUKernel where
 import           Data.Array.Accelerate              as A
 import           Data.Array.Accelerate.Data.Complex as A
 import qualified Data.Complex                       as C
+import Debug.Trace
 
 {-# INLINE moveParticle #-}
 moveParticle ::
@@ -38,6 +39,48 @@ normalizationTerm halfLogPeriod freq =
    A.exp (lift $ (-halfLogPeriod) A.:+ (A.pi * freq)))
 
 -- {-# INLINE coefficient #-}
+-- coefficient ::
+--      forall a. (A.Floating a, A.Num a, A.RealFloat a, A.Elt (Complex a), Prelude.Fractional a)
+--   => Exp a
+--   -> Exp a
+--   -> Exp a
+--   -> Exp a
+--   -> Exp a
+--   -> Exp (a, a, a, a)
+--   -> Exp (A.Complex a)
+-- coefficient halfLogPeriod rFreq thetaFreq rhoFreq phiFreq particle -- (unlift -> (phi, rho, theta, r))
+--  =
+--   let (phi, rho, theta, r) = unlift particle :: (Exp a, Exp a, Exp a, Exp a)
+--      -- (normalizationTerm halfLogPeriod rhoFreq) *
+--      -- (normalizationTerm halfLogPeriod rFreq) *
+--      -- (lift (A.cos (phiFreq * phi + thetaFreq * (theta - phi)) A.:+ 0)) *
+--                            -- (A.cis $
+--                            --  (-2 * A.pi) * (rhoFreq * rho + rFreq * (r - rho)) /
+--                            --  (A.exp halfLogPeriod))
+     
+--   in (lift $
+--       ((A.exp $ (-0.5) * (rho + r)) *
+--        (A.cos (phiFreq * phi  + thetaFreq * (theta - phi)))
+--       ) A.:+
+--       0) *
+--      (A.cis $ (-1) * ((rhoFreq * rho + rFreq * (r - rho)
+--                       ) -- * (2 * A.pi) / (A.exp halfLogPeriod) 
+--                       -- + phiFreq * phi  + thetaFreq * (theta - phi)
+--                      ))
+--      -- (lift $ ((A.cos (phiFreq * phi + thetaFreq * (theta - phi) / 2))) A.:+ 0) *
+--      -- (A.cis $ (-2 * A.pi) * (rhoFreq * rho + rFreq * (r - rho)) / (A.exp halfLogPeriod))
+--      -- ((lift $ rho A.:+ 0) A.** (lift $ (-0.5) A.:+ (rFreq - rhoFreq))) *
+--      -- ((lift $ r A.:+ 0) A.** (lift $ (-0.5) A.:+ (-rFreq)))
+--      -- (A.cis $ (-A.pi) * (rhoFreq * rho + rFreq * (r - rho)
+--      --                        ) / (halfLogPeriod))
+--      -- (A.cis $
+--      --  (-A.pi) * (rhoFreq * (A.log rho) + rFreq * (A.log (r / rho))) /
+--      --  halfLogPeriod)
+--   -- in ((lift $ rho A.:+ 0) A.**
+--   --     (lift $ 0 A.:+ (-A.pi) * (rhoFreq - rFreq) / halfLogPeriod)) *
+--   --    ((lift $ r A.:+ 0) A.** (lift $ 0 A.:+ (-A.pi) * rFreq / halfLogPeriod)) *
+--   --    (A.cis $ (-phiFreq) * phi - thetaFreq * (theta - phi))
+  
 coefficient ::
      forall a. (A.Floating a, A.Num a, A.RealFloat a, A.Elt (Complex a), Prelude.Fractional a)
   => Exp a
@@ -47,36 +90,14 @@ coefficient ::
   -> Exp a
   -> Exp (a, a, a, a)
   -> Exp (A.Complex a)
-coefficient halfLogPeriod rFreq thetaFreq rhoFreq phiFreq particle -- (unlift -> (phi, rho, theta, r))
- =
+coefficient halfLogPeriod rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r) = unlift particle :: (Exp a, Exp a, Exp a, Exp a)
-     -- (normalizationTerm halfLogPeriod rhoFreq) *
-     -- (normalizationTerm halfLogPeriod rFreq) *
-     -- (lift (A.cos (phiFreq * phi + thetaFreq * (theta - phi)) A.:+ 0)) *
-                           -- (A.cis $
-                           --  (-2 * A.pi) * (rhoFreq * rho + rFreq * (r - rho)) /
-                           --  (A.exp halfLogPeriod))
-     
   in (lift $
-      (-- (A.exp $ (-0.5) * (rho + r)) *
-       (A.cos (phiFreq * phi  + thetaFreq * (theta - phi)))) A.:+
+      ((A.exp $ (-0.5) * (rho + r)) *
+       (A.cos (phiFreq * phi + thetaFreq * (theta - phi)))) A.:+
       0) *
-     (A.cis $ (-1) * ((rhoFreq * rho -- + rFreq * (r - rho)
-                      ) * (A.pi) / (halfLogPeriod)
-                     ))
-     -- (lift $ ((A.cos (phiFreq * phi + thetaFreq * (theta - phi) / 2))) A.:+ 0) *
-     -- (A.cis $ (-2 * A.pi) * (rhoFreq * rho + rFreq * (r - rho)) / (A.exp halfLogPeriod))
-     -- ((lift $ rho A.:+ 0) A.** (lift $ (-0.5) A.:+ (rFreq - rhoFreq))) *
-     -- ((lift $ r A.:+ 0) A.** (lift $ (-0.5) A.:+ (-rFreq)))
-     -- (A.cis $ (-A.pi) * (rhoFreq * rho + rFreq * (r - rho)
-     --                        ) / (halfLogPeriod))
-     -- (A.cis $
-     --  (-A.pi) * (rhoFreq * (A.log rho) + rFreq * (A.log (r / rho))) /
-     --  halfLogPeriod)
-  -- in ((lift $ rho A.:+ 0) A.**
-  --     (lift $ 0 A.:+ (-A.pi) * (rhoFreq - rFreq) / halfLogPeriod)) *
-  --    ((lift $ r A.:+ 0) A.** (lift $ 0 A.:+ (-A.pi) * rFreq / halfLogPeriod)) *
-  --    (A.cis $ (-phiFreq) * phi - thetaFreq * (theta - phi))
+     (A.cis $ (-1) * (rhoFreq * rho + rFreq * (r + rho)))
+
 
 
 -- {-# INLINE gpuKernel #-}
@@ -96,20 +117,20 @@ gpuKernel !maxScaleExp !halfLogPeriodExp !deltaLogRhoComplexExp freqArr particle
           (\particle ->
              let (phi, rho, theta, r) =
                    unlift particle :: (Exp a, Exp a, Exp a, Exp a)
-                 logRho = rho 
+                 logRho = A.log rho 
                    -- (A.fromIntegral $
                    --  (A.round (((A.log rho) + halfLogPeriodExp) / delta) :: Exp Int)) *
                    -- delta -
                    -- halfLogPeriodExp
                  -- newRho =
                  --   (A.fromIntegral $ (A.round (rho / delta) :: Exp Int)) * delta :: Exp a
-             in lift (phi, logRho, theta, 0 :: Exp a)) .
-        afst .
-        A.filter
-          (\particle ->
-             let (_, rho, _, _) =
-                   unlift particle :: (Exp a, Exp a, Exp a, Exp a)
-             in rho A.> 0 ) -- .
+             in lift (phi, logRho, theta, (A.log r) :: Exp a)) -- .
+        -- afst .
+        -- A.filter
+        --   (\particle ->
+        --      let (_, rho, _, _) =
+        --            unlift particle :: (Exp a, Exp a, Exp a, Exp a)
+        --      in rho A.> (A.constant 0) ) -- .
         -- A.map moveParticle 
         $
         particles
@@ -168,3 +189,49 @@ convolveKernel coefficients harmonics thetaIdx rIdx input =
           lift (Z :. rho :. phi :. col :. row)) .
      A.zipWith (*) harmonicsArr . A.zipWith (*) coefficientsArr $
      input
+
+
+{-# INLINE coefficient' #-}
+coefficient' ::
+     forall a. (A.Floating a, A.Num a, A.RealFloat a, A.Elt (Complex a), Prelude.Fractional a)
+  => Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp (a, a, a, a, a)
+  -> Exp (A.Complex a)
+coefficient' rFreq thetaFreq rhoFreq phiFreq particle =
+  let (phi, rho, theta, r, v) =
+        unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
+  in (lift $
+      (v -- * (A.exp $ (-0.5) * (rho + r)) 
+       ) A.:+
+      0) *
+     (A.cis $
+      (-1) *
+      (rhoFreq * rho + rFreq * (r + rho) + phiFreq * phi +
+       thetaFreq * (theta - phi))) 
+
+gpuKernel' ::
+     forall a.
+     ( A.Eq a
+     , A.Floating a
+     , A.Num a
+     , A.RealFloat a
+     , A.Elt (Complex a)
+     , A.FromIntegral Int a
+     , Prelude.Fractional a
+     )
+  => Acc (A.Vector (a, a, a, a))
+  -> Acc (A.Vector (a, a, a, a, a))
+  -> Acc (A.Vector (A.Complex a))
+gpuKernel' freqArr xs =
+  A.map
+    (\(unlift -> (rFreq, thetaFreq, rhoFreq, phiFreq)) ->
+       A.sfoldl
+         (\s particle ->
+            s + (coefficient' rFreq thetaFreq rhoFreq phiFreq particle))
+         0
+         (constant Z)
+         xs)
+    freqArr

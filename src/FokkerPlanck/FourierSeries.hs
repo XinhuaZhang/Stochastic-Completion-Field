@@ -14,6 +14,7 @@ module FokkerPlanck.FourierSeries
   , computeFourierSeriesR2
   , normalizeFreqArr
   , normalizeFreqArr'
+  , plotThetaDimension
   ) where
 
 import           Array.UnboxedArray          as UA
@@ -33,6 +34,11 @@ import           Text.Printf
 import           Utils.Array
 import           Utils.Parallel
 import           Utils.Time
+-- import Graphics.Gnuplot.Simple
+import           Image.IO
+import System.FilePath
+import Graphics.Rendering.Chart.Easy
+import Graphics.Rendering.Chart.Backend.Cairo
 
 {-# INLINE sampleScale #-}
 sampleScale ::
@@ -147,7 +153,7 @@ normalizeFreqArr' ::
   -> [Double]
   -> R.Array U DIM4 (Complex Double)
   -> R.Array U DIM4 (Complex Double)
-normalizeFreqArr' !std !phiFreqs !rhoFreqs  arr =
+normalizeFreqArr' !std !phiFreqs !rhoFreqs arr =
   computeUnboxedS .
   R.traverse3
     arr
@@ -156,10 +162,8 @@ normalizeFreqArr' !std !phiFreqs !rhoFreqs  arr =
     (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. _ :. theta :. rho :. phi) ->
     fArr idx *
     ((exp $
-      (-1) *
-      ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2 + (fRho (Z :. rho)) ^ 2) /
-      2 /
-      (std ^ 2)) :+
+      (-1) * ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2) / (2 * std ^ 2) -
+      ((fRho (Z :. rho)) ^ 2) / (2 * (std) ^ 2)) :+
      0)
 
 -- {-# INLINE computeHarmonicsArray #-}
@@ -194,20 +198,20 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
                    toUnboxed . computeS . fromFunction (Z :. numCols :. numRows) $ \(Z :. c :. r) ->
                      let !x = fromIntegral (c - centerCol) * deltaCol
                          !y = fromIntegral (r - centerRow) * deltaRow
-                         !rho = 1 + (sqrt $ x ^ 2 + y ^ 2)
+                         !rho = 0 + (sqrt $ x ^ 2 + y ^ 2)
                          !rho2 =
                            fromIntegral $
                            (c - centerCol) ^ 2 + (r - centerRow) ^ 2
-                     in if (rho2 <= 2) || rho2 > cutoff ^ 2
+                     in if rho2 > cutoff ^ 2 || (rho <= 0)  -- || pi * rho < (abs tf) -- || log ((rho + 1) / rho) > (1 / (2 * rf)) 
                           then 0
                           else (x :+ y) ** (tf :+ 0) *
                                ((x ^ 2 + y ^ 2) :+ 0) **
-                               (((-tf - 0.5) :+ rf) / 2)
+                               (((-tf - 1) :+ rf) / 2)
                                -- exp $
-                               -- (-0.5 * log rho) :+
+                               -- (-1 * log rho) :+
                                -- -- cis $
                                -- (tf * atan2 y x +
-                               --  rf * log rho -- * pi / halfLogPeriod
+                               --  rf * (log rho) 
                                -- )
              in ((round rf, round tf), vec))
           [ (rf, tf)
@@ -245,26 +249,19 @@ computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rho
           rseq
           (\(!rf, !tf) ->
              let !arr =
-                   computeS . fromFunction (Z :. numCols :. numRows) $ \(Z :. c :. r)
-                    ->
+                   computeS . fromFunction (Z :. numCols :. numRows) $ \(Z :. c :. r) ->
                      let !x = fromIntegral (c - centerCol) * deltaCol
                          !y = fromIntegral (r - centerRow) * deltaRow
-                         !rho = (4) + (sqrt $ x ^ 2 + y ^ 2)
+                         !rho = ((sqrt $ x ^ 2 + y ^ 2))
                          !rho2 =
                            fromIntegral $
                            (c - centerCol) ^ 2 + (r - centerRow) ^ 2
-                     in if (rho2 <= 0) || rho2 > cutoff ^ 2 
+                     in if (rho <= 0) || rho2 > cutoff ^ 2
                           then 0
-                          else -- exp $
-                               -- (-0.5 * log rho) :+                              
-                               cis $ 
-                               (fromIntegral tf * atan2 y x + fromIntegral rf * (log rho) *  pi / (halfLogPeriod)
-                               )
-                               -- (x :+ y) ** (fromIntegral tf :+ 0) *
-                               -- (((x^2 + y^2) :+ 0) **
-                               --  (((-(fromIntegral tf) - 0.5) :+ fromIntegral rf) /
-                               --   2
-                               --  ))
+                          else (x :+ y) ** (fromIntegral tf :+ 0) *
+                               (((x ^ 2 + y ^ 2) :+ 0) **
+                                (((-(fromIntegral tf) - 1) :+ fromIntegral rf) /
+                                 2))
              in deepSeqArray arr ((rf, tf), arr))
           [ (rf, tf)
           | rf <- rangeFunc1 rhoFreqs rFreqs
@@ -328,7 +325,7 @@ getHarmonics ::
   -> Double
   -> vector (Complex Double)
 getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq =
-  harmonicsArray IA.! (round (rhoFreq - rFreq), round $ (phiFreq - thetaFreq))
+  harmonicsArray IA.! (round (rhoFreq + rFreq), round $ (phiFreq - thetaFreq))
 
 
 {-# INLINE computeFourierSeriesR2 #-}
@@ -364,7 +361,7 @@ computeFourierSeriesR2 numRows deltaRow numCols deltaCol phiFreqs rhoFreqs theta
           (,) <$> (L.zip [0 ..] rhoFreqs) <*> (L.zip [0 ..] phiFreqs)) $
      (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
 
-{-# INLINE computeThetaRHarmonics #-}
+-- {-# INLINE computeThetaRHarmonics #-}
 computeThetaRHarmonics ::
      Int -> Int -> [Double] -> [Double] -> Double -> [[(Complex Double)]]
 computeThetaRHarmonics !numOrientation !numScale !thetaFreqs !rFreqs !halfLogPeriod =
@@ -377,7 +374,7 @@ computeThetaRHarmonics !numOrientation !numScale !thetaFreqs !rFreqs !halfLogPer
               rdeepseq
               (\o ->
                  L.map
-                   (\freq -> cis $ freq * fromIntegral o * deltaTheta)
+                   (\freq -> cis $ freq * (fromIntegral o * deltaTheta))
                    thetaFreqs) $
             [0 .. numOrientation - 1]
        else parMap
@@ -417,3 +414,36 @@ computeFourierSeriesThetaR !harmonics !vecs =
           initVec .
         L.zip vecs) $
      harmonics
+
+plotThetaDimension ::
+     (R.Source s Double)
+  => FilePath
+  -> String
+  -> (Int, Int)
+  -> R.Array s DIM3 Double
+  -> IO ()
+plotThetaDimension folderPath prefix (x', y') inputArr = do
+  let centerCol = div cols 2
+      centerRow = div rows 2
+      x = x' + centerCol
+      y = y' + centerRow
+      (Z :. numOrientation :. cols :. rows) = extent inputArr
+      centerArr =
+        fromFunction (Z :. (1 :: Int) :. cols :. rows) $ \(Z :. _ :. i :. j) ->
+          if i == x && j == y
+            then 1
+            else 0
+  plotImageRepa (folderPath </> printf "%s(%d,%d)_center.png" prefix x' y') .
+    ImageRepa 8 . computeS $
+    centerArr
+  let ys' = R.toList . R.slice inputArr $ (Z :. All :. x :. y)
+      !maxY = L.maximum ys'
+      -- ys = L.map (/maxY) ys'
+      ys = ys'
+      deltaTheta = (360 ::Double) / fromIntegral numOrientation
+      xs = [fromIntegral x * deltaTheta | x <- [0 .. numOrientation - 1]]
+  toFile def (folderPath </> printf "%s(%d,%d)_theta.png" prefix x' y') $ do
+    layout_title .= printf "%s(%d,%d)" prefix x' y'
+    layout_x_axis . laxis_generate .= scaledAxis def (0, 359)
+    layout_y_axis . laxis_generate .= scaledAxis def (0, maxY)
+    plot (line "" [L.zip xs ys])

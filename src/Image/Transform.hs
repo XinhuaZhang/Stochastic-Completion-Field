@@ -230,6 +230,49 @@ bicubicInterpolation idxFunc (newCols, newRows) arr =
       , [-6, 6, 6, -6, -4, -2, 4, 2, -3, 3, -3, 3, -2, -1, -2, -1]
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ] 
+      
+{-# INLINE bilinearInterpolation #-}
+bilinearInterpolation ::
+     (R.Source r Double)
+  => ((Int, Int) -> (Double, Double))
+  -> (Int, Int)
+  -> R.Array r DIM2 Double
+  -> R.Array U DIM2 Double
+bilinearInterpolation idxFunc (newCols, newRows) arr =
+  let (Z :. cols :. rows) = extent arr
+  in computeS . R.traverse arr id $ \f (Z :. a :. b) ->
+       let (x, y) = idxFunc (a, b)
+           x1 = floor x
+           x2 = ceiling x
+           y1 = floor y
+           y2 = ceiling y
+           q11 = f (Z :. x1 :. y1)
+           q12 = f (Z :. x1 :. y2)
+           q21 = f (Z :. x2 :. y1)
+           q22 = f (Z :. x2 :. y2)
+           r1 =
+             ((fromIntegral x2 - x) / fromIntegral (x2 - x1)) * q11 +
+             ((x - fromIntegral x1) / fromIntegral (x2 - x1)) * q21
+           r2 =
+             ((fromIntegral x2 - x) / fromIntegral (x2 - x1)) * q12 +
+             ((x - fromIntegral x1) / fromIntegral (x2 - x1)) * q22
+           p =
+             ((fromIntegral y2 - y) / fromIntegral (y2 - y1)) * r1 +
+             ((y - fromIntegral y1) / fromIntegral (y2 - y1)) * r2
+       in if (x < 0) ||
+             (x > (fromIntegral cols - 1)) ||
+             (y < 0) || (y > (fromIntegral rows - 1))
+            then 0
+            else if x1 == x2
+                   then if y1 == y2
+                          then q11
+                          else ((fromIntegral y2 - y) / fromIntegral (y2 - y1)) *
+                               q11 +
+                               ((y - fromIntegral y1) / fromIntegral (y2 - y1)) *
+                               q12
+                   else if y1 == y2
+                          then r1
+                          else p
 
 {-# INLINE resize2D #-}
 resize2D ::
@@ -398,12 +441,13 @@ rotate25D theta (centerX, centerY) arr =
   L.map
     (\i ->
        toUnboxed .
-       bicubicInterpolation
+       -- bicubicInterpolation
+       bilinearInterpolation
          (\(i, j) ->
             let i' = fromIntegral i - centerX
                 j' = fromIntegral j - centerY
-             in ( i' * cos theta - j' * sin theta + centerX
-                , i' * sin theta + j' * cos theta + centerY))
+            in ( i' * cos theta - j' * sin theta + centerX
+               , i' * sin theta + j' * cos theta + centerY))
          (nx', ny') .
        R.slice arr $
        (Z :. i :. R.All :. R.All)) $

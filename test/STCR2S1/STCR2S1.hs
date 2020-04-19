@@ -19,9 +19,11 @@ import           Utils.Array
 import           Utils.Time
 import STC.Utils
 import Text.Printf
+import           FokkerPlanck.FourierSeries
+import FokkerPlanck.GreensFunction
 
 main = do
-  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initDistStr:initOriStr:initSpeedStr:rStr:numThreadStr:_) <-
+  args@(numPointStr:numOrientationStr:sigmaStr:taoStr:numTrailStr:maxTrailStr:initDistStr:initOriStr:initSpeedStr:rStr:locationStr:deltaStr:numThreadStr:_) <-
     getArgs
   print args
   let numPoint = read numPointStr :: Int
@@ -34,6 +36,8 @@ main = do
       initOri = read initOriStr :: Double
       initSpeed = read initSpeedStr :: Double
       r = read rStr :: Double
+      location = read locationStr :: (Int, Int)
+      delta = read deltaStr :: Double
       numThread = read numThreadStr :: Int
       sourceDist =
         computeInitialDistribution numPoint numPoint numOrientation . L.take 1 $
@@ -46,17 +50,20 @@ main = do
       folderPath = "output/test/STCR2S1"
   createDirectoryIfMissing True folderPath
   -- Compute the Green's function
-  arrG <-
-    solveMonteCarloR2S1
-      numThread
-      numTrail
-      numPoint
-      numPoint
-      numOrientation
-      sigma
-      tao
-      r
-      ""
+  -- arrG <-
+  --   solveMonteCarloR2S1
+  --     numThread
+  --     numTrail
+  --     maxTrail
+  --     numPoint
+  --     numPoint
+  --     numOrientation
+  --     sigma
+  --     tao
+  --     r
+  --     initSpeed
+  --     ""
+  let arrG = sampleR2S1 numPoint numPoint numOrientation delta initSpeed sigma tao  
   printCurrentTime "Done."
   plan <- makeR2S1Plan emptyPlan arrG
   -- Source Field
@@ -68,29 +75,38 @@ main = do
      R.extend (Z :. (1 :: Int) :. All :. All) .
      reduceContrast 100 . R.sumS . rotate3D $
      source)
-  MP.mapM_
-    (\i ->
-       plotImageRepa
-         (folderPath </> printf "Source_%d.png" i)
-         (ImageRepa 8 .
-          computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice source $
-          (Z :. i :. All :. All)))
-    [0 .. numOrientation - 1]
+  plotThetaDimension folderPath "R2S1_" location .
+    R.backpermute
+      (extent source)
+      (\(Z :. k :. i :. j) ->
+         (Z :.
+          (mod (k + numOrientation - (div numOrientation 2)) numOrientation :: Int) :.
+          i :.
+          j)) $
+    source
+  -- MP.mapM_
+  --   (\i ->
+  --      plotImageRepa
+  --        (folderPath </> printf "Source_%d.png" i)
+  --        (ImageRepa 8 .
+  --         computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice source $
+  --         (Z :. i :. All :. All)))
+  --   [0 .. numOrientation - 1]
   -- Sink Field
-  sink <- shareWeightST plan sinkDist arrG  -- . rotateST arrG $ div numOrientation 2
+  sink <- shareWeightST plan sinkDist arrG -- . rotateST arrG $ div numOrientation 2
   plotImageRepa
     (folderPath </> "Sink.png")
     (ImageRepa 8 .
-     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . reduceContrast 100 . R.sumS . rotate3D $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
      sink)
-  MP.mapM_
-    (\i ->
-       plotImageRepa
-         (folderPath </> printf "Sink_%d.png" i)
-         (ImageRepa 8 .
-          computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice sink $
-          (Z :. i :. All :. All)))
-    [0 .. numOrientation - 1]
+  -- MP.mapM_
+  --   (\i ->
+  --      plotImageRepa
+  --        (folderPath </> printf "Sink_%d.png" i)
+  --        (ImageRepa 8 .
+  --         computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.slice sink $
+  --         (Z :. i :. All :. All)))
+  --   [0 .. numOrientation - 1]
   -- Completion Field
   let completion = R.zipWith (*) source . timeReversal $ sink
   plotImageRepa

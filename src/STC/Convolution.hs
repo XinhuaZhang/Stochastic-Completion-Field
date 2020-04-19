@@ -66,6 +66,52 @@ dftHarmonicsArray !plan !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreq
        computeUnboxedS . makeFilter2D . fromUnboxed (Z :. numCols :. numRows)) .
     IA.elems $
     arr
+  
+{-# INLINE dftHarmonicsArrayG #-}
+dftHarmonicsArrayG ::
+     DFTPlan
+  -> Int
+  -> Double
+  -> Int
+  -> Double
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> [Double]
+  -> Double
+  -> Double -> VS.Vector (Complex Double)
+  -> IO (IA.Array (Int, Int) (VS.Vector (Complex Double)))
+dftHarmonicsArrayG !plan !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPeriod !cutoff !gaussian = do
+  let !arr =
+        computeHarmonicsArray
+          numRows
+          deltaRow
+          numCols
+          deltaCol
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          rFreqs
+          halfLogPeriod
+          cutoff
+  xs <-
+    fmap (L.map (VS.zipWith (*) gaussian)) .
+    dftExecuteBatchP plan (DFTPlanID DFT1DG [numCols, numRows] [0, 1]) .
+    IA.elems $
+    arr
+  ys <- dftExecuteBatchP plan (DFTPlanID IDFT1DG [numCols, numRows] [0, 1]) xs
+  fmap (listArray (bounds arr)) .
+    dftExecuteBatchP plan (DFTPlanID DFT1DG [numCols, numRows] [0, 1]) .
+    L.map
+      (\vec ->
+         let arr = fromUnboxed (Z :. numCols :. numRows) . VS.convert $ vec
+         in VS.convert .
+            toUnboxed . computeUnboxedS . makeFilter2D . R.traverse arr id $ \f idx@(Z :. i :. j) ->
+              if (i == div numCols 2 && j == div numRows 2)
+                 then 0
+                 else f idx) $
+    ys
+
 
 {-# INLINE convolve #-}
 convolve ::
@@ -168,6 +214,55 @@ convolve' !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols th
                                 (coefficients R.!
                                  (Z :. (0 :: Int) :. theta :. rho :. phi)) *
                                 (cis $ (-(phiFreq  + thetaFreq)) * pi))) .
+                      VS.zipWith
+                        (*)
+                        (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq 0) $
+                      inputVec))
+                vec1 .
+              L.zip idxTheta $
+              dftVecs)
+           initVec .
+         L.zip [0 ..] $
+         rFreqs) $
+    idxTheta        
+  
+  
+{-# INLINE convolveG' #-}
+convolveG' ::
+     Field
+  -> DFTPlan
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> VS.Vector (Complex Double)
+  -> DFTArray
+  -> IO DFTArray
+convolveG' !field !plan !coefficients !harmonicsArray !gaussianFilter !arr@(DFTArray rows cols thetaFreqs rFreqs vecs) = do
+  dftVecs <-
+    L.map (VS.zipWith (*) gaussianFilter) <$>
+    dftExecuteBatchP plan (DFTPlanID DFT1DG [cols, rows] [0, 1]) vecs
+  let !initVec = VS.replicate (VS.length . L.head $ vecs) 0
+      idxTheta = L.zip [0 ..] thetaFreqs
+  fmap (DFTArray rows cols thetaFreqs rFreqs) .
+    dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
+    parMap
+      rdeepseq
+      (\(!theta, !thetaFreq) ->
+         L.foldl'
+           (\vec1 (rho, rhoFreq) ->
+              L.foldl'
+                (\(!vec2) ((!phi, !phiFreq), inputVec) ->
+                   VS.zipWith
+                     (+)
+                     vec2
+                     (VS.map
+                        (* (case field of
+                              Source ->
+                                coefficients R.!
+                                (Z :. (0 :: Int) :. theta :. rho :. phi)
+                              Sink ->
+                                (coefficients R.!
+                                 (Z :. (0 :: Int) :. theta :. rho :. phi)) *
+                                (cis $ (-(phiFreq + thetaFreq)) * pi))) .
                       VS.zipWith
                         (*)
                         (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq 0) $
@@ -395,8 +490,8 @@ convolveSingle' ::
   -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
   -> R.Array U DIM1 Double
   -> R.Array U DIM1 Double
-  -> Int
-  -> Int
+  -> Double
+  -> Double
   -> R.Array U DIM1 (Complex Double)
   -> VU.Vector (Complex Double)
 convolveSingle' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs !x !y !input =
@@ -404,12 +499,18 @@ convolveSingle' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs !x !y !
       rowCenter = div rows 2
       colCenter = div cols 2
       (Z :. _ :. _ :. numRhoFreq :. numPhiFreq) = extent coefficients
+      -- harmonics =
+      --   R.traverse2 phiFreqs rhoFreqs (\_ _ -> extent coefficients) $ \fPhiFreq fRhoFreq (Z :. _ :. theta :. rho :. phi) ->
+      --     (harmonicsArray IA.!
+      --      ( round (fRhoFreq (Z :. rho))
+      --      , round (fPhiFreq (Z :. phi) - (fPhiFreq (Z :. theta))))) R.!
+      --     (Z :. (x + colCenter) :. (y + rowCenter))
       harmonics =
         R.traverse2 phiFreqs rhoFreqs (\_ _ -> extent coefficients) $ \fPhiFreq fRhoFreq (Z :. _ :. theta :. rho :. phi) ->
-          (harmonicsArray IA.!
-           ( round (fRhoFreq (Z :. rho))
-           , round (fPhiFreq (Z :. phi) - (fPhiFreq (Z :. theta))))) R.!
-          (Z :. (x + colCenter) :. (y + rowCenter))
+          let !tf = fPhiFreq (Z :. phi) - fPhiFreq (Z :. theta)
+              !rf = fRhoFreq (Z :. rho)
+          in (x :+ y) ** (tf :+ 0) *
+             ((x ^ 2 + y ^ 2) :+ 0) ** (((-tf - 1) :+ rf) / 2)
       product =
         R.traverse2 (R.zipWith (*) coefficients harmonics) input const $ \fCoefficient fInput idx@(Z :. _ :. _ :. _ :. phi) ->
           fCoefficient idx * fInput (Z :. phi)
@@ -432,7 +533,7 @@ convolveSparse' ::
   -> R.Array U DIM1 Double
   -> R.Array U DIM1 Double
   -> Double
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> [R.Array U DIM1 (Complex Double)]
   -> [R.Array U DIM1 (Complex Double)]
 convolveSparse' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs !cutoff !xs !inputs =
@@ -446,7 +547,7 @@ convolveSparse' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs !cutoff
             let !x'' = x - x'
                 !y'' = y - y'
                 (!a, !b) =
-                  if (fromIntegral $ x'' ^ 2 + y'' ^ 2) <= cutoff ^ 2
+                  if (x'' ^ 2 + y'' ^ 2) <= cutoff ^ 2
                     then (x'', y'')
                     else (0, 0)
             in convolveSingle'
@@ -461,3 +562,13 @@ convolveSparse' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs !cutoff
          xs $
        inputs) $
   xs
+
+{-# INLINE gaussianFilter2D #-}
+gaussianFilter2D :: DFTPlan -> Int -> Double -> IO (VS.Vector (Complex Double))
+gaussianFilter2D plan numPoint stdG =
+  dftExecute plan (DFTPlanID DFT1DG [numPoint, numPoint] [0, 1]) .
+  VU.convert .
+  toUnboxed . computeS . makeFilter2D . fromFunction (Z :. numPoint :. numPoint) $ \(Z :. i :. j) ->
+    let x = fromIntegral $ i - div numPoint 2
+        y = fromIntegral $ j - div numPoint 2
+    in (exp (-(x ^ 2 + y ^ 2) / (2 * stdG ^ 2))) :+ 0

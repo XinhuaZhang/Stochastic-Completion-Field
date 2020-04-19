@@ -1,18 +1,20 @@
 #!/bin/bash
-Size=64
-Orientations=18
-Sigma=0.1
-Tao=100
-InitSpeed=0
+Size=256
+Orientations=72
+Sigma=0.0005 #0.00447213595499958 #0.0005
+Tao=9.5
+InitSpeed=0.149
 Trails=1000000
-MaxTrails=100
+MaxTrails=100000
 InitOri=0
 WriteFlag=True
-NumInteration=50
+NumInteration=1
 Threshold=1
 HistFileName=${Size}_${Orientations}_${Sigma}_${Tao}_${InitSpeed}.dat
 HistFilePath=output/test/STCR2S1PointSet/${HistFileName}
-R=6
-Threads=16
+R=64
+Delta=0.125
+STD=0.125
+Threads=24
 
-time stack test :STCR2S1PointSet-test --test-arguments "${Size} ${Orientations} ${Sigma} ${Tao} ${Trails} ${MaxTrails} ${InitOri} ${InitSpeed} ${WriteFlag} ${NumInteration} ${Threshold} ${HistFilePath} ${R} ${Threads} +RTS -N${Threads} -s -RTS"
+time stack test :STCR2S1PointSet-test --test-arguments "${Size} ${Orientations} ${Sigma} ${Tao} ${Trails} ${MaxTrails} ${InitOri} ${InitSpeed} ${WriteFlag} ${NumInteration} ${Threshold} ${HistFilePath} ${R} ${Delta} ${STD} ${Threads} +RTS -N${Threads} -RTS"

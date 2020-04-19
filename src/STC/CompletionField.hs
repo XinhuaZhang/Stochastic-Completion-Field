@@ -30,7 +30,7 @@ completionField !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = d
               (makeFilterHelper numThetaFreq b) :.
               c :.
               d)) .
-        -- pad [rows, cols, numThetaFreq, numRFreq] 0 . 
+        pad [rows, cols, numThetaFreq, numRFreq] 0 . 
         dftArrayToRepa $
         source
       -- !sinkVec =

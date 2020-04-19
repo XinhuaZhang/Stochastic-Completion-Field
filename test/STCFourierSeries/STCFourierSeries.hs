@@ -15,6 +15,7 @@ import           Data.Maybe
 import           Data.Vector.Generic                as VG
 import           FokkerPlanck.BrownianMotion
 import           FokkerPlanck.FourierSeries
+import           FokkerPlanck.GreensFunction
 import           FokkerPlanck.Histogram
 import           FokkerPlanck.MonteCarlo
 import           Foreign.CUDA.Driver                as CUDA
@@ -28,7 +29,7 @@ import           Utils.Array
 import           Utils.Time
 
 main = do
-  args@(gpuIDStr:numPointStr:deltaXStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdStr:numThreadStr:_) <-
+  args@(gpuIDStr:numPointStr:deltaXStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdStr:stdGStr:locationStr:numThreadStr:_) <-
     getArgs
   let gpuID = read gpuIDStr :: [Int]
       numPoint = read numPointStr :: Int
@@ -57,37 +58,69 @@ main = do
       halfLogPeriod = log maxScale
       deltaLog = read deltaLogStr :: Double
       std = read stdStr :: Double
+      stdG = read stdGStr :: Double
+      location = read locationStr :: (Int, Int)
   removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
+  -- hist <-
+  --   if flag
+  --     then do
+  --       printCurrentTime $ "read data from " L.++ histFilePath
+  --       decodeFile histFilePath
+  --     else runMonteCarloFourierCoefficientsGPU
+  --            gpuID
+  --            numThread
+  --            numTrail
+  --            maxTrail
+  --            thetaSigma
+  --            scaleSigma
+  --            maxScale
+  --            tao
+  --            phiFreqs
+  --            rhoFreqs
+  --            thetaFreqs
+  --            scaleFreqs
+  --            deltaLog
+  --            initScale
+  --            histFilePath
+  --            (emptyHistogram
+  --               [ L.length phiFreqs
+  --               , L.length rhoFreqs
+  --               , L.length thetaFreqs
+  --               , L.length scaleFreqs
+  --               ]
+  --               0)
+  -- hist <-
+  --   sampleLogpolar
+  --     histFilePath
+  --     (L.head gpuID)
+  --     180
+  --     180
+  --     (fromIntegral $ div numPoint 2)
+  --     initScale
+  --     thetaSigma
+  --     tao
+  --     phiFreqs
+  --     rhoFreqs
+  --     thetaFreqs
+  --     scaleFreqs
   hist <-
-    if flag
-      then do
-        printCurrentTime $ "read data from " L.++ histFilePath
-        decodeFile histFilePath
-      else runMonteCarloFourierCoefficientsGPU
-             gpuID
-             numThread
-             numTrail
-             maxTrail
-             thetaSigma
-             scaleSigma
-             maxScale
-             tao
-             phiFreqs
-             rhoFreqs
-             thetaFreqs
-             scaleFreqs
-             deltaLog
-             initScale
-             histFilePath
-             (emptyHistogram
-                [ L.length phiFreqs
-                , L.length rhoFreqs
-                , L.length thetaFreqs
-                , L.length scaleFreqs
-                ]
-                0)
+    sampleCartesian
+      folderPath
+      histFilePath
+      (L.head gpuID)
+      numPoint
+      numPoint
+      144
+      deltaLog
+      initScale
+      thetaSigma
+      tao
+      phiFreqs
+      rhoFreqs
+      thetaFreqs
+      scaleFreqs
   let !initSource =
         computeInitialDistribution'
           numPoint
@@ -107,8 +140,7 @@ main = do
           halfLogPeriod
           [L.last initPoints]
       !coefficients =
-        normalizeFreqArr' std phiFreqs rhoFreqs .
-        getNormalizedHistogramArr $
+        normalizeFreqArr' std phiFreqs rhoFreqs . getNormalizedHistogramArr $
         hist
        -- = getNormalizedHistogramArr $ hist :: R.Array U DIM4 (Complex Double)
       !thetaRHarmonics =
@@ -127,6 +159,7 @@ main = do
       (L.length thetaFreqs)
       (L.length scaleFreqs)
   printCurrentTime "harmonicsArray"
+  -- gaussian <- gaussianFilter2D plan numPoint stdG
   harmonicsArray <-
     dftHarmonicsArray
       plan
@@ -139,7 +172,8 @@ main = do
       thetaFreqs
       scaleFreqs
       halfLogPeriod
-      (fromIntegral numPoint)
+      (fromIntegral numPoint * sqrt 2)
+      -- gaussian
   -- let harmonicsArray' =
   --       computeHarmonicsArray
   --         numPoint
@@ -209,6 +243,14 @@ main = do
     numPoint
     thetaRHarmonics
     sourceArr
+  let sourceArr' =
+        fromUnboxed (Z :. numOrientation :. numPoint :. numPoint) .
+        VG.convert .
+        VG.concat .
+        computeFourierSeriesThetaR thetaRHarmonics . getDFTArrayVector $
+        sourceArr
+  plotThetaDimension folderPath "FourierSeries_" location . R.map magnitude $
+    sourceArr'
   -- plotDFTArrayThetaR
   --   (folderPath </> "Source_test.png")
   --   numPoint
@@ -247,7 +289,7 @@ main = do
   plotImageRepa (folderPath </> "CompletionR2S1.png") .
     ImageRepa 8 .
     fromUnboxed (Z :. (1 :: Int) :. numPoint :. numPoint) .
-    VG.convert . L.foldl1' (VG.zipWith (+)) $
+    VG.map (\x -> x ^ 2) . VG.convert . L.foldl1' (VG.zipWith (+)) $
     L.zipWith (VG.zipWith (\x y -> magnitude x * magnitude y)) a b
   printCurrentTime ""
   -- M.mapM_

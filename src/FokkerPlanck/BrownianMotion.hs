@@ -4,6 +4,9 @@ module FokkerPlanck.BrownianMotion
   ( Particle(..)
   , generatePath
   , moveParticle
+  , thetaPlus
+  , scalePlus
+  , generateRandomNumber
   ) where
 
 import           Control.DeepSeq
@@ -52,16 +55,24 @@ scaleCheck maxScale scale =
 {-# INLINE thetaPlus #-}
 thetaPlus :: Double -> Double -> Double
 thetaPlus !x !y
-  | z <= -pi = z + a
-  | z > pi = z - a
+  | z < -pi = z + a
+  | z >= pi = z - a
   | otherwise = z
   where
     !z = x + y
     !a = 2 * pi
          
+-- {-# INLINE scalePlus #-}
+-- scalePlus :: Double -> Double -> Double  
+-- scalePlus x delta = x * exp delta 
+          
 {-# INLINE scalePlus #-}
 scalePlus :: Double -> Double -> Double  
-scalePlus x delta = x * exp delta 
+scalePlus x delta
+  | z <= 0 = 0
+  | otherwise = z
+  where
+    z = x + delta    
 
 {-# INLINE scalePlusPeriodic #-}
 scalePlusPeriodic :: Double -> Double -> Double -> Double
@@ -131,23 +142,23 @@ diffuseParticle !deltaTheta !deltaScale !maxScale (Particle phi rho theta r) =
     -- (scalePlusPeriodic (log maxScale) deltaScale r)
 
 brownianMotion ::
-     (Distribution d, ContGen d)
+     (Distribution d1, ContGen d1,Distribution d2, ContGen d2)
   => GenIO
-  -> Maybe d
-  -> Maybe d
+  -> Maybe d1
+  -> Maybe d2
+  -> Double
   -> Double
   -> Double
   -> Particle
   -> DList Particle
   -> IO (DList Particle)
-brownianMotion !randomGen !thetaDist !scaleDist !maxScale !tao !particle !xs = do
+brownianMotion !randomGen !thetaDist !scaleDist !initscale !maxScale !tao !particle !xs = do
   deltaTheta <- generateRandomNumber randomGen thetaDist
   deltaScale <- generateRandomNumber randomGen scaleDist
-  let !newParticle@(Particle !phi !rho !theta !r) =
-                diffuseParticle deltaTheta deltaScale maxScale . moveParticle  $ particle
-      ys = DL.cons (Particle phi (rho) theta (r)) xs
-        -- if rho > 0 -- && r > 0
-        --   then DL.cons (Particle phi (rho) theta (r)) xs
+  let !newParticle@(Particle !phi !rho !theta !r) = particle
+      ys = DL.cons (Particle phi rho theta r) xs
+        -- if rho < maxScale -- rho > 0
+        --   then DL.cons (Particle phi rho theta r) xs
         --   else xs
   t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
   if t > exp (1 / (-tao))
@@ -156,28 +167,33 @@ brownianMotion !randomGen !thetaDist !scaleDist !maxScale !tao !particle !xs = d
            randomGen
            thetaDist
            scaleDist
+           initscale
            maxScale
            tao
-           (  newParticle)
+           (diffuseParticle deltaTheta deltaScale maxScale . moveParticle $ 
+            newParticle)
            ys
-
+           
 -- {-# INLINE generatePath #-}
 generatePath ::
-     (Distribution d, ContGen d)
-  => Maybe d
-  -> Maybe d
+     (Distribution d1, ContGen d1, Distribution d2, ContGen d2)
+  => Maybe d1
+  -> Maybe d2
   -> Double
   -> Double
   -> Double
   -> GenIO
   -> IO (DList Particle)
 generatePath thetaDist scaleDist maxScale tao initScale randomGen = do
-  -- deltaTheta <- generateRandomNumber randomGen thetaDist
+  deltaTheta <- generateRandomNumber randomGen thetaDist
+  -- deltaScale <- generateRandomNumber randomGen (uniformDistrE (- (log maxScale)) (log maxScale))
   brownianMotion
     randomGen
     thetaDist
     scaleDist
+    initScale
     maxScale
     tao
-    (Particle 0 1 0 initScale)
+    (Particle 0 0 0 initScale -- (exp deltaScale)
+    )
     DL.empty

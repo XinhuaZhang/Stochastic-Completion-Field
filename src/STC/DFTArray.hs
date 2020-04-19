@@ -60,9 +60,9 @@ plotDFTArrayPower !filePath !rows !cols =
   plotImageRepa filePath .
   ImageRepa 8 .
   fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
-  VS.convert . 
+  VS.convert . -- VS.map sqrt .
   L.foldl1' (VS.zipWith (+)) .
-  parMap rdeepseq (VS.map (\x -> (magnitude x)^2 )) . getDFTArrayVector
+  parMap rdeepseq (VS.map (\x -> (magnitude x)** (0.25) )) . getDFTArrayVector
 
 -- {-# INLINE plotDFTArrayThetaR #-}
 plotDFTArrayThetaR :: FilePath -> Int -> Int -> [[Complex Double]] -> DFTArray -> IO ()
@@ -72,14 +72,14 @@ plotDFTArrayThetaR !filePath !rows !cols !thetaRHarmonics arr = do
         getDFTArrayVector $
         arr
       img =
-        VS.convert . L.foldl1' (VS.zipWith (+)) . L.map (VS.map magnitude) $
+        VS.convert . L.foldl1' (VS.zipWith (+)) . L.map (VS.map (magnitude)) $
         vecs
       m = VU.maximum img
   plotImageRepa filePath .
     ImageRepa 8 .
-    -- computeS .
-    -- reduceContrast 100 .
-    fromUnboxed (Z :. (1 :: Int) :. cols :. rows) -- . VU.map (\x -> (x / m)^5)
+    computeS .
+    reduceContrast 100 .
+    fromUnboxed (Z :. (1 :: Int) :. cols :. rows) -- . VU.map (\x -> (x / m)** 1)
    $
     img
     -- VS.convert . L.foldl1' (VS.zipWith (+)) . L.map (VS.map magnitude) $
@@ -133,13 +133,14 @@ sparseArrayToDFTArray rows cols thetaFreqs rFreqs xs sparseArray =
        (\(x, y) arr ->
           R.toList . R.traverse arr id $ \f idx@(Z :. i :. j) ->
             ((i, j, x, y), f idx))
-       xs .
-     L.map
-       (\arr ->
-          let !s =
-                VU.maximum . toUnboxed . computeS . R.map (\x -> (magnitude x)) $
-                arr
-          in R.map (/ (s :+ 0)) arr) $
+       xs -- .
+     -- L.map
+     --   (\arr ->
+     --      let !s =
+     --            VU.maximum . toUnboxed . computeS . R.map (\x -> (magnitude x)) $
+     --            arr
+     --      in R.map (/ (s :+ 0)) arr)
+  $
      sparseArray
      
 {-# INLINE sparseArrayToDFTArray' #-}
@@ -148,7 +149,7 @@ sparseArrayToDFTArray' ::
   -> Int
   -> [Double]
   -> [Double]
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> [R.Array U DIM1 (Complex Double)]
   -> DFTArray
 sparseArrayToDFTArray' rows cols thetaFreqs rFreqs xs sparseArray =
@@ -163,15 +164,110 @@ sparseArrayToDFTArray' rows cols thetaFreqs rFreqs xs sparseArray =
         L.zipWith
           (\(x, y) arr ->
              R.toList . R.traverse arr id $ \f idx@(Z :. j) ->
-               ((j, x, y), f idx))
-          xs -- .
-        -- L.map
-        --   (\arr ->
-        --      let !s =
-        --            VU.maximum .
-        --            toUnboxed . computeS . R.map (\x -> (magnitude x)) $
-        --            arr
-        --      in R.map (/ (s :+ 0)) arr)
+               ((j, round x, round y), f idx))
+          xs .
+        L.map
+          (\arr ->
+             let !s =
+                   VU.maximum .
+                   toUnboxed . computeS . R.map (\x -> (magnitude x)) $
+                   arr
+             in R.map (/ (s :+ 0)) arr)
         $
         sparseArray
   in repaToDFTArray thetaFreqs rFreqs arr 
+  
+
+{-# INLINE sparseArrayToDFTArrayG' #-}
+sparseArrayToDFTArrayG' ::
+     Int
+  -> Double
+  -> Int
+  -> Int
+  -> [Double]
+  -> [Double]
+  -> [(Double, Double)]
+  -> [R.Array U DIM1 (Complex Double)]
+  -> DFTArray
+sparseArrayToDFTArrayG' n std rows cols thetaFreqs rFreqs xs sparseArray =
+  let idx = [-n .. n]
+      idx2D =
+        L.filter
+          (\(i, j) -> i ^ 2 + j ^ 2 < n ^ 2)
+          [(i, j) | i <- idx, j <- idx]
+      ys =
+        L.map
+          (\(x', y') ->
+             L.map
+               (\(i, j) ->
+                  let x = round $ x' + fromIntegral i :: Int
+                      y = round $ y' + fromIntegral j :: Int
+                      v =
+                        (exp $
+                         ((fromIntegral x - x') ^ 2 + (fromIntegral y - y') ^ 2) /
+                         (-2 * std ^ 2)) /
+                        (std ^ 2 * 2 * pi)
+                  in (x, y, v))
+               idx2D)
+          xs
+      (!minR, !maxR) = computeRange rows
+      (!minC, !maxC) = computeRange cols
+      !numThetaFreq = L.length thetaFreqs
+      arr =
+        fromUnboxed (Z :. (1 :: Int) :. numThetaFreq :. cols :. rows) .
+        toUnboxedVector .
+        AU.accum (+) 0 ((0, minC, minR), (numThetaFreq - 1, maxC, maxR)) .
+        L.concat .
+        L.zipWith
+          (\zs arr ->
+             L.concatMap
+               (\(x, y, v) ->
+                  R.toList . R.traverse arr id $ \f idx@(Z :. j) ->
+                    ((j, x, y), (v :+ 0) * f idx))
+               zs)
+          ys $
+        sparseArray
+  in repaToDFTArray thetaFreqs rFreqs arr 
+
+
+{-# INLINE sparseArrayToDFTArray''' #-}
+sparseArrayToDFTArray''' ::
+     Int
+  -> Int
+  -> [Double]
+  -> [Double]
+  -> [(Double, Double)]
+  -> [R.Array U DIM1 (Complex Double)]
+  -> [(DFTArray,DFTArray)]
+sparseArrayToDFTArray''' rows cols thetaFreqs rFreqs xs sparseArray =
+  let (!minR, !maxR) = computeRange rows
+      (!minC, !maxC) = computeRange cols
+      !numThetaFreq = L.length thetaFreqs
+      !pairs =
+        L.zip xs -- .
+        -- L.map
+        --   (\arr ->
+        --      let !s =
+        --            sqrt . VU.sum .
+        --            toUnboxed . computeS . R.map (\x -> (magnitude x)^2) $
+        --            arr
+        --      in R.map (/ (s :+ 0)) arr) $
+        sparseArray
+      computeArray pair =
+        fromUnboxed (Z :. (1 :: Int) :. numThetaFreq :. cols :. rows) .
+        toUnboxedVector .
+        AU.accum (+) 0 ((0, minC, minR), (numThetaFreq - 1, maxC, maxR)) .
+        L.concatMap
+          (\((x, y), arr) ->
+             R.toList . R.traverse arr id $ \f idx@(Z :. j) ->
+               ((j, round x, round y), f idx)) $
+        pair
+      func _ [] = []
+      func zs (y:ys) =
+        (computeArray [y], computeArray (zs L.++ ys)) : func (y : zs) ys
+  in L.map
+       (\(x, y) ->
+          ( repaToDFTArray thetaFreqs rFreqs x
+          , repaToDFTArray thetaFreqs rFreqs y)) .
+     func [] $
+     pairs

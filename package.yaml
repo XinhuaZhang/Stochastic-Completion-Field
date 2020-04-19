@@ -35,12 +35,17 @@ dependencies:
 - containers >= 0.5.11.0 && < 0.7.0.0
 - cuda >= 0.10.1.0 && < 0.11
 - deepseq >= 1.4.3.0 && < 1.5.0.0
+# - diagrams-postscript >= 1.5 && < 1.6
+# - diagrams >= 1.4 && < 1.5
+# - diagrams-cairo >= 1.4.1.1 && < 1.5
 - directory >= 1.3.1.5 && < 1.4.0.0
 - dlist >= 0.8.0.5 && < 1.0
+- easyrender >= 0.1.1.4 && < 0.2
 - filepath >= 1.4.2 && < 1.5.0.0
 - gnuplot == 0.5.5.3 # && < 0.6
 - hashable >= 1.2.7.0 && < 1.3.0.0
 - hmatrix >= 0.19.0.0 && < 0.21.0.0
+- hmatrix-gsl >= 0.19.0.1 && < 0.20.0.0
 - JuicyPixels >= 3.2.9.5 && < 4.0.0
 - linear >= 1.20.8 && < 2
 - llvm-hs >= 8.0.0 && < 10
@@ -247,8 +252,8 @@ tests:
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
-    #- -fllvm
-    #- -optlo-O3
+    - -fllvm
+    - -optlo-O3
     extra-libraries:
     - stdc++
     - lapack

@@ -52,7 +52,7 @@ computeInitialDistribution' rows cols phiFreqs rhoFreqs  halfLogPeriod points =
                  toUnboxedVector .
                  AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
                  L.map
-                   (\(Point x y theta scale) ->
+                   (\(Point x y theta _) ->
                       ((x, y), cis $ -(thetaFreq * theta * pi / 180))) $
                  points) $
             phiFreqs
