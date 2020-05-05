@@ -93,12 +93,10 @@ coefficient ::
 coefficient halfLogPeriod rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r) = unlift particle :: (Exp a, Exp a, Exp a, Exp a)
   in (lift $
-      ((A.exp $ (-0.5) * (rho + r)) *
+      (-- (A.exp $ (-0.5) * (rho + r)) *
        (A.cos (phiFreq * phi + thetaFreq * (theta - phi)))) A.:+
       0) *
      (A.cis $ (-1) * (rhoFreq * rho + rFreq * (r + rho)))
-
-
 
 -- {-# INLINE gpuKernel #-}
 gpuKernel ::
@@ -209,7 +207,7 @@ coefficient' rFreq thetaFreq rhoFreq phiFreq particle =
       0) *
      (A.cis $
       (-1) *
-      (rhoFreq * rho + rFreq * (r + rho) + phiFreq * phi +
+      (rhoFreq * rho + rFreq * (r - rho) + phiFreq * phi +
        thetaFreq * (theta - phi))) 
 
 gpuKernel' ::

@@ -325,7 +325,7 @@ getHarmonics ::
   -> Double
   -> vector (Complex Double)
 getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq =
-  harmonicsArray IA.! (round (rhoFreq + rFreq), round $ (phiFreq - thetaFreq))
+  harmonicsArray IA.! (round (rhoFreq - rFreq), round $ (phiFreq - thetaFreq))
 
 
 {-# INLINE computeFourierSeriesR2 #-}

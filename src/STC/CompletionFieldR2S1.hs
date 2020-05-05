@@ -329,7 +329,7 @@ powerMethod oldPlan folderPath filterSource numIteration writeFlag idStr thresho
   --         i :.
   --         j)) $
   --   source
-  sink <- shareWeightST plan (computeS . R.zipWith (*) bias $ source) filterSink
+  sink <- shareWeightST plan (rotateSTTR $ bias *^ source) filterSink
   plotImageRepa
     (folderPath </> "Sink.png")
     (ImageRepa 8 .
@@ -356,15 +356,15 @@ powerMethod oldPlan folderPath filterSource numIteration writeFlag idStr thresho
      R.extend (Z :. (1 :: Int) :. All :. All) .
      R.map (\x -> sqrt $ (x - completionMin) / (completionMax - completionMin)) $
      completionR2)
-  plotThetaDimension folderPath "R2S1_Completion_" (31, -4) .
-    R.backpermute
-      (extent completion)
-      (\(Z :. k :. i :. j) ->
-         (Z :.
-          (mod (k + numOrientation - (div numOrientation 2)) numOrientation :: Int) :.
-          i :.
-          j)) $
-    completion
+  -- plotThetaDimension folderPath "R2S1_Completion_" (31, -4) .
+  --   R.backpermute
+  --     (extent completion)
+  --     (\(Z :. k :. i :. j) ->
+  --        (Z :.
+  --         (mod (k + numOrientation - (div numOrientation 2)) numOrientation :: Int) :.
+  --         i :.
+  --         j)) $
+  --   completion
   return completion
 
 
@@ -374,13 +374,13 @@ eigenVectorR2S1Analytic !oris !sigma !tau !gamma !delta !xs = do
   let !numPoints = L.length xs
       !locArr = fromListUnboxed (Z :. L.length xs) xs
       !deltaTheta = 2 * pi / fromIntegral oris
-      !weights =
-        [1 / 16, 1 / 8, 1 / 16, 1 / 8, 1 / 4, 1 / 8, 1 / 16, 1 / 8, 1 / 16]
-      !origins =
-        L.zipWith
-          (\w (i, j) -> (i * delta, j * delta, w))
-          weights
-          [(i, j) | i <- [-1 .. 1], j <- [-1 .. 1]]
+      -- !weights =
+      --   [1 / 16, 1 / 8, 1 / 16, 1 / 8, 1 / 4, 1 / 8, 1 / 16, 1 / 8, 1 / 16]
+      -- !origins =
+      --   L.zipWith
+      --     (\w (i, j) -> (i * delta, j * delta, w))
+      --     weights
+      --     [(i, j) | i <- [-1 .. 1], j <- [-1 .. 1]]
       transitionMatrixArr' =
         R.traverse locArr (\_ -> (Z :. numPoints :. oris :. numPoints :. oris)) $ \f (Z :. i1 :. j1 :. i2 :. j2) ->
           let rowIdx = i1 * oris + j1
@@ -460,7 +460,11 @@ computeContourR2S1Analytic ::
   -> R.Array s DIM3 Double
   -> [(Double, Double)]
   -> IO (R.Array U DIM3 Double)
-computeContourR2S1Analytic !folderPath !filterSource !oris !rows !cols !sigma !tau !gamma !std !delta !bias !xs = do
+computeContourR2S1Analytic !folderPath !filterSource !oris !rows !cols !sigma !tau !gamma !std !delta !bias !xs' = do
+  let xs =
+        L.map
+          (\(x', y') -> (fromIntegral . round $ x', fromIntegral . round $ y'))
+          xs'
   eigenVector <-
     eigenVectorR2S1Analytic
       oris
@@ -469,53 +473,53 @@ computeContourR2S1Analytic !folderPath !filterSource !oris !rows !cols !sigma !t
       gamma
       delta
       (L.map (\(a, b) -> (a * delta, b * delta)) xs)
-  plotR2S1
+  let ys =
+        L.concat $
+        L.zipWith
+          (\(x, y) thetas ->
+             L.zipWith
+               (\k theta -> ((k, round x, round y), theta))
+               [0 ..]
+               thetas)
+          xs
+          eigenVector
+      (!minR, !maxR) = computeRange rows
+      (!minC, !maxC) = computeRange cols
+      eigenSourceArr =
+        fromUnboxed (Z :. oris :. cols :. rows) .
+        toUnboxedVector .
+        AU.accum (+) 0 ((0, minC, minR), (oris - 1, maxC, maxR)) $
+        ys
+      eigenSinkArr = rotateSTTR eigenSourceArr
+      completionArr = computeUnboxedS $ eigenSourceArr *^ eigenSinkArr
+      filterSink = rotateSTTR filterSource
+  plotR2S1Array
     (folderPath </> "EigenSource.eps")
     (fromIntegral rows)
     (fromIntegral cols)
     (fromIntegral rows / 16)
     xs
-    eigenVector
-  let n = 0
-      idx = [-n .. n]
-      idx2D =
-        L.filter
-          (\(i, j) -> i ^ 2 + j ^ 2 <= n ^ 2)
-          [(i, j) | i <- idx, j <- idx]
-      ys =
-        L.concat $
-        L.zipWith
-          (\(x', y') thetas ->
-             L.concatMap
-               (\(i, j) ->
-                  let x = round $ x' + fromIntegral i :: Int
-                      y = round $ y' + fromIntegral j :: Int
-                      v =
-                        (exp $
-                         ((fromIntegral x - x') ^ 2 + (fromIntegral y - y') ^ 2) *
-                         delta ^ 2 /
-                         (-2 * std ^ 2)) /
-                        (std ^ 2 * 2 * pi)
-                  in L.zipWith (\k theta -> ((k, x, y), theta)) [0 ..] thetas)
-               idx2D)
-          xs
-          eigenVector
-      (!minR, !maxR) = computeRange rows
-      (!minC, !maxC) = computeRange cols
-      eigenArr =
-        fromUnboxed (Z :. oris :. cols :. rows) .
-        toUnboxedVector .
-        AU.accum (+) 0 ((0, minC, minR), (oris - 1, maxC, maxR)) $
-        ys
-      filterSink = rotateSTTR filterSource
+    eigenSourceArr
+  plotR2S1Array
+    (folderPath </> "EigenSink.eps")
+    (fromIntegral rows)
+    (fromIntegral cols)
+    (fromIntegral rows / 16)
+    xs
+    eigenSinkArr
+  plotR2S1Array
+    (folderPath </> "EigenCompletion.eps")
+    (fromIntegral rows)
+    (fromIntegral cols)
+    (fromIntegral rows / 16)
+    xs
+    completionArr
   plan <- makeR2S1Plan emptyPlan filterSource
-  source <- shareWeightST plan eigenArr filterSource
+  source <- shareWeightST plan eigenSourceArr filterSource
   plotImageRepa
     (folderPath </> "Source.png")
     (ImageRepa 8 .
-     computeS .
-     R.extend (Z :. (1 :: Int) :. All :. All) .
-     R.map (\x -> (abs x) ** (1 / 3)) . R.sumS . rotate3D $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
      source)
   plotR2S1Array
     (folderPath </> "Source.eps")
@@ -524,13 +528,11 @@ computeContourR2S1Analytic !folderPath !filterSource !oris !rows !cols !sigma !t
     (fromIntegral rows / 16)
     xs
     source
-  sink <- shareWeightST plan eigenArr filterSink
+  sink <- shareWeightST plan eigenSinkArr filterSink
   plotImageRepa
     (folderPath </> "Sink.png")
     (ImageRepa 8 .
-     computeS .
-     R.extend (Z :. (1 :: Int) :. All :. All) .
-     R.map (\x -> (abs x) ** (1 / 3)) . R.sumS . rotate3D $
+     computeS . R.extend (Z :. (1 :: Int) :. All :. All) . R.sumS . rotate3D $
      sink)
   plotR2S1Array
     (folderPath </> "Sink.eps")
@@ -550,7 +552,7 @@ computeContourR2S1Analytic !folderPath !filterSource !oris !rows !cols !sigma !t
     (ImageRepa 8 .
      computeS .
      R.extend (Z :. (1 :: Int) :. All :. All) .
-     R.map (\x -> (abs x) ** (1 / 2)) .
+     -- R.map (\x -> (abs x) ** (1 / 2)) .
      R.map (\x -> sqrt $ (x - completionMin) / (completionMax - completionMin)) $
      completionR2)
   plotR2S1Array
@@ -560,36 +562,6 @@ computeContourR2S1Analytic !folderPath !filterSource !oris !rows !cols !sigma !t
     (fromIntegral rows / 16)
     xs
     completion
-  let completion1 = computeUnboxedS $ completion *^ bias
-  source1 <- shareWeightST plan completion1 filterSource    
-  plotImageRepa
-    (folderPath </> "Source1.png")
-    (ImageRepa 8 .
-     computeS .
-     R.extend (Z :. (1 :: Int) :. All :. All) .
-     R.map (\x -> (abs x) ** (1 / 3)) . R.sumS . rotate3D $
-     source1)
-  sink1 <- shareWeightST plan completion1 filterSink    
-  plotImageRepa
-    (folderPath </> "Sink1.png")
-    (ImageRepa 8 .
-     computeS .
-     R.extend (Z :. (1 :: Int) :. All :. All) .
-     R.map (\x -> (abs x) ** (1 / 3)) . R.sumS . rotate3D $
-     sink1)
-  let completion' = source1 *^ sink1
-      completionR2' = R.sumS . rotate3D $ completion'
-      completionR2Vec' = toUnboxed completionR2'
-      completionMax' = VU.maximum completionR2Vec'
-      completionMin' = VU.minimum completionR2Vec'
-  plotImageRepa
-    (folderPath </> printf "Completion1.png")
-    (ImageRepa 8 .
-     computeS .
-     R.extend (Z :. (1 :: Int) :. All :. All) .
-     R.map (\x -> (abs x) ** (1 / 2)) .
-     R.map (\x -> sqrt $ (x - completionMin') / (completionMax' - completionMin')) $
-     completionR2')
   return completion
 
 computeContourR2S1Tangent ::

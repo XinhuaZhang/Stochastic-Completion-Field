@@ -69,7 +69,7 @@ main = do
           let r' =
                 sqrt . fromIntegral $
                 (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2
-          in if r' > 91 -- || r' <= 2
+          in if r' > 49 -- || r' <= 2
               then 0
               else f idx
       -- r = 16

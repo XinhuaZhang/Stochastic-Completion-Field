@@ -1,7 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
 module FokkerPlanck.GreensFunction where
 
+import           Control.Monad                  as M
 import           Data.Array.Accelerate.LLVM.PTX
+import           Data.Array.Repa                as R
 import           Data.Binary
 import           Data.Complex
 import           Data.List                      as L
@@ -9,19 +11,26 @@ import           FokkerPlanck.Analytic
 import           FokkerPlanck.FourierSeriesGPU
 import           FokkerPlanck.Histogram
 import           Foreign.CUDA.Driver            as CUDA
-import           Utils.Parallel
-import Data.Array.Repa as R
 import           Image.IO
-import STC.Utils
+import           STC.Utils
 import           System.FilePath
 import           Utils.Array
+import           Utils.Parallel
+
+{-# INLINE divideList #-}
+divideList :: Int -> [a] -> [[a]]
+divideList n xs =
+  let (a, b) = L.splitAt n xs
+  in a : divideList n b
 
 sampleCartesian ::
-     FilePath -> FilePath
+     FilePath
+  -> FilePath
+  -> [Int]
   -> Int
   -> Int
   -> Int
-  -> Int
+  -> Double
   -> Double
   -> Double
   -> Double
@@ -31,67 +40,71 @@ sampleCartesian ::
   -> [Double]
   -> [Double]
   -> IO (Histogram (Complex Double))
-sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !gamma !sigma !tau !phiFreqs !rhoFreqs !thetaFreqs !rFreqs = do
-  let !n = floor (1 / delta)
-      !rows = n * rows'
-      !cols = n * cols'
+sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !deltaSample !gamma !sigma !tau !phiFreqs !rhoFreqs !thetaFreqs !rFreqs = do
+  let !n = floor (1 / deltaSample)
+      !rows = n * (round $ delta * fromIntegral rows')
+      !cols = n * (round $ delta * fromIntegral cols')
       !centerRow = fromIntegral $ div rows 2
       !centerCol = fromIntegral $ div cols 2
       !deltaTheta = 2 * pi / fromIntegral oris
       !origin = R2S1RP 0 0 0 gamma
-      !idx
-        -- L.filter
-        --   (\(R2S1RP c r _ g) -> ((c /= 0) || (r /= 0)) && g > 0)
-       =
-        [ R2S1RP
-          ((fromIntegral c - centerCol) * delta)
-          ((fromIntegral r - centerRow) * delta)
-          0
-          gamma
-        | c <- [0 .. cols - 1]
-        , r <- [0 .. rows - 1]
-        ]
+      !idx =
+        L.filter
+          (\(R2S1RP c r _ g) -> ((c /= 0) || (r /= 0)) && g > 0)
+          [ R2S1RP
+            ((fromIntegral c - centerCol) * deltaSample)
+            ((fromIntegral r - centerRow) * deltaSample)
+            0
+            gamma
+          | c <- [0 .. cols - 1]
+          , r <- [0 .. rows - 1]
+          ]
+      !logGamma = log gamma
       !xs =
         L.concat $
         parMap
           rdeepseq
           (\o ->
              let !ori = fromIntegral o * deltaTheta
-                -- L.filter (\(_, _, _, _, v) -> v > 1e-10).
-             in L.map
+             in L.filter (\(_, _, _, _, v) -> v > 1e-8) .
+                L.map
                   (\point@(R2S1RP x y _ g) ->
                      let !v = computePji sigma tau origin (R2S1RP x y ori g)
                          !phi = atan2 y x
-                         !logRho = log . sqrt $ (x ^ 2 + y ^ 2)
-                         !r = sqrt $ (x ^ 2 + y ^ 2)
-                     in if r == 0
-                          then (phi, 0, ori, 0, 0)
-                          else (phi, logRho, ori, 0, v)) $
+                         !r = log . sqrt $ (x ^ 2 + y ^ 2)
+                     in (phi, r, ori, logGamma, v)) $
                 idx)
           [0 .. oris - 1]
       len = L.length xs
       s = L.sum . L.map (\(_, _, _, _, v) -> v) $ xs
-      arr = fromListUnboxed (Z :. oris :. cols :. rows) xs
-  plotImageRepa
-    (folderPath </> "SourceR2S1.png")
-    (ImageRepa 8 .
-     computeS .
-     R.extend (Z :. (1 :: Int) :. All :. All) .
-     reduceContrast 100 . R.sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
-     arr)
+      -- arr = fromListUnboxed (Z :. oris :. cols :. rows) xs
+  -- plotImageRepa
+  --   (folderPath </> "SourceR2S1.png")
+  --   (ImageRepa 8 .
+  --    computeS .
+  --    R.extend (Z :. (1 :: Int) :. All :. All) .
+  --    reduceContrast 100 . R.sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
+  --    arr)
   print (s / fromIntegral len)
   initialise []
-  dev <- device deviceID
-  ctx <- CUDA.create dev []
-  ptx <- createTargetFromContext ctx
+  devs <- M.mapM device deviceID
+  ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
+  ptxs <- M.mapM createTargetFromContext ctxs
   let !hist =
-        computeFourierCoefficientsGPU'
-          phiFreqs
-          rhoFreqs
-          thetaFreqs
-          rFreqs
-          ptx
-          xs
+        L.foldl1' (addHistogram) .
+        parZipWith
+          rdeepseq
+          (\ptx ys ->
+             computeFourierCoefficientsGPU'
+               phiFreqs
+               rhoFreqs
+               thetaFreqs
+               rFreqs
+               ptx
+                ys)
+          ptxs .
+        divideList (div (L.length xs) (L.length deviceID)) $
+        xs
   encodeFile filePath hist
   return hist
 
@@ -167,11 +180,11 @@ sampleR2S1 !rows !cols !oris !delta !gamma !sigma !tau =
       --     (\w (i, j) -> (R2S1RP (i * delta) (j * delta) 0 gamma, w))
       --     weights
       --     [(i, j) | i <- [-1, 0, 1], j <- [-1, 0, 1]]
-      !ys =
-        L.zipWith
-          (\w (i, j) -> (i * delta, j * delta, w))
-          weights
-          [(i, j) | i <- [-1, 0, 1], j <- [-1, 0, 1]]
+      -- !ys =
+      --   L.zipWith
+      --     (\w (i, j) -> (i * delta, j * delta, w))
+      --     weights
+      --     [(i, j) | i <- [-1, 0, 1], j <- [-1, 0, 1]]
       idx =
         [ R2S1RP
           ((fromIntegral c - centerCol) * delta)

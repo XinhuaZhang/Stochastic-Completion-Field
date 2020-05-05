@@ -20,7 +20,7 @@ data Histogram a = Histogram
   } -- deriving (Generic)
   
 instance (NFData a) => NFData (Histogram a) where
-  rnf (Histogram size n vec) = (rnf size) `seq` (rnf n) `seq` (rnf vec) `seq` ()
+  rnf (Histogram !size !n !vec) = () 
 
 instance (Binary a, Unbox a) => Binary (Histogram a) where
   put (Histogram size n vec) = do

@@ -1,22 +1,22 @@
 #!/bin/bash
-GPUID="[7]"
-Size=130
-Delta=1 #20.03125 #0.0625
-Orientations=72
-Scales=1
-ThetaSigma=0.01
+GPUID="[0,1,2,3,4,5,6,7]"
+Size=256
+Delta=0.125 #20.03125 #0.0625
+Orientations=36
+Scales=36
+ThetaSigma=0.0005
 ScaleSigma=0.0
-MaxScale=32
-Cutoff=65 #49 #46 
-DeltaLog=1 #0.03125
-Tao=100
+MaxScale=64
+Cutoff=49 #49 #46 
+DeltaLog=0.03125 #0.03125
+Tao=9.5
 Trails=96000
-MaxTrails=4800
-PhiFreqs=20
-RhoFreqs=20
-ThetaFreqs=20
-ScaleFreqs=0
-InitScale=1 #0.0078125 #0.03125
+MaxTrails=48000
+PhiFreqs=15
+RhoFreqs=15
+ThetaFreqs=15
+ScaleFreqs=15
+InitScale=0.149 #0.0078125 #0.03125
 Circle="(Circle{circleNum=6,circleRadius=60})"
 Shape2D="Points(0,0)2${Circle}"
 HistFileName=${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${PhiFreqs}_${RhoFreqs}_${ThetaFreqs}_${ScaleFreqs}_${InitScale}.dat
@@ -24,15 +24,17 @@ HistPath=output/app/GreensFunctionFourierCoefficients/${HistFileName}
 WriteFlag=True
 Iterations=20
 STD=15
-STDG=2
+STDG=3
 Threads=24
-Suffix=32 #60
-# for Cutoff in {24,128,96,64,48,32}
+Suffix=64 #60
+# for ThetaSigma in {0.0035,0.003,0.0025}
 # do    
-    # for Suffix in {30,60}
-    # do
+#     for Tao in {75,100}
+#     do
 	Circle="(Circle{circleNum=8,circleRadius=${Suffix}})"
 	Shape2D="Points(0,0)2${Circle}"
+	HistFileName="${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${PhiFreqs}_${RhoFreqs}_${ThetaFreqs}_${ScaleFreqs}_${InitScale}.dat"
+	HistPath=output/app/GreensFunctionFourierCoefficients/${HistFileName}
 	time stack test :IllusoryContourShape-test --test-arguments "${GPUID} ${Size} ${Delta} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${Cutoff} ${DeltaLog} ${Tao}  ${Trails} ${MaxTrails} ${PhiFreqs} ${RhoFreqs} ${ThetaFreqs} ${ScaleFreqs} ${InitScale} ${Shape2D} ${HistPath} ${WriteFlag} ${Iterations} ${Suffix} ${STD} ${STDG} ${Threads} +RTS -N${Threads} -RTS"
-    # done
+#     done
 # done

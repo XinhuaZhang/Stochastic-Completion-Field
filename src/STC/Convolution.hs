@@ -125,61 +125,30 @@ convolve !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols the
   dftVecs <- dftExecuteBatchP plan (DFTPlanID DFT1DG [cols, rows] [0, 1]) vecs
   let !initVec = VS.replicate (VS.length . L.head $ vecs) 0
       idx = (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
-  case field of
-    Source ->
-      fmap (DFTArray rows cols thetaFreqs rFreqs) .
-      dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
-      parMap
-        rdeepseq
-        (\((!r, !rFreq), (!theta, !thetaFreq)) ->
-           L.foldl'
-             (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
-                VS.zipWith
-                  (+)
-                  vec
-                  (VS.map (* (coefficients R.! (Z :. r :. theta :. rho :. phi))) .
-                   VS.zipWith
-                     (*)
-                     (getHarmonics
-                        harmonicsArray
-                        phiFreq
-                        rhoFreq
-                        thetaFreq
-                        rFreq) $
-                   inputVec))
-             initVec .
-           L.zip idx $
-           dftVecs) $
-      idx
-    Sink ->
-      fmap (DFTArray rows cols thetaFreqs rFreqs) .
-      dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
-      parMap
-        rdeepseq
-        (\((!r, !rFreq), (!theta, !thetaFreq)) ->
-           L.foldl'
-             (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
-                VS.zipWith
-                  (+)
-                  vec
-                  (VS.map
-                     (* ((coefficients R.! (Z :. r :. theta :. rho :. phi)) *
-                         (cis $ ((phiFreq - thetaFreq)) * pi))) .
-                   VS.zipWith
-                     (*)
-                     (getHarmonics
-                        harmonicsArray
-                        phiFreq
-                        rhoFreq
-                        thetaFreq
-                        rFreq) $
-                   inputVec))
-             initVec .
-           L.zip idx $
-           dftVecs) $
-      idx
-
-
+  fmap (DFTArray rows cols thetaFreqs rFreqs) .
+    dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) .
+    parMap
+      rdeepseq
+      (\((!r, !rFreq), (!theta, !thetaFreq)) ->
+         VS.map
+           (\x ->
+              case field of
+                Source -> x
+                Sink -> x * cis (thetaFreq * pi)) .
+         L.foldl'
+           (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
+              VS.zipWith
+                (+)
+                vec
+                (VS.map (* (coefficients R.! (Z :. r :. theta :. rho :. phi))) .
+                 VS.zipWith
+                   (*)
+                   (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq) $
+                 inputVec))
+           initVec .
+         L.zip idx $
+         dftVecs) $
+    idx
 
 {-# INLINE convolve' #-}
 convolve' ::
@@ -198,6 +167,11 @@ convolve' !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols th
     parMap
       rdeepseq
       (\(!theta, !thetaFreq) ->
+         VS.map
+           (\x ->
+              case field of
+                Source -> x
+                Sink -> x * cis (pi * thetaFreq)) .
          L.foldl'
            (\vec1 (rho, rhoFreq) ->
               L.foldl'
@@ -206,14 +180,8 @@ convolve' !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols th
                      (+)
                      vec2
                      (VS.map
-                        (* (case field of
-                              Source ->
-                                coefficients R.!
-                                (Z :. (0 :: Int) :. theta :. rho :. phi)
-                              Sink ->
-                                (coefficients R.!
-                                 (Z :. (0 :: Int) :. theta :. rho :. phi)) *
-                                (cis $ (-(phiFreq  + thetaFreq)) * pi))) .
+                        (* (coefficients R.!
+                            (Z :. (0 :: Int) :. theta :. rho :. phi))) .
                       VS.zipWith
                         (*)
                         (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq 0) $
@@ -437,9 +405,8 @@ convolveSingle !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !x !y !i
         case field of
           Source -> product
           Sink ->
-            R.traverse2 product thetaFreqs const $ \fProd fThetaFreq idx@(Z :. r :. theta :. rho :. phi) ->
-              fProd idx *
-              (cis $ (-(fThetaFreq (Z :. phi) - fThetaFreq (Z :. theta))) * pi)
+            error
+              "convolveSingle: You should not use it to compute a sink field."
   in if x == 0 && y == 0
        then VU.replicate (numRFreq * numThetaFreq) 0
        else toUnboxed . sumS . sumS $ arr

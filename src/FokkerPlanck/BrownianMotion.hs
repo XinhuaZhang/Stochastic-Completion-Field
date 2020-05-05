@@ -62,17 +62,17 @@ thetaPlus !x !y
     !z = x + y
     !a = 2 * pi
          
--- {-# INLINE scalePlus #-}
--- scalePlus :: Double -> Double -> Double  
--- scalePlus x delta = x * exp delta 
-          
 {-# INLINE scalePlus #-}
 scalePlus :: Double -> Double -> Double  
-scalePlus x delta
-  | z <= 0 = 0
-  | otherwise = z
-  where
-    z = x + delta    
+scalePlus x delta = x * exp delta 
+          
+-- {-# INLINE scalePlus #-}
+-- scalePlus :: Double -> Double -> Double  
+-- scalePlus x delta
+--   | z <= 0 = 0
+--   | otherwise = z
+--   where
+--     z = x + delta    
 
 {-# INLINE scalePlusPeriodic #-}
 scalePlusPeriodic :: Double -> Double -> Double -> Double

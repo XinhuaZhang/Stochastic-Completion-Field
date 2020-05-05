@@ -53,6 +53,15 @@ parMapDFTArray ::
   -> DFTArray
 parMapDFTArray f (DFTArray rows cols thetaFreqs rFreqs vecs) =
   DFTArray rows cols thetaFreqs rFreqs . parMap rdeepseq f $ vecs
+  
+{-# INLINE parZipWithDFTArray #-}
+parZipWithDFTArray ::
+     (VS.Vector (Complex Double) -> a -> VS.Vector (Complex Double))
+  -> DFTArray
+  -> [a]
+  -> DFTArray
+parZipWithDFTArray f (DFTArray rows cols thetaFreqs rFreqs vecs) =
+  DFTArray rows cols thetaFreqs rFreqs . parZipWith rdeepseq f vecs 
 
 -- {-# INLINE plotDFTArrayPower #-}
 plotDFTArrayPower :: FilePath -> Int -> Int -> DFTArray -> IO ()
@@ -62,7 +71,7 @@ plotDFTArrayPower !filePath !rows !cols =
   fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
   VS.convert . -- VS.map sqrt .
   L.foldl1' (VS.zipWith (+)) .
-  parMap rdeepseq (VS.map (\x -> (magnitude x)** (0.25) )) . getDFTArrayVector
+  parMap rdeepseq (VS.map (\x -> (magnitude x) ** (1) )) . getDFTArrayVector
 
 -- {-# INLINE plotDFTArrayThetaR #-}
 plotDFTArrayThetaR :: FilePath -> Int -> Int -> [[Complex Double]] -> DFTArray -> IO ()
@@ -77,8 +86,8 @@ plotDFTArrayThetaR !filePath !rows !cols !thetaRHarmonics arr = do
       m = VU.maximum img
   plotImageRepa filePath .
     ImageRepa 8 .
-    computeS .
-    reduceContrast 100 .
+    -- computeS .
+    -- reduceContrast 100 .
     fromUnboxed (Z :. (1 :: Int) :. cols :. rows) -- . VU.map (\x -> (x / m)** 1)
    $
     img
@@ -165,14 +174,14 @@ sparseArrayToDFTArray' rows cols thetaFreqs rFreqs xs sparseArray =
           (\(x, y) arr ->
              R.toList . R.traverse arr id $ \f idx@(Z :. j) ->
                ((j, round x, round y), f idx))
-          xs .
-        L.map
-          (\arr ->
-             let !s =
-                   VU.maximum .
-                   toUnboxed . computeS . R.map (\x -> (magnitude x)) $
-                   arr
-             in R.map (/ (s :+ 0)) arr)
+          xs -- .
+        -- L.map
+        --   (\arr ->
+        --      let !s =
+        --            VU.maximum .
+        --            toUnboxed . computeS . R.map (\x -> (magnitude x)) $
+        --            arr
+        --      in R.map (/ (s :+ 0)) arr)
         $
         sparseArray
   in repaToDFTArray thetaFreqs rFreqs arr 

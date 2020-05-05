@@ -66,13 +66,37 @@ main = do
         printCurrentTime $
           "read Fourier coefficients data from " L.++ histFilePath
         decodeFile histFilePath
+      -- else runMonteCarloFourierCoefficientsGPU
+      --        gpuID
+      --        numThread
+      --        numTrail
+      --        maxTrail
+      --        thetaSigma
+      --        scaleSigma
+      --        maxScale
+      --        tao
+      --        phiFreqs
+      --        rhoFreqs
+      --        thetaFreqs
+      --        scaleFreqs
+      --        deltaLog
+      --        initScale
+      --        histFilePath
+      --        (emptyHistogram
+      --           [ L.length phiFreqs
+      --           , L.length rhoFreqs
+      --           , L.length thetaFreqs
+      --           , L.length scaleFreqs
+      --           ]
+      --           0)
       else sampleCartesian
              folderPath
              histFilePath
-             (L.head gpuID)
+             gpuID
              numPoint
              numPoint
-             360
+             180
+             deltaX
              deltaLog
              initScale
              thetaSigma
@@ -81,35 +105,13 @@ main = do
              rhoFreqs
              thetaFreqs
              scaleFreqs
-                               -- runMonteCarloFourierCoefficientsGPU
-                               --        gpuID
-                               --        numThread
-                               --        numTrail
-                               --        maxTrail
-                               --        thetaSigma
-                               --        scaleSigma
-                               --        maxScale
-                               --        tao
-                               --        phiFreqs
-                               --        rhoFreqs
-                               --        thetaFreqs
-                               --        scaleFreqs
-                               --        deltaLog
-                               --        initScale
-                               --        histFilePath
-                               --        (emptyHistogram
-                               --           [ L.length phiFreqs
-                               --           , L.length rhoFreqs
-                               --           , L.length thetaFreqs
-                               --           , L.length scaleFreqs
-                               --           ]
-                               --           0)
   let !points =
         L.map (\(!x, !y) -> Point x y 0 1) . getShape2DIndexList . makeShape2D $
         shape2D
-      !xs = L.map (\(a, b) -> (a * deltaX, b * deltaX)) . makeShape2D $ shape2D
+      -- !xs = L.map (\(a, b) -> (a * deltaX, b * deltaX)) . makeShape2D $ shape2D
+      !xs = getShape2DIndexList . makeShape2D $ shape2D
       !coefficients =
-        normalizeFreqArr' std phiFreqs rhoFreqs . getNormalizedHistogramArr $
+        normalizeFreqArr std phiFreqs rhoFreqs . getNormalizedHistogramArr $
         hist
        -- = getNormalizedHistogramArr $ hist :: R.Array U DIM4 (Complex Double)
       !thetaRHarmonics =
@@ -129,7 +131,7 @@ main = do
       (L.length thetaFreqs)
       (L.length scaleFreqs)
   let !initSourceSparse =
-        computeInitialDistributionPowerMethodSparse' phiFreqs rhoFreqs points
+        computeInitialDistributionPowerMethodSparse phiFreqs rhoFreqs points
       !harmonicsArraySparse =
         computeHarmonicsArraySparse
           numPoint
@@ -168,22 +170,22 @@ main = do
   --     cutoff
   --     gaussian
   -- print . IA.indices $ harmonicsArraySparse
-  completion <-
-    computeContourSparseG'
-      plan
-      folderPath
-      coefficients
-      harmonicsArraySparse
-      thetaRHarmonics
-      (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
-      (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
-      cutoff
-      gaussian
-      std
-      xs
-      numIteration
-      suffix
-      initSourceSparse
+  -- completion <-
+  computeContourSparse
+    plan
+    folderPath
+    coefficients
+    harmonicsArraySparse
+    -- thetaRHarmonics
+    (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
+    (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
+    cutoff
+    -- gaussian
+                      -- std
+    xs
+    numIteration
+    suffix
+    initSourceSparse
   -- completion <-
   --   computeContour'
   --    plan
@@ -197,12 +199,12 @@ main = do
   --    suffix
   --    thetaRHarmonics
   --    initSource
-  plotDFTArrayThetaR
-    (folderPath </> (printf "Completion_%s.png" suffix))
-    numPoint
-    numPoint
-    thetaRHarmonics
-    completion
+  -- plotDFTArrayThetaR
+  --   (folderPath </> (printf "Completion_%s.png" suffix))
+  --   numPoint
+  --   numPoint
+  --   thetaRHarmonics
+  --   completion
   -- plotDFTArrayThetaRMag
   --   (folderPath </> (printf "CompletionMax_%s.png" suffix))
   --   numPoint

@@ -71,11 +71,14 @@ computeFourierCoefficientsGPU !randomGen !thetaSigma !scaleSigma !phiFreqs !rhoF
                  deltaR <- genContVar rDist gen
                  return .
                    (\(Particle a b c d) ->
-                      (a, b, c `thetaPlus` deltaTheta, r `scalePlus` deltaR)) .
+                      (a, b, c `thetaPlus` deltaTheta, d `scalePlus` deltaR
+                      )) .
                    FokkerPlanck.BrownianMotion.moveParticle $
                    (Particle phi rho theta (Prelude.fromIntegral i * deltaLogRho)))
               [1 .. n - 1]
-          return (x : ys))
+          return (x : ys)
+          -- return [x]
+       )
        particles
   let !len = L.length zs
   return .

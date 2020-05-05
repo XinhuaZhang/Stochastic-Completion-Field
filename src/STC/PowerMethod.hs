@@ -383,7 +383,12 @@ computeContourSparse !plan !folderPath !coefficients !harmonicsArray !thetaFreqs
     convolve Source plan coefficients harmonicsArrayDFT eigenSourceSparse
   plotDFTArrayPower (folderPath </> "SourcePower.png") rows cols source
   printCurrentTime "Sink"
-  sink <- convolve Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
+  let sink =
+        parZipWithDFTArray
+          (\vec (rFreq, thetaFreq) -> VS.map (* (cis (thetaFreq * pi))) vec)
+          source
+          ((,) <$> (R.toList rFreqs) <*> (R.toList thetaFreqs))
+  -- sink <- convolve Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
   plotDFTArrayPower (folderPath </> "SinkPower.png") rows cols sink
   printCurrentTime "Completion"
   completion <- completionField plan source sink
@@ -445,7 +450,6 @@ computeContourSparseG !plan !folderPath !coefficients !harmonicsArray !thetaFreq
         powerMethodSparse
           Source
           coefficients
-          
           blurredHarmonicsArray
           thetaFreqs
           rFreqs
@@ -463,7 +467,12 @@ computeContourSparseG !plan !folderPath !coefficients !harmonicsArray !thetaFreq
     convolve Source plan coefficients harmonicsArrayDFT eigenSourceSparse
   plotDFTArrayPower (folderPath </> "SourcePower.png") rows cols source
   printCurrentTime "Sink"
-  sink <- convolve Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
+  let sink =
+        parZipWithDFTArray
+          (\vec (rFreq, thetaFreq) -> VS.map (* (cis (thetaFreq * pi))) vec)
+          source
+          ((,) <$> (R.toList rFreqs) <*> (R.toList thetaFreqs))
+  -- sink <- convolve Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
   plotDFTArrayPower (folderPath </> "SinkPower.png") rows cols sink
   printCurrentTime "Completion"
   completion <- completionField plan source sink
@@ -606,24 +615,24 @@ computeContourSparse' !plan !folderPath !coefficients !harmonicsArray !thetaRHar
         computeFourierSeriesThetaR thetaRHarmonics .
         getDFTArrayVector $
         completion
-  plotThetaDimension
-    folderPath
-    ("FourierSeries_Completion_")
-    point .
-    R.map magnitude $
-    completion'
-  plotThetaDimension
-    folderPath
-    ("FourierSeries_Source_")
-    point .
-    R.map magnitude $
-    source'
-  plotThetaDimension
-    folderPath
-    ("FourierSeries_Sink_")
-    point .
-    R.map magnitude $
-    sink'
+  -- plotThetaDimension
+  --   folderPath
+  --   ("FourierSeries_Completion_")
+  --   point .
+  --   R.map magnitude $
+  --   completion'
+  -- plotThetaDimension
+  --   folderPath
+  --   ("FourierSeries_Source_")
+  --   point .
+  --   R.map magnitude $
+  --   source'
+  -- plotThetaDimension
+  --   folderPath
+  --   ("FourierSeries_Sink_")
+  --   point .
+  --   R.map magnitude $
+  --   sink'
   return completion
   
 {-# INLINE computeContourSparseG' #-}
@@ -665,9 +674,7 @@ computeContourSparseG' !plan !folderPath !coefficients !harmonicsArray !thetaRHa
                     else f idx)) <$>
     dftExecuteBatchP plan (DFTPlanID IDFT1DG [cols, rows] [0, 1]) blurredVecF
   !eigenSourceSparse <-
-    sparseArrayToDFTArrayG'
-      2
-      std
+    sparseArrayToDFTArray'
       rows
       cols
       (R.toList phiFreqs)
@@ -684,10 +691,10 @@ computeContourSparseG' !plan !folderPath !coefficients !harmonicsArray !thetaRHa
       numIteration
       input
   harmonicsArrayDFT <-
-    fmap (listArray (bounds harmonicsArray)) .
+    fmap (listArray (bounds blurredHarmonicsArray)) .
     dftExecuteBatchP plan (DFTPlanID DFT1DG [cols, rows] [0, 1]) .
     L.map (VS.convert . toUnboxed . computeUnboxedS . makeFilter2D) . IA.elems $
-    harmonicsArray
+    blurredHarmonicsArray
   printCurrentTime "Source"
   source <-
     convolve' Source plan coefficients harmonicsArrayDFT eigenSourceSparse
