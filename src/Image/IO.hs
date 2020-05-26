@@ -202,7 +202,7 @@ func bound x
     y = x / bound
 
 {-# INLINE normalizeImageRepa #-}
-normalizeImageRepa :: ImageRepa Double -> ImageRepa Double
+normalizeImageRepa :: (RealFrac e, Eq e, Unbox e, Ord e) => ImageRepa e -> ImageRepa e
 normalizeImageRepa i@(ImageRepa depth img)
   | maxV == minV =
     ImageRepa depth . computeS . R.map (\x -> (fromIntegral $ 2 ^ depth - 1)) $
@@ -217,7 +217,7 @@ normalizeImageRepa i@(ImageRepa depth img)
     minV = VU.minimum . toUnboxed $ img
 
 {-# INLINE plotImageRepa #-}
-plotImageRepa :: FilePath -> ImageRepa Double -> IO ()
+plotImageRepa :: (Unbox e, Ord e, RealFrac e) => FilePath -> ImageRepa e -> IO ()
 plotImageRepa filePath img@(ImageRepa depth x) = do
   let Z :. nfp' :. nxp' :. nyp' = extent x
       normalizedImg = imageContent . normalizeImageRepa $ img
@@ -273,7 +273,7 @@ plotImageRepa filePath img@(ImageRepa depth x) = do
 
 -- Plot Complex Image
 {-# INLINE complexScale #-}
-complexScale :: ImageRepa (Complex Double) -> Double
+complexScale :: (Ord e, Floating e, Unbox e) => ImageRepa (Complex e) -> e
 complexScale (ImageRepa _ arr) =
   let (rVec, iVec) = VU.unzip . VU.map (\(a :+ b) -> (a, b)) . R.toUnboxed $ arr
       rMax = VU.maximum rVec
@@ -283,7 +283,8 @@ complexScale (ImageRepa _ arr) =
    in 2 / ((max rMax iMax) - (min rMin iMin))
 
 {-# INLINE complexImageToColorImage #-}
-complexImageToColorImage :: ImageRepa (Complex Double) -> ImageRepa Double
+complexImageToColorImage ::
+     (Floating e, Ord e, Unbox e) => ImageRepa (Complex e) -> ImageRepa e
 complexImageToColorImage img@(ImageRepa depth arr) =
   let scale = complexScale img
       (Z :. _ :. cols :. rows) = extent arr
@@ -330,7 +331,11 @@ normalizeComplexImage (ImageRepa depth img) =
              
 
 {-# INLINE plotImageRepaComplex #-}
-plotImageRepaComplex :: FilePath -> ImageRepa (Complex Double) -> IO ()
+plotImageRepaComplex ::
+     (Unbox e, Floating e, RealFrac e)
+  => FilePath
+  -> ImageRepa (Complex e)
+  -> IO ()
 plotImageRepaComplex filePath img =
   plotImageRepa filePath . complexImageToColorImage -- . normalizeComplexImage
   $

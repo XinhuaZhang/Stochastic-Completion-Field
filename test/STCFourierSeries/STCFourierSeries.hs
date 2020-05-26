@@ -49,7 +49,7 @@ main = do
       thetaFreqs = [-thetaFreq .. thetaFreq]
       scaleFreq = read scaleFreqsStr :: Double
       scaleFreqs = [-scaleFreq .. scaleFreq]
-      initDist = read initDistStr :: [(Int, Int, Double, Double)]
+      initDist = read initDistStr :: [(Double, Double, Double, Double)]
       initScale = read initScaleStr :: Double
       initPoints = L.map (\(x, y, t, s) -> Point x y t s) initDist
       numThread = read numThreadStr :: Int
@@ -109,9 +109,8 @@ main = do
     sampleCartesian
       folderPath
       histFilePath
-      (L.head gpuID)
-      numPoint
-      numPoint
+      gpuID
+      (fromIntegral $ div numPoint 2)
       144
       deltaLog
       initScale

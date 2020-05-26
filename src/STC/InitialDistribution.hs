@@ -29,7 +29,7 @@ computeInitialDistribution rows cols phiFreqs rhoFreqs halfLogPeriod points =
                  AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
                  L.map
                    (\(Point x y theta scale) ->
-                      ( (x, y)
+                      ( (round x, round y)
                       , cis $
                         (log scale) * (-rFreq) - (thetaFreq * theta * pi / 180))) $
                  points) $
@@ -53,7 +53,7 @@ computeInitialDistribution' rows cols phiFreqs rhoFreqs  halfLogPeriod points =
                  AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
                  L.map
                    (\(Point x y theta _) ->
-                      ((x, y), cis $ -(thetaFreq * theta * pi / 180))) $
+                      ((round x, round y), cis $ -(thetaFreq * theta * pi / 180))) $
                  points) $
             phiFreqs
 
@@ -74,7 +74,7 @@ computeInitialDistributionPowerMethod rows cols thetaFreqs rFreqs halfLogPeriod 
                    then VG.convert .
                         toUnboxedVector .
                         AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
-                        L.map (\(Point x y theta scale) -> ((x, y), 1)) $
+                        L.map (\(Point x y theta scale) -> ((round x, round y), 1)) $
                         points
                    else zeroVec) $
             (,) <$> rFreqs <*> thetaFreqs
@@ -95,7 +95,7 @@ computeInitialDistributionPowerMethod' rows cols phiFreqs rhoFreqs points =
                    then VG.convert .
                         toUnboxedVector .
                         AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
-                        L.map (\(Point x y theta scale) -> ((x, y), 1)) $
+                        L.map (\(Point x y theta scale) -> ((round x, round y), 1)) $
                         points
                    else zeroVec) $
             phiFreqs
@@ -133,3 +133,32 @@ computeInitialDistributionPowerMethodSparse' thetaFreqs rFreqs points =
       --   R.traverse (fromListUnboxed (Z :. numThetaFreq) thetaFreqs) id $ \f (Z :. thetaFreq) ->
       --     cis $ -(fromIntegral thetaFreq * 36 * pi / 180)
   in L.replicate (L.length points) initArr
+
+
+computeInitialDistributionFull' ::
+     Int -> Double -> Int -> Int -> [Point] -> DFTArray
+computeInitialDistributionFull' !r2Freq !radius !phiFreq !rhoFreq !points =
+  let r2Freqs = L.map fromIntegral [-r2Freq .. r2Freq]
+      phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
+      rhoFreqs = L.map fromIntegral [-rhoFreq .. rhoFreq]
+      !numR2Freq = 2 * r2Freq + 1
+      !period = 2 * radius + 1  
+  in DFTArray
+       numR2Freq
+       numR2Freq
+       phiFreqs
+       rhoFreqs
+       [ VG.fromList
+         [ L.foldl'
+           (\b (Point x y theta _) ->
+              b +
+              cis
+                (-(angularFreq * theta * pi / 180 +
+                   (freqX * x + freqY * y) * 2 * pi / period)))
+           0
+           points
+         | freqY <- r2Freqs
+         , freqX <- r2Freqs
+         ]
+       | angularFreq <- phiFreqs
+       ]

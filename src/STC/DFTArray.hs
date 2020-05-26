@@ -24,6 +24,9 @@ data DFTArray =
            ![Double] -- rFreqs
            ![VS.Vector (Complex Double)]
 
+instance Show DFTArray where
+  show (DFTArray rows cols thetaFreqs rFreqs vecs) = printf "DFTArray rows = %d cols = %d\nthetaFreqs: %s\nrFreqs: %s\n%s\n" rows cols (show thetaFreqs) (show rFreqs) (show . L.take 10 . VS.toList . L.head $ vecs)
+
 {-# INLINE getDFTArrayVector #-}
 getDFTArrayVector :: DFTArray -> [VS.Vector (Complex Double)]
 getDFTArrayVector (DFTArray _ _ _ _ vecs) = vecs
@@ -71,7 +74,7 @@ plotDFTArrayPower !filePath !rows !cols =
   fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
   VS.convert . -- VS.map sqrt .
   L.foldl1' (VS.zipWith (+)) .
-  parMap rdeepseq (VS.map (\x -> (magnitude x) ** (1) )) . getDFTArrayVector
+  parMap rdeepseq (VS.map (\x -> (magnitude x) ** 2 )) . getDFTArrayVector
 
 -- {-# INLINE plotDFTArrayThetaR #-}
 plotDFTArrayThetaR :: FilePath -> Int -> Int -> [[Complex Double]] -> DFTArray -> IO ()
@@ -86,8 +89,8 @@ plotDFTArrayThetaR !filePath !rows !cols !thetaRHarmonics arr = do
       m = VU.maximum img
   plotImageRepa filePath .
     ImageRepa 8 .
-    -- computeS .
-    -- reduceContrast 100 .
+    computeS .
+    reduceContrast 100 .
     fromUnboxed (Z :. (1 :: Int) :. cols :. rows) -- . VU.map (\x -> (x / m)** 1)
    $
     img
@@ -280,3 +283,25 @@ sparseArrayToDFTArray''' rows cols thetaFreqs rFreqs xs sparseArray =
           , repaToDFTArray thetaFreqs rFreqs y)) .
      func [] $
      pairs
+
+{-# INLINE fourierCoefficientsToR2Z2 #-}
+fourierCoefficientsToR2Z2 ::
+     [VS.Vector (Complex Double)] -> DFTArray -> [VU.Vector (Complex Double)]
+fourierCoefficientsToR2Z2 !harmonics =
+  parMap
+    rdeepseq
+    (\vec -> VU.fromList . L.map (VS.sum . VS.zipWith (*) vec) $ harmonics) .
+  getDFTArrayVector 
+
+
+
+plotFourierCoefficientsPower ::
+     FilePath -> Int -> Int -> [VS.Vector (Complex Double)] -> DFTArray -> IO ()
+plotFourierCoefficientsPower !filePath !numRows !numCols !harmonics =
+  plotImageRepa filePath .
+  ImageRepa 8 .
+  fromUnboxed (Z :. (1 :: Int) :. numCols :. numRows) .
+  VS.convert .
+  L.foldl1' (VU.zipWith (+)) .
+  parMap rdeepseq (VU.map (\x -> (magnitude x) ** 2)) .
+  fourierCoefficientsToR2Z2 harmonics

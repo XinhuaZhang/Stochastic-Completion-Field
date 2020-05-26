@@ -22,6 +22,8 @@ description:         Please see the README on GitHub at <https://github.com/Xinh
 dependencies:
 - accelerate >= 1.2.0.1 && < 2
 - accelerate-llvm >= 1.2.0.1 && < 2
+- accelerate-io >= 1.2 && < 2
+- accelerate-llvm-native >= 1.2.0.1 && < 2
 - accelerate-llvm-ptx >= 1.2.0.1 && < 2
 - base >= 4.7 && < 5
 - array >= 0.5.2.0 && < 0.6.0.0
@@ -33,6 +35,7 @@ dependencies:
 - conduit >= 1.3.1 && < 1.4.0
 - conduit-extra >= 1.3.0 && < 1.4.0
 - containers >= 0.5.11.0 && < 0.7.0.0
+- cublas >= 0.5.0.0 && < 0.6
 - cuda >= 0.10.1.0 && < 0.11
 - deepseq >= 1.4.3.0 && < 1.5.0.0
 # - diagrams-postscript >= 1.5 && < 1.6
@@ -44,12 +47,14 @@ dependencies:
 - filepath >= 1.4.2 && < 1.5.0.0
 - gnuplot == 0.5.5.3 # && < 0.6
 - hashable >= 1.2.7.0 && < 1.3.0.0
+- hblas >= 0.4.0.1 && < 0.5
 - hmatrix >= 0.19.0.0 && < 0.21.0.0
 - hmatrix-gsl >= 0.19.0.1 && < 0.20.0.0
 - JuicyPixels >= 3.2.9.5 && < 4.0.0
 - linear >= 1.20.8 && < 2
 - llvm-hs >= 8.0.0 && < 10
 - llvm-hs-pure >= 8.0.0 && < 10
+- monad-par >= 0.3.5 && < 0.4
 - monad-parallel >= 0.7.2.3 && < 0.8.0.0
 - mwc-random >= 0.13.6.0 && < 0.15.0.0
 - nvvm >= 0.9.0.0 && < 1.0.0.0
@@ -57,6 +62,7 @@ dependencies:
 - parallel >= 3.2.2.0 && < 4.0.0.0
 - random >= 1.1 && < 2.0
 - repa >= 3.4.1.4 && < 3.5.0.0
+- repa-io >= 3.4.1.1 && < 3.5
 - resourcet >= 1.2.2
 - statistics >= 0.14.0.2 && < 0.16.0.0
 - text >= 1.2.3.1 && < 1.3.0.0
@@ -1073,5 +1079,74 @@ tests:
     - -funfolding-keeness-factor1000
     # - -fllvm
     # - -optlo-O3
+    dependencies:
+    - Stochastic-Completion-Field
+  FourierSeriesOfPinwheels-test:
+    main:                FourierSeriesOfPinwheels.hs
+    source-dirs:         test/FourierSeriesOfPinwheels
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is FourierSeriesOfPinwheels
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  FourierSeries-test:
+    main:                FourierSeries.hs
+    source-dirs:         test/FourierSeries
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is FourierSeries
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  EigenDFT-test:
+    main:                EigenDFT.hs
+    source-dirs:         test/EigenDFT
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is EigenDFT
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
     dependencies:
     - Stochastic-Completion-Field

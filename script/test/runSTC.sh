@@ -1,0 +1,25 @@
+#!/bin/bash
+GPUID="[0,1,2,3]"
+Size=127
+Delta=1 
+Orientations=144
+Scales=1
+ThetaSigma=0.005
+ScaleSigma=0.0
+MaxScale=32
+DeltaLog=0.5
+Tao=25
+Trails=48000
+MaxTrails=4800
+R2Freq=63
+PhiFreqs=15
+RhoFreqs=15
+ThetaFreqs=15
+ScaleFreqs=0
+InitDist="[(-10,-20,45,1)]"
+InitScale=1
+HistFileName=${ThetaSigma}_${ScaleSigma}_${MaxScale}_${Tao}_${PhiFreqs}_${RhoFreqs}_${ThetaFreqs}_${ScaleFreqs}_${InitScale}.dat
+HistPath=output/app/GreensFunctionFourierCoefficients/${HistFileName}
+STD=10
+Threads=28
+time stack test :FourierSeriesOfPinwheels-test --test-arguments "${GPUID} ${Size} ${Delta} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${MaxScale} ${DeltaLog} ${Tao}  ${Trails} ${MaxTrails} ${R2Freq} ${PhiFreqs} ${RhoFreqs} ${ThetaFreqs} ${ScaleFreqs} ${InitDist} ${InitScale} ${HistPath} ${STD} ${Threads} +RTS -N${Threads} -RTS"

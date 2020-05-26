@@ -539,3 +539,45 @@ gaussianFilter2D plan numPoint stdG =
     let x = fromIntegral $ i - div numPoint 2
         y = fromIntegral $ j - div numPoint 2
     in (exp (-(x ^ 2 + y ^ 2) / (2 * stdG ^ 2))) :+ 0
+
+
+{-# INCLUDE convolveFull' #-}
+convolveFull' ::
+     R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> DFTArray
+  -> DFTArray
+convolveFull' !coefficients !harmonicsArray !arr@(DFTArray r2Freq _ thetaFreqs rFreqs vecs) =
+  let r2Freqs = [-r2Freq .. r2Freq]
+      idxTheta = L.zip [0 ..] thetaFreqs
+      !initVec = VS.replicate (VS.length . L.head $ vecs) 0
+  in DFTArray r2Freq r2Freq thetaFreqs rFreqs .
+     parMap
+       rdeepseq
+       (\(!theta, !thetaFreq) ->
+          L.foldl'
+            (\vec1 (rho, rhoFreq) ->
+               L.foldl'
+                 (\(!vec2) ((!phi, !phiFreq), inputVec) ->
+                    VS.zipWith
+                      (+)
+                      vec2
+                      (VS.map
+                         (* (coefficients R.!
+                             (Z :. (0 :: Int) :. theta :. rho :. phi))) .
+                       VS.zipWith
+                         (*)
+                         (getHarmonics
+                            harmonicsArray
+                            phiFreq
+                            rhoFreq
+                            thetaFreq
+                            0) $
+                       inputVec))
+                 vec1 .
+               L.zip idxTheta $
+               vecs)
+            initVec .
+          L.zip [0 ..] $
+          rFreqs) $
+     idxTheta

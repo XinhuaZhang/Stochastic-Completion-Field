@@ -201,10 +201,7 @@ coefficient' ::
 coefficient' rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r, v) =
         unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
-  in (lift $
-      (v -- * (A.exp $ (-0.5) * (rho + r)) 
-       ) A.:+
-      0) *
+  in (lift $ (v * (A.exp $ (-0.5) * (rho + r))) A.:+ 0) *
      (A.cis $
       (-1) *
       (rhoFreq * rho + rFreq * (r - rho) + phiFreq * phi +

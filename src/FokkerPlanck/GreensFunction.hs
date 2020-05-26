@@ -15,22 +15,15 @@ import           Image.IO
 import           STC.Utils
 import           System.FilePath
 import           Utils.Array
+import           Utils.List
 import           Utils.Parallel
-
-{-# INLINE divideList #-}
-divideList :: Int -> [a] -> [[a]]
-divideList n xs =
-  let (a, b) = L.splitAt n xs
-  in a : divideList n b
 
 sampleCartesian ::
      FilePath
   -> FilePath
   -> [Int]
-  -> Int
-  -> Int
-  -> Int
   -> Double
+  -> Int
   -> Double
   -> Double
   -> Double
@@ -40,10 +33,9 @@ sampleCartesian ::
   -> [Double]
   -> [Double]
   -> IO (Histogram (Complex Double))
-sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !deltaSample !gamma !sigma !tau !phiFreqs !rhoFreqs !thetaFreqs !rFreqs = do
-  let !n = floor (1 / deltaSample)
-      !rows = n * (round $ delta * fromIntegral rows')
-      !cols = n * (round $ delta * fromIntegral cols')
+sampleCartesian !folderPath !filePath !deviceID !radius !oris !delta !gamma !sigma !tau !phiFreqs !rhoFreqs !thetaFreqs !rFreqs = do
+  let !rows = round $ (2 * radius + 1) / delta
+      !cols = rows
       !centerRow = fromIntegral $ div rows 2
       !centerCol = fromIntegral $ div cols 2
       !deltaTheta = 2 * pi / fromIntegral oris
@@ -52,8 +44,8 @@ sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !delt
         L.filter
           (\(R2S1RP c r _ g) -> ((c /= 0) || (r /= 0)) && g > 0)
           [ R2S1RP
-            ((fromIntegral c - centerCol) * deltaSample)
-            ((fromIntegral r - centerRow) * deltaSample)
+            ((fromIntegral c - centerCol) * delta)
+            ((fromIntegral r - centerRow) * delta)
             0
             gamma
           | c <- [0 .. cols - 1]
@@ -72,7 +64,7 @@ sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !delt
                      let !v = computePji sigma tau origin (R2S1RP x y ori g)
                          !phi = atan2 y x
                          !r = log . sqrt $ (x ^ 2 + y ^ 2)
-                     in (phi, r, ori, logGamma, v)) $
+                     in  (phi, r, ori, logGamma, v)) $
                 idx)
           [0 .. oris - 1]
       len = L.length xs
@@ -83,7 +75,8 @@ sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !delt
   --   (ImageRepa 8 .
   --    computeS .
   --    R.extend (Z :. (1 :: Int) :. All :. All) .
-  --    reduceContrast 100 . R.sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
+  --    -- reduceContrast 100 .
+  --    R.sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
   --    arr)
   print (s / fromIntegral len)
   initialise []
@@ -101,7 +94,7 @@ sampleCartesian !folderPath !filePath !deviceID !rows' !cols' !oris !delta !delt
                thetaFreqs
                rFreqs
                ptx
-                ys)
+               ys)
           ptxs .
         divideList (div (L.length xs) (L.length deviceID)) $
         xs

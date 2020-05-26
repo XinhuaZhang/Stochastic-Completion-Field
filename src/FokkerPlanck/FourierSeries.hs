@@ -1,9 +1,10 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveAnyClass   #-}
 {-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveAnyClass #-}
 module FokkerPlanck.FourierSeries
-  ( sampleScale
+  ( fourierMellin
+  , sampleScale
   , computeFourierCoefficients
   , computeHarmonicsArray
   , computeHarmonicsArraySparse
@@ -15,30 +16,45 @@ module FokkerPlanck.FourierSeries
   , normalizeFreqArr
   , normalizeFreqArr'
   , plotThetaDimension
+  , computeFourierSeriesOfLogPolarHarmonicsArray
+  , computeRectangularInverseHarmonics
   ) where
 
-import           Array.UnboxedArray          as UA
+import           Array.UnboxedArray                     as UA
 import           Control.DeepSeq
-import           Data.Array.IArray           as IA
-import           Data.Array.Repa             as R
+import           Data.Array.IArray                      as IA
+import           Data.Array.Repa                        as R
 import           Data.Binary
 import           Data.Complex
-import           Data.DList                  as DL
-import           Data.List                   as L
-import           Data.Vector.Generic         as VG
-import           Data.Vector.Unboxed         as VU
-import           FokkerPlanck.BrownianMotion 
+import           Data.DList                             as DL
+import           Data.List                              as L
+import           Data.Vector.Generic                    as VG
+import           Data.Vector.Unboxed                    as VU
+import           FokkerPlanck.BrownianMotion
 import           FokkerPlanck.Histogram
-import           GHC.Generics                (Generic)
+import           GHC.Generics                           (Generic)
 import           Text.Printf
 import           Utils.Array
 import           Utils.Parallel
 import           Utils.Time
--- import Graphics.Gnuplot.Simple
+import           Graphics.Rendering.Chart.Backend.Cairo
+import           Graphics.Rendering.Chart.Easy
 import           Image.IO
-import System.FilePath
-import Graphics.Rendering.Chart.Easy
-import Graphics.Rendering.Chart.Backend.Cairo
+import           System.FilePath
+import           Utils.SimpsonRule
+import Numeric.LinearAlgebra as NL
+import Numeric.LinearAlgebra.Data as NL
+import            Utils.Distribution
+import Pinwheel.Base
+
+
+
+-- {-# INLINE fourierMellin' #-}
+-- fourierMellin' :: Int -> Int -> (Double, Double) -> Complex Double
+-- fourierMellin' !angularFreq !radialFreq (!x, !y) =
+--   if x == 0 && y == 0
+--     then 0
+--     else exp $ (-1 * log rho) :+ (tf * atan2 y x + rf * (log rho))
 
 {-# INLINE sampleScale #-}
 sampleScale ::
@@ -122,7 +138,7 @@ computeFourierCoefficients !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPerio
       , phiFreq' <- L.zip phiFreqs [1 ..]
       ]
 
-  
+
 {-# INLINE normalizeFreqArr #-}
 normalizeFreqArr ::
      Double
@@ -145,7 +161,7 @@ normalizeFreqArr !std !phiFreqs !rhoFreqs arr =
       2 /
       (std ^ 2)) :+
      0)
-     
+
 {-# INLINE normalizeFreqArr' #-}
 normalizeFreqArr' ::
      Double
@@ -206,7 +222,7 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
                           then 0
                           else (x :+ y) ** (tf :+ 0) *
                                ((x ^ 2 + y ^ 2) :+ 0) **
-                               (((-tf - 1) :+ rf) / 2)
+                               (((-tf - 0.5) :+ rf) / 2)
                                -- exp $
                                -- (-1 * log rho) :+
                                -- -- cis $
@@ -219,7 +235,7 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
           , tf <- rangeFunc1 phiFreqs thetaFreqs
           ]
   in IA.array ((rfLB, tfLB), (rfUB, tfUB)) xs
-  
+
 
 -- {-# INLINE computeHarmonicsArraySparse #-}
 computeHarmonicsArraySparse ::
@@ -268,7 +284,7 @@ computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rho
           , tf <- rangeFunc1 phiFreqs thetaFreqs
           ]
   in IA.array ((rfLB, tfLB), (rfUB, tfUB)) xs
-  
+
 -- {-# INLINE computeHarmonicsArrayGPU #-}
 -- computeHarmonicsArrayGPU ::
 --      (VG.Vector vector (Complex Double), NFData (vector (Complex Double)))
@@ -431,12 +447,12 @@ plotThetaDimension folderPath prefix (x', y') inputArr = do
       centerArr =
         fromFunction (Z :. (1 :: Int) :. cols :. rows) $ \(Z :. _ :. i :. j) ->
           if i == x && j == y
-            then 1
+            then 1 :: Double
             else 0
   plotImageRepa (folderPath </> printf "%s(%d,%d)_center.png" prefix x' y') .
     ImageRepa 8 . computeS $
     centerArr
-  let ys' = R.toList . R.slice inputArr $ (Z :. All :. x :. y)
+  let ys' = R.toList . R.slice inputArr $ (Z :. R.All :. x :. y)
       !maxY = L.maximum ys'
       -- ys = L.map (/maxY) ys'
       ys = ys'
@@ -447,3 +463,114 @@ plotThetaDimension folderPath prefix (x', y') inputArr = do
     layout_x_axis . laxis_generate .= scaledAxis def (0, 359)
     layout_y_axis . laxis_generate .= scaledAxis def (0, maxY)
     plot (line "" [L.zip xs ys])
+
+
+-- The codes below compute Fourier series in R2
+
+computeFourierSeriesOfLogPolarHarmonicsArray ::
+     (VG.Vector vector (Complex Double), NFData (vector (Complex Double)))
+  => Double
+  -> Double
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> IA.Array (Int, Int) (vector (Complex Double))
+computeFourierSeriesOfLogPolarHarmonicsArray !radius !delta !r2Freq !phiFreq !rhoFreq !thetaFreq !rFreq !halfLogPeriod =
+  let ((!angularFreqLB, !angularFreqUB), angularFreqs) =
+        freqRange phiFreq thetaFreq
+      ((!radialFreqLB, !radialFreqUB), radialFreqs) =
+        freqRange phiFreq thetaFreq
+      !numPoints' = round $ (2 * radius + 1) / delta
+      !numPoints =
+        if odd numPoints'
+          then numPoints'
+          else numPoints' - 1
+      !center = div numPoints 2
+      !period = 2 * radius + 1
+      !periodConstant = delta * 2 * pi / period
+      !numR2Freq = 2 * r2Freq + 1
+      !std = fromIntegral $ div r2Freq 2
+      !simpsonWeights =
+        toUnboxed . computeS $
+        (computeWeightArrFromListOfShape [numPoints, numPoints] :: R.Array D DIM2 (Complex Double))
+      !weightedRectangularHarmonics =
+        parMap
+          rdeepseq
+          (\(freq1, freq2) ->
+             VU.zipWith (*) simpsonWeights .
+             toUnboxed . computeS . fromFunction (Z :. numPoints :. numPoints) $ \(Z :. i :. j) ->
+               cis
+                 (-periodConstant *
+                   fromIntegral (freq1 * (i - center) + freq2 * (j - center))))
+          [ (freq1, freq2)
+          | freq1 <- [-r2Freq .. r2Freq]
+          , freq2 <- [-r2Freq .. r2Freq]
+          ]
+      !cartesianGrid =
+        toUnboxed . computeS . fromFunction (Z :. numPoints :. numPoints) $ \(Z :. c :. r) ->
+          let !x = fromIntegral (c - center) * delta
+              !y = fromIntegral (r - center) * delta
+          in (x, y)
+      !simpsonNorm = (delta / 3) ^ 2 :+ 0
+      !xs =
+        parMap
+          rdeepseq
+          (\(!radialFreq, !angularFreq) ->
+             let !logPolarHarmonics =
+                   VU.map (fourierMellin 0.5 angularFreq radialFreq) cartesianGrid
+                 coefficients =
+                   fromListUnboxed (Z :. numR2Freq :. numR2Freq) .
+                   L.map (VU.sum . VU.zipWith (*) logPolarHarmonics) $
+                   weightedRectangularHarmonics
+                 !coefficientsGaussian =
+                   VG.convert .
+                   toUnboxed . computeS . R.traverse coefficients id $ \f idx@(Z :. xFreq :. yFreq) ->
+                     simpsonNorm * (f idx) *
+                     (gaussian2D
+                        (fromIntegral $ xFreq - r2Freq)
+                        (fromIntegral $ yFreq - r2Freq)
+                        std :+
+                      0)
+             in ((radialFreq, angularFreq), coefficientsGaussian))
+          [ (radialFreq, angularFreq)
+          | radialFreq <- radialFreqs
+          , angularFreq <- angularFreqs
+          ]
+  in IA.array ((radialFreqLB, angularFreqLB), (radialFreqUB, angularFreqUB)) xs
+
+computeRectangularInverseHarmonics ::
+     (VG.Vector vector (Complex Double), NFData (vector (Complex Double)))
+  => Int
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> [vector (Complex Double)]
+computeRectangularInverseHarmonics !numRows !numCols !delta !radius !maxFreq =
+  let !period = 2 * radius + 1
+      !periodConstant = delta * 2 * pi / period
+      !centerRow = div numRows 2
+      !centerCol = div numCols 2
+  in parMap
+       rdeepseq
+       (\(col, row) ->
+          VG.fromList
+            [ cis
+              (periodConstant *
+               fromIntegral
+                 (freq1 * (row - centerRow) + freq2 * (col - centerCol)))
+            | freq1 <- [-maxFreq .. maxFreq]
+            , freq2 <- [-maxFreq .. maxFreq]
+            ])
+       [(col, row) | col <- [0 .. numCols - 1], row <- [0 .. numRows - 1]] 
+
+-- Utilities
+
+{-# INLINE freqRange #-}
+freqRange :: Int -> Int -> ((Int, Int), [Int])
+freqRange n m =
+  let !x = n + m
+  in ((-x, x), [-x .. x])

@@ -17,4 +17,4 @@ computeBias !rows !cols =
   in VS.convert .
      toUnboxedVector .
      AU.accum (+) 0 ((minC, minR), (maxC, maxR)) .
-     L.map (\(Point x y theta scale) -> ((x, y), 1))
+     L.map (\(Point x y theta scale) -> ((round x, round y), 1))

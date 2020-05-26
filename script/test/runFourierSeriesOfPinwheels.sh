@@ -1,0 +1,19 @@
+#!/bin/bash
+GPUID="[0,1,2,3,4,5,6,7]"
+Size=128
+Delta=0.5
+InvDelta=1
+R2Freq=128
+Period=128
+PhiFreqs=2
+RhoFreqs=2
+ThetaFreqs=2
+ScaleFreqs=0
+HistFileName=${Size}_${Delta}_${R2Freq}_${Period}_${PhiFreqs}_${RhoFreqs}_${ThetaFreqs}_${ScaleFreqs}.pinwheel
+HistPath=output/test/FourierSeriesOfPinwheels/${HistFileName}
+STD=16
+BatchSizePolarFreqs=25
+BatchSizeR2Freqs=4096
+BatchSizeR2=16384
+Threads=28
+time stack test :FourierSeriesOfPinwheels-test --test-arguments "${GPUID} ${Size} ${Delta} ${InvDelta} ${R2Freq} ${Period} ${PhiFreqs} ${RhoFreqs} ${ThetaFreqs} ${ScaleFreqs} ${HistPath} ${STD} ${BatchSizePolarFreqs} ${BatchSizeR2Freqs} ${BatchSizeR2} ${Threads} +RTS -N${Threads} -RTS"
