@@ -27,6 +27,7 @@ import           Statistics.Distribution.Normal
 import           System.Random.MWC
 import           Utils.Parallel
 import Debug.Trace
+import Utils.List
 
 -- {-# INLINE computeFourierCoefficientsGPU #-}
 computeFourierCoefficientsGPU ::
@@ -193,14 +194,15 @@ computeFrequencyArray !phiFreqs !rhoFreqs !thetaFreqs !rFreqs =
 
 
 computeFourierCoefficientsGPU' ::
-     [Double]
+     Double
+  -> [Double]
   -> [Double]
   -> [Double]
   -> [Double]
   -> PTX
   -> [(Double, Double, Double, Double, Double)]
   -> Histogram (Complex Double)
-computeFourierCoefficientsGPU' !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
+computeFourierCoefficientsGPU' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
   let !freqArr =
         A.use $ computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
   in Histogram
@@ -212,5 +214,36 @@ computeFourierCoefficientsGPU' !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs 
        1 .
      VU.fromList .
      A.toList .
-     runNWith ptx (gpuKernel' freqArr) . A.fromList (A.Z A.:. (L.length xs)) $
+     runNWith ptx (gpuKernel' (A.constant sigma) freqArr) .
+     A.fromList (A.Z A.:. (L.length xs)) $
+     xs
+
+{-# INLINE computePinwheelCoefficients #-}
+computePinwheelCoefficients ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> PTX
+  -> [(Double, Double, Double, Double, Complex Double)]
+  -> Histogram (Complex Double)
+computePinwheelCoefficients !maxPhiFreq !maxRhoFreq !maxThetaFreq !maxRFreq !ptx !xs =
+  let freqFunc maxFreq = [-(fromIntegral maxFreq) .. (fromIntegral maxFreq)]
+      phiFreqs = freqFunc maxPhiFreq
+      rhoFreqs = freqFunc maxRhoFreq
+      thetaFreqs = freqFunc maxThetaFreq
+      rFreqs = freqFunc maxRFreq
+      !freqArr =
+        A.use $ computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
+  in Histogram
+       [ L.length phiFreqs
+       , L.length rhoFreqs
+       , L.length thetaFreqs
+       , L.length rFreqs
+       ]
+       1 .
+     VU.fromList .
+     A.toList .
+     runNWith ptx (pinwheelCoefficientsAcc freqArr) .
+     A.fromList (A.Z A.:. (L.length xs)) $
      xs

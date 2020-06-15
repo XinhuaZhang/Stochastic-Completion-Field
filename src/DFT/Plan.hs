@@ -23,9 +23,10 @@ module DFT.Plan
   , idft1dGPlan
   ) where
 
+import           Control.Concurrent.Async
 import           Control.Concurrent.MVar
 import           Control.Monad                as M
-import           Control.Monad.Parallel       as MP
+-- import           Control.Monad.Parallel       as MP
 import           Data.Bits                    (Bits, complement, (.&.), (.|.))
 import           Data.Complex
 import           Data.Hashable
@@ -155,7 +156,7 @@ dftExecuteBatchP hashMap planID@(DFTPlanID t d i) vecs =
   case HM.lookup planID hashMap of
     Nothing ->
       error $ "dftExecuteBatch: couldn't find plan for ID " L.++ show planID
-    Just plan -> MP.mapM (dftExecuteWithPlan planID plan) vecs
+    Just plan -> mapConcurrently (dftExecuteWithPlan planID plan) vecs
 
 {-# INLINE dftExecute #-}
 dftExecute ::

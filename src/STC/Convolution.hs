@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Strict #-}
 module STC.Convolution where
 
 import           Control.Arrow
@@ -25,6 +26,7 @@ import qualified Data.Array.Accelerate              as A
 import qualified Data.Array.Accelerate.Data.Complex as A
 import           Data.Array.Accelerate.LLVM.PTX
 import Debug.Trace
+import Utils.List
 
 data Field
   = Source
@@ -539,19 +541,44 @@ gaussianFilter2D plan numPoint stdG =
     let x = fromIntegral $ i - div numPoint 2
         y = fromIntegral $ j - div numPoint 2
     in (exp (-(x ^ 2 + y ^ 2) / (2 * stdG ^ 2))) :+ 0
+    
 
-
-{-# INCLUDE convolveFull' #-}
-convolveFull' ::
+{-# INLINE convoluvePinhweelBasis #-}
+convoluvePinhweelBasis ::
      R.Array U DIM4 (Complex Double)
   -> IA.Array (Int, Int) (VS.Vector (Complex Double))
   -> DFTArray
   -> DFTArray
-convolveFull' !coefficients !harmonicsArray !arr@(DFTArray r2Freq _ thetaFreqs rFreqs vecs) =
-  let r2Freqs = [-r2Freq .. r2Freq]
-      idxTheta = L.zip [0 ..] thetaFreqs
-      !initVec = VS.replicate (VS.length . L.head $ vecs) 0
-  in DFTArray r2Freq r2Freq thetaFreqs rFreqs .
+convoluvePinhweelBasis coefficients harmonicsArray arr@(DFTArray xFreq yFreq thetaFreqs rFreqs vecs) =
+  let initVec = VS.replicate (VS.length . L.head $ vecs) 0
+      idxs = (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
+  in DFTArray xFreq yFreq thetaFreqs rFreqs .
+     parMap
+       rdeepseq
+       (\((r, rFreq), (theta, thetaFreq)) ->
+          L.foldl'
+            (\vec (((rho, rhoFreq), (phi, phiFreq)), inputVec) ->
+               VS.zipWith (+) vec .
+               VS.map (* (coefficients R.! (Z :. r :. theta :. rho :. phi))) .
+               VS.zipWith
+                 (*)
+                 (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq) $
+               inputVec)
+            initVec .
+          L.zip idxs $
+          vecs) $
+     idxs
+
+{-# INLINE convoluvePinhweelBasis' #-}
+convoluvePinhweelBasis' ::
+     R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> DFTArray
+  -> DFTArray
+convoluvePinhweelBasis' coefficients harmonicsArray arr@(DFTArray xFreq yFreq thetaFreqs rFreqs vecs) =
+  let idxTheta = L.zip [0 ..] thetaFreqs
+      initVec = VS.replicate (VS.length . L.head $ vecs) 0
+  in DFTArray xFreq yFreq thetaFreqs rFreqs .
      parMap
        rdeepseq
        (\(!theta, !thetaFreq) ->
@@ -574,6 +601,43 @@ convolveFull' !coefficients !harmonicsArray !arr@(DFTArray r2Freq _ thetaFreqs r
                             thetaFreq
                             0) $
                        inputVec))
+                 vec1 .
+               L.zip idxTheta $
+               vecs)
+            initVec .
+          L.zip [0 ..] $
+          rFreqs) $
+     idxTheta
+  
+{-# INLINE convolveFull'' #-}
+convolveFull'' ::
+     R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> DFTArray
+  -> DFTArray
+convolveFull'' !coefficients !harmonicsArray !arr@(DFTArray r2Freq _ thetaFreqs rFreqs vecs) =
+  let idxTheta = L.zip [0 ..] thetaFreqs
+      !initVec = VS.replicate (VS.length . L.head $ vecs) 0
+  in DFTArray r2Freq r2Freq thetaFreqs rFreqs .
+     parMap
+       rdeepseq
+       (\(!theta, !thetaFreq) ->
+          L.foldl'
+            (\vec1 (rho, rhoFreq) ->
+               L.foldl'
+                 (\(!vec2) ((!phi, !phiFreq), inputVec) ->
+                    VS.zipWith
+                      (+)
+                      vec2
+                      (VS.map
+                         (* (coefficients R.!
+                             (Z :. (0 :: Int) :. theta :. rho :. phi)))
+                         (getHarmonics
+                            harmonicsArray
+                            phiFreq
+                            rhoFreq
+                            thetaFreq
+                            0)))
                  vec1 .
                L.zip idxTheta $
                vecs)

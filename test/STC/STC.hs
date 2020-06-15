@@ -21,9 +21,9 @@ import           Utils.Parallel
 import           Utils.Time
 
 main = do
-  args@(gpuIDStr:numPointStr:deltaStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numTrailStr:maxTrailStr:r2FreqStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdStr:numThreadStr:_) <-
+  args@(deviceIDsStr:numPointStr:deltaStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:deltaLogStr:taoStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdStr:numBatchR2FreqsStr:numBatchOriStr:numThreadStr:_) <-
     getArgs
-  let gpuID = read gpuIDStr :: [Int]
+  let deviceIDs = read deviceIDsStr :: [Int]
       numPoint = read numPointStr :: Int
       delta = read deltaStr :: Double
       numOrientation = read numOrientationStr :: Int
@@ -31,7 +31,8 @@ main = do
       thetaSigma = read thetaSigmaStr :: Double
       scaleSigma = read scaleSigmaStr :: Double
       tao = read taoStr :: Double
-      r2Freq = read r2FreqStr :: Int
+      numR2Freq = read numR2FreqStr :: Int
+      periodR2 = read periodR2Str :: Double
       phiFreq = read phiFreqsStr :: Int
       phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
       rhoFreq = read rhoFreqsStr :: Int
@@ -49,16 +50,36 @@ main = do
       halfLogPeriod = log maxScale
       deltaLog = read deltaLogStr :: Double
       std = read stdStr :: Double
+      numBatchR2Freqs = read numBatchR2FreqsStr :: Int
+      numBatchOri = read numBatchOriStr :: Int
       radius = fromIntegral $ div numPoint 2
   removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   printCurrentTime "Start computing coefficients..."
   hist <-
+    computeFourierCoefficients
+      deviceIDs
+      numPoints
+      numOrientation
+      delta
+      initScale
+      thetaSigma
+      tao
+      numR2Freq
+      periodR2
+      std
+      numBatchR2Freqs
+      numBatchOri
+      phiFreq
+      rhoFreq
+      thetaFreq
+      scaleFreq
+  hist <-
     sampleCartesian
       folderPath
       histFilePath
-      gpuID
+      deviceIDs
       radius
       144
       0.25 -- deltaLog

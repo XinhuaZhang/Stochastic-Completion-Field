@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Strict #-}
 module Utils.SimpsonRule
   ( weightsSimpsonRule
   , computeWeightArrFromListOfShape
@@ -34,6 +35,21 @@ weightFunc !n !i
   | odd i = 4
   | otherwise = 2
   
+-- {-# INLINE weightFuncEven #-}
+-- weightFuncEven :: (Num a) => Int -> Int -> a
+-- weightFuncEven n i 
+--   | i == 0 || i == n - 1 = 1
+--   | rem == 0 = 2
+--   | otherwise = 3
+--   where rem = mod i 3
+
+
+-- {-# INLINE weightFunc #-}
+-- weightFunc :: (Num a) => Int -> Int -> a
+-- weightFunc n i
+--   | odd n = weightFuncOdd n i
+--   | otherwise = weightFuncEven n i
+
 {-# INLINE computeWeightArrFromListOfShape #-}
 computeWeightArrFromListOfShape :: (Num a, Shape sh) => [Int] -> R.Array D sh a
 computeWeightArrFromListOfShape xs =

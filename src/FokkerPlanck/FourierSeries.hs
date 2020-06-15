@@ -5,14 +5,14 @@
 module FokkerPlanck.FourierSeries
   ( fourierMellin
   , sampleScale
-  , computeFourierCoefficients
+  -- , computeFourierCoefficients
   , computeHarmonicsArray
   , computeHarmonicsArraySparse
   -- , computeHarmonicsArrayGPU
   , getHarmonics
   , computeThetaRHarmonics
   , computeFourierSeriesThetaR
-  , computeFourierSeriesR2
+  -- , computeFourierSeriesR2
   , normalizeFreqArr
   , normalizeFreqArr'
   , plotThetaDimension
@@ -76,67 +76,67 @@ sampleScale !phiFreq !rhoFreq !thetaFreq !rFreq !halfLogPeriod =
                (-pi) * (rhoFreq * (newRho) + rFreq * (newR - newRho)) /
                halfLogPeriod))
 
-{-# INLINE computeFourierCoefficients #-}
-computeFourierCoefficients ::
-     [Double]
-  -> [Double]
-  -> [Double]
-  -> [Double]
-  -> Double
-  -> Double
-  -> [DList Particle]
-  -> Histogram (Complex Double)
-computeFourierCoefficients !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPeriod !deltaLogRho !xs =
-  Histogram
-    [L.length phiFreqs, L.length rhoFreqs, L.length thetaFreqs, L.length rFreqs]
-    (L.length ys) .
-  toUnboxedVector .
-  UA.accum
-    (+)
-    0
-    ( (1, 1, 1, 1)
-    , ( L.length rFreqs
-      , L.length thetaFreqs
-      , L.length rhoFreqs
-      , L.length phiFreqs)) .
-  L.concat .
-  parMap
-    rdeepseq
-    (\(particle@(Particle phi rho theta r)) ->
-       let !n = floor $ (log r + halfLogPeriod) / deltaLogRho
-           !samples =
-             -- L.map moveParticle  $
-             particle :
-             [ -- (Particle
-             --      phi
-             --      rho
-             --      theta
-             --      (exp $ (fromIntegral i * deltaLogRho - halfLogPeriod)))
-             -- | i <- [0 .. n]
-             ]
-       in L.map
-            (\((rFreq, i), (thetaFreq, j), (rhoFreq, k), (phiFreq, l)) ->
-               ( (i, j, k, l)
-               , -- (deltaLogRho :+ 0) *
-                 1/ (16 * pi^2 * halfLogPeriod :+ 0) *
-                 sampleScale
-                   phiFreq
-                   rhoFreq
-                   thetaFreq
-                   rFreq
-                   halfLogPeriod
-                   samples))
-            freqs) $
-  ys
-  where
-    !ys = DL.toList . DL.concat $ xs
-    !freqs =
-      [ (rFreq', thetaFreq', rhoFreq', phiFreq')
-      | rFreq' <- L.zip rFreqs [1 ..]
-      , thetaFreq' <- L.zip thetaFreqs [1 ..]
-      , rhoFreq' <- L.zip rhoFreqs [1 ..]
-      , phiFreq' <- L.zip phiFreqs [1 ..]
-      ]
+-- {-# INLINE computeFourierCoefficients #-}
+-- computeFourierCoefficients ::
+--      [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> Double
+--   -> Double
+--   -> [DList Particle]
+--   -> Histogram (Complex Double)
+-- computeFourierCoefficients !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPeriod !deltaLogRho !xs =
+--   Histogram
+--     [L.length phiFreqs, L.length rhoFreqs, L.length thetaFreqs, L.length rFreqs]
+--     (L.length ys) .
+--   toUnboxedVector .
+--   UA.accum
+--     (+)
+--     0
+--     ( (1, 1, 1, 1)
+--     , ( L.length rFreqs
+--       , L.length thetaFreqs
+--       , L.length rhoFreqs
+--       , L.length phiFreqs)) .
+--   L.concat .
+--   parMap
+--     rdeepseq
+--     (\(particle@(Particle phi rho theta r)) ->
+--        let !n = floor $ (log r + halfLogPeriod) / deltaLogRho
+--            !samples =
+--              -- L.map moveParticle  $
+--              particle :
+--              [ -- (Particle
+--              --      phi
+--              --      rho
+--              --      theta
+--              --      (exp $ (fromIntegral i * deltaLogRho - halfLogPeriod)))
+--              -- | i <- [0 .. n]
+--              ]
+--        in L.map
+--             (\((rFreq, i), (thetaFreq, j), (rhoFreq, k), (phiFreq, l)) ->
+--                ( (i, j, k, l)
+--                , -- (deltaLogRho :+ 0) *
+--                  1/ (16 * pi^2 * halfLogPeriod :+ 0) *
+--                  sampleScale
+--                    phiFreq
+--                    rhoFreq
+--                    thetaFreq
+--                    rFreq
+--                    halfLogPeriod
+--                    samples))
+--             freqs) $
+--   ys
+--   where
+--     !ys = DL.toList . DL.concat $ xs
+--     !freqs =
+--       [ (rFreq', thetaFreq', rhoFreq', phiFreq')
+--       | rFreq' <- L.zip rFreqs [1 ..]
+--       , thetaFreq' <- L.zip thetaFreqs [1 ..]
+--       , rhoFreq' <- L.zip rhoFreqs [1 ..]
+--       , phiFreq' <- L.zip phiFreqs [1 ..]
+--       ]
 
 
 {-# INLINE normalizeFreqArr #-}
@@ -204,7 +204,6 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
         (round (L.head xs - L.last ys), round (L.last xs - L.head ys))
       (!tfLB, !tfUB) = rangeFunc2 phiFreqs thetaFreqs
       (!rfLB, !rfUB) = rangeFunc2 rhoFreqs rFreqs
-      !logDR = halfLogPeriod / fromIntegral (min centerRow centerCol)
       !xs =
         parMap
           rdeepseq
@@ -218,17 +217,13 @@ computeHarmonicsArray !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs 
                          !rho2 =
                            fromIntegral $
                            (c - centerCol) ^ 2 + (r - centerRow) ^ 2
-                     in if rho2 > cutoff ^ 2 || (rho <= 0)  -- || pi * rho < (abs tf) -- || log ((rho + 1) / rho) > (1 / (2 * rf)) 
+                     in if rho2 > cutoff ^ 2 || (rho <= 0) -- || pi * rho < (abs tf) -- || log ((rho + 1) / rho) > (1 / (2 * rf))
                           then 0
-                          else (x :+ y) ** (tf :+ 0) *
-                               ((x ^ 2 + y ^ 2) :+ 0) **
-                               (((-tf - 0.5) :+ rf) / 2)
-                               -- exp $
-                               -- (-1 * log rho) :+
-                               -- -- cis $
-                               -- (tf * atan2 y x +
-                               --  rf * (log rho) 
-                               -- )
+                               -- (x :+ y) ** (tf :+ 0) *
+                               -- ((x ^ 2 + y ^ 2) :+ 0) **
+                               -- (((-tf - 0.5) :+ rf) / 2)
+                          else ((rho :+ 0) ** ((-1) :+ rf)) *
+                               (cis (tf * atan2 y x))
              in ((round rf, round tf), vec))
           [ (rf, tf)
           | rf <- rangeFunc1 rhoFreqs rFreqs
@@ -333,49 +328,49 @@ computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rho
 
 {-# INLINE getHarmonics #-}
 getHarmonics ::
-     (VG.Vector vector (Complex Double))
-  => IA.Array (Int, Int) (vector (Complex Double))
+     (VG.Vector vector e)
+  => IA.Array (Int, Int) (vector e)
   -> Double
   -> Double
   -> Double
   -> Double
-  -> vector (Complex Double)
+  -> vector e
 getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq =
   harmonicsArray IA.! (round (rhoFreq - rFreq), round $ (phiFreq - thetaFreq))
 
 
-{-# INLINE computeFourierSeriesR2 #-}
-computeFourierSeriesR2 ::
-     Int
-  -> Double
-  -> Int
-  -> Double
-  -> [Double]
-  -> [Double]
-  -> [Double]
-  -> [Double]
-  -> Double
-  -> Double
-  -> IA.Array (Int, Int) (VU.Vector (Complex Double))
-  -> R.Array U DIM4 (Complex Double)
-  -> [VU.Vector (Complex Double)]
-computeFourierSeriesR2 numRows deltaRow numCols deltaCol phiFreqs rhoFreqs thetaFreqs rFreqs halfLogPeriod cutoff harmonicsArray arr =
-  let (Z :. (!numRFreq) :. (!numThetaFreq) :. _ :. _) = extent arr
-      !initVec = VU.replicate (VU.length (harmonicsArray IA.! (0, 0))) 0
-  in parMap
-       rdeepseq
-       (\((!r, !rFreq), (!theta, !thetaFreq)) ->
-          L.foldl'
-            (\(!vec) ((!rho, !rhoFreq), (!phi, !phiFreq)) ->
-               VU.zipWith
-                 (+)
-                 vec
-                 (VU.map
-                    (* (arr R.! (Z :. r :. theta :. rho :. phi)))
-                    (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq)))
-            initVec $
-          (,) <$> (L.zip [0 ..] rhoFreqs) <*> (L.zip [0 ..] phiFreqs)) $
-     (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
+-- {-# INLINE computeFourierSeriesR2 #-}
+-- computeFourierSeriesR2 ::
+--      Int
+--   -> Double
+--   -> Int
+--   -> Double
+--   -> [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> Double
+--   -> Double
+--   -> IA.Array (Int, Int) (VU.Vector (Complex Double))
+--   -> R.Array U DIM4 (Complex Double)
+--   -> [VU.Vector (Complex Double)]
+-- computeFourierSeriesR2 numRows deltaRow numCols deltaCol phiFreqs rhoFreqs thetaFreqs rFreqs halfLogPeriod cutoff harmonicsArray arr =
+--   let (Z :. (!numRFreq) :. (!numThetaFreq) :. _ :. _) = extent arr
+--       !initVec = VU.replicate (VU.length (harmonicsArray IA.! (0, 0))) 0
+--   in parMap
+--        rdeepseq
+--        (\((!r, !rFreq), (!theta, !thetaFreq)) ->
+--           L.foldl'
+--             (\(!vec) ((!rho, !rhoFreq), (!phi, !phiFreq)) ->
+--                VU.zipWith
+--                  (+)
+--                  vec
+--                  (VU.map
+--                     (* (arr R.! (Z :. r :. theta :. rho :. phi)))
+--                     (getHarmonics harmonicsArray phiFreq rhoFreq thetaFreq rFreq)))
+--             initVec $
+--           (,) <$> (L.zip [0 ..] rhoFreqs) <*> (L.zip [0 ..] phiFreqs)) $
+--      (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
 
 -- {-# INLINE computeThetaRHarmonics #-}
 computeThetaRHarmonics ::

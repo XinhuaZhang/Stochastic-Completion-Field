@@ -93,7 +93,7 @@ coefficient ::
 coefficient halfLogPeriod rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r) = unlift particle :: (Exp a, Exp a, Exp a, Exp a)
   in (lift $
-      (-- (A.exp $ (-0.5) * (rho + r)) *
+      ((A.exp $ (-0.5) * (rho + r)) *
        (A.cos (phiFreq * phi + thetaFreq * (theta - phi)))) A.:+
       0) *
      (A.cis $ (-1) * (rhoFreq * rho + rFreq * (r + rho)))
@@ -191,17 +191,24 @@ convolveKernel coefficients harmonics thetaIdx rIdx input =
 
 {-# INLINE coefficient' #-}
 coefficient' ::
-     forall a. (A.Floating a, A.Num a, A.RealFloat a, A.Elt (Complex a), Prelude.Fractional a)
+     forall a.
+     ( A.Floating a
+     , A.Num a
+     , A.RealFloat a
+     , A.Elt (Complex a)
+     , Prelude.Fractional a
+     )
   => Exp a
+  -> Exp a
   -> Exp a
   -> Exp a
   -> Exp a
   -> Exp (a, a, a, a, a)
   -> Exp (A.Complex a)
-coefficient' rFreq thetaFreq rhoFreq phiFreq particle =
+coefficient' sigma rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r, v) =
         unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
-  in (lift $ (v * (A.exp $ (-0.5) * (rho + r))) A.:+ 0) *
+  in (lift $ (v * (A.exp $ (sigma - 1) * (rho + r))) A.:+ 0) *
      (A.cis $
       (-1) *
       (rhoFreq * rho + rFreq * (r - rho) + phiFreq * phi +
@@ -217,15 +224,59 @@ gpuKernel' ::
      , A.FromIntegral Int a
      , Prelude.Fractional a
      )
-  => Acc (A.Vector (a, a, a, a))
+  => Exp a
+  -> Acc (A.Vector (a, a, a, a))
   -> Acc (A.Vector (a, a, a, a, a))
   -> Acc (A.Vector (A.Complex a))
-gpuKernel' freqArr xs =
+gpuKernel' sigma freqArr xs =
   A.map
     (\(unlift -> (rFreq, thetaFreq, rhoFreq, phiFreq)) ->
        A.sfoldl
          (\s particle ->
-            s + (coefficient' rFreq thetaFreq rhoFreq phiFreq particle))
+            s + (coefficient' sigma rFreq thetaFreq rhoFreq phiFreq particle))
+         0
+         (constant Z)
+         xs)
+    freqArr
+    
+
+{-# INLINE pinwheelAcc #-}
+pinwheelAcc ::
+     forall a. (A.Floating a, A.Num a, A.RealFloat a, A.Elt (Complex a), Prelude.Fractional a)
+  => Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp (a, a, a, a, A.Complex a)
+  -> Exp (A.Complex a)
+pinwheelAcc rFreq thetaFreq rhoFreq phiFreq particle =
+  let (phi, rho, theta, r, v) =
+        unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp (A.Complex a))
+  in v * (lift $ ((A.exp $ (-0.5) * (rho + r))) A.:+ 0) *
+     (A.cis $
+      (-1) *
+      (rhoFreq * rho + rFreq * (r - rho) + phiFreq * phi +
+       thetaFreq * (theta - phi))) 
+
+pinwheelCoefficientsAcc ::
+     forall a.
+     ( A.Eq a
+     , A.Floating a
+     , A.Num a
+     , A.RealFloat a
+     , A.Elt (Complex a)
+     , A.FromIntegral Int a
+     , Prelude.Fractional a
+     )
+  => Acc (A.Vector (a, a, a, a))
+  -> Acc (A.Vector (a, a, a, a, A.Complex a))
+  -> Acc (A.Vector (A.Complex a))
+pinwheelCoefficientsAcc freqArr xs =
+  A.map
+    (\(unlift -> (rFreq, thetaFreq, rhoFreq, phiFreq)) ->
+       A.sfoldl
+         (\s particle ->
+            s + (pinwheelAcc rFreq thetaFreq rhoFreq phiFreq particle))
          0
          (constant Z)
          xs)

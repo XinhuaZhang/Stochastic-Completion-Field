@@ -1,7 +1,6 @@
-{-# LANGUAGE RankNTypes   #-}
 {-# LANGUAGE Strict       #-}
 {-# LANGUAGE StrictData   #-}
-module Pinwheel.BlockCudaMatrix where
+module Utils.BlockCudaMatrix where
 
 import           Control.Concurrent.Async
 import           Control.DeepSeq
@@ -103,7 +102,7 @@ matMul ::
   -> [CuMat e]
   -> [CuMat e]
   -> IO (CuMat e)
-matMul doesTranspose deviceID rows matA' matB = do
+matMul doesTranspose deviceID rows matA' matB' = do
   dev <- device deviceID
   ctx <- CUDA.create dev []
   handle <- BLAS.create
@@ -116,6 +115,15 @@ matMul doesTranspose deviceID rows matA' matB = do
         unsafeWith vec $ \ptr -> CUDA.pokeArray len ptr devPtr
         return [CuMat rowsA colsA (CuVecDevice devPtr)]
       else return matA'
+  matB <-
+    if L.length matB' == 1
+      then do
+        let (CuMat rowsB colsB (CuVecHost vec)) = L.head matB'
+            len = rowsB * colsB
+        devPtr <- CUDA.mallocArray len
+        unsafeWith vec $ \ptr -> CUDA.pokeArray len ptr devPtr
+        return [CuMat rowsB colsB (CuVecDevice devPtr)]
+      else return matB'
   coefs <- M.mapM (subMatMul handle rows matA) matB
   let transposedCoefs = concatCuMat . parMap rdeepseq transposeCuMat $ coefs
       output =
@@ -131,15 +139,15 @@ matMul doesTranspose deviceID rows matA' matB = do
 -- matB is divided into [colsA x colsB1 .. colsA x colsBM]
 -- each colsA x colsBm is further divided into [colsA x colsBmk]
 -- M is the number of GPUs
-{-# INLINE blockMatrixMultiply #-}
-blockMatrixMultiply ::
+{-# INLINE blockMatrixMultiply1 #-}
+blockMatrixMultiply1 ::
      (Storable e, Floating e, CUBLAS e, Unbox e)
   => Bool
   -> [Int]
   -> [CuMat e]
   -> [[CuMat e]]
   -> IO (CuMat e)
-blockMatrixMultiply doesTranspose deviceIDs matAs matBss = do
+blockMatrixMultiply1 doesTranspose deviceIDs matAs matBss = do
   unless
     (L.length deviceIDs == L.length matBss)
     (error $
@@ -161,6 +169,38 @@ blockMatrixMultiply doesTranspose deviceIDs matAs matBss = do
     if doesTranspose
       then output
       else transposeCuMat output
+      
+
+{-# INLINE blockMatrixMultiply2 #-}
+blockMatrixMultiply2 ::
+     (Storable e, Floating e, CUBLAS e, Unbox e)
+  => Bool
+  -> [Int]
+  -> [[CuMat e]]
+  -> [CuMat e]
+  -> IO (CuMat e)
+blockMatrixMultiply2 doesTranspose deviceIDs matAss matBs = do
+  unless
+    (L.length deviceIDs == L.length matAss)
+    (error $
+     printf
+       "Error in blockMatrixMultiply: matrix A is not divided according to the number of GPUs.\n%d GPUs vs %d blocks"
+       (L.length deviceIDs)
+       (L.length matAss))
+  let rows = L.sum . L.map getRowsCuMat $ matBs
+  print matAss
+  print matBs
+  initialise []
+  output <-
+    fmap concatCuMat .
+    mapConcurrently
+      (\(deviceID, matAs) -> matMul False deviceID rows matAs matBs) .
+    L.zip deviceIDs $
+    matAss
+  return $!
+    if doesTranspose
+      then transposeCuMat output
+      else output
 
 
 -- Utilities

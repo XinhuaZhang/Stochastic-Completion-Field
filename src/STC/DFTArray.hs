@@ -70,9 +70,9 @@ parZipWithDFTArray f (DFTArray rows cols thetaFreqs rFreqs vecs) =
 plotDFTArrayPower :: FilePath -> Int -> Int -> DFTArray -> IO ()
 plotDFTArrayPower !filePath !rows !cols =
   plotImageRepa filePath .
-  ImageRepa 8 .
+  ImageRepa 8 . 
   fromUnboxed (Z :. (1 :: Int) :. cols :. rows) .
-  VS.convert . -- VS.map sqrt .
+  VS.convert . VS.map sqrt .
   L.foldl1' (VS.zipWith (+)) .
   parMap rdeepseq (VS.map (\x -> (magnitude x) ** 2 )) . getDFTArrayVector
 

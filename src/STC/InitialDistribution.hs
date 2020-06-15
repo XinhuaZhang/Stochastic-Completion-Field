@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Strict #-}
 module STC.InitialDistribution where
 
 import           Array.UnboxedArray  as AU
@@ -10,6 +11,7 @@ import           STC.Convolution
 import           STC.DFTArray
 import           STC.Point
 import           STC.Utils
+import           Utils.List
 import           Utils.Parallel
 
 {-# INLINE computeInitialDistribution #-}
@@ -115,8 +117,8 @@ computeInitialDistributionPowerMethodSparse thetaFreqs rFreqs points =
             then 1
             else 0
   in L.replicate (L.length points) initArr
-                 
-  
+
+
 {-# INLINE computeInitialDistributionPowerMethodSparse' #-}
 computeInitialDistributionPowerMethodSparse' ::
      [Double] -> [Double] -> [Point] -> [R.Array U DIM1 (Complex Double)]
@@ -137,12 +139,10 @@ computeInitialDistributionPowerMethodSparse' thetaFreqs rFreqs points =
 
 computeInitialDistributionFull' ::
      Int -> Double -> Int -> Int -> [Point] -> DFTArray
-computeInitialDistributionFull' !r2Freq !radius !phiFreq !rhoFreq !points =
-  let r2Freqs = L.map fromIntegral [-r2Freq .. r2Freq]
+computeInitialDistributionFull' numR2Freq period phiFreq rhoFreq points =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
       phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
       rhoFreqs = L.map fromIntegral [-rhoFreq .. rhoFreq]
-      !numR2Freq = 2 * r2Freq + 1
-      !period = 2 * radius + 1  
   in DFTArray
        numR2Freq
        numR2Freq

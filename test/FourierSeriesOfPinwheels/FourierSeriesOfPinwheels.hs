@@ -67,7 +67,7 @@ main = do
       batchSizePolarFreqs
       numAngularFreqs
       numRadialFreqs
-  writeArrayToStorableFile coefFilePath coefficients  
+  writeArrayToStorableFile coefFilePath coefficients
   coefficientsArr' <-
     readArrayFromStorableFile
       coefFilePath
@@ -92,9 +92,9 @@ main = do
             (rf - div numRadialFreqs 2)
             (af - div numAngularFreqs 2)) .
        ImageRepa 8 .
-       computeS .
-       extend (Z :. (1 :: Int) :. All :. All) . R.slice coefficients $
-       (Z :. rf :. af :. All :. All))
+       computeS . extend (Z :. (1 :: Int) :. All :. All) . R.slice coefficients $
+       (Z :. rf :. af :. All :. All)) .
+    L.take 10 $
     [ (rf, af)
     | rf <- [0 .. numRadialFreqs - 1]
     , af <- [0 .. numAngularFreqs - 1]
@@ -122,7 +122,8 @@ main = do
             (af - div numAngularFreqs 2)) .
        ImageRepa 8 .
        computeS . extend (Z :. (1 :: Int) :. All :. All) . R.slice recons $
-       (Z :. rf :. af :. All :. All)) $
+       (Z :. rf :. af :. All :. All)) .
+    L.take 10 $
     [ (rf, af)
     | rf <- [0 .. numRadialFreqs - 1]
     , af <- [0 .. numAngularFreqs - 1]
