@@ -240,6 +240,59 @@ gpuKernel' sigma freqArr xs =
     freqArr
     
 
+{-# INLINE coefficient'' #-}
+coefficient'' ::
+     forall a.
+     ( A.Floating a
+     , A.Num a
+     , A.RealFloat a
+     , A.Elt (Complex a)
+     , Prelude.Fractional a
+     )
+  => Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp a
+  -> Exp (a, a, a, a, a)
+  -> Exp (A.Complex a)
+coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle =
+  let (phi, rho, theta, r, v) =
+        unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
+  in (lift $ (v * (A.exp $ (sigma - 1) * (rho + r))) A.:+ 0) *
+     (A.cis $
+      (-1) *
+      (2 * A.pi / period * (rhoFreq * rho + rFreq * (r - rho)) + phiFreq * phi +
+       thetaFreq * (theta - phi))) 
+
+gpuKernel'' ::
+     forall a.
+     ( A.Eq a
+     , A.Floating a
+     , A.Num a
+     , A.RealFloat a
+     , A.Elt (Complex a)
+     , A.FromIntegral Int a
+     , Prelude.Fractional a
+     )
+  => Exp a
+  -> Exp a
+  -> Acc (A.Vector (a, a, a, a))
+  -> Acc (A.Vector (a, a, a, a, a))
+  -> Acc (A.Vector (A.Complex a))
+gpuKernel'' sigma period freqArr xs =
+  A.map
+    (\(unlift -> (rFreq, thetaFreq, rhoFreq, phiFreq)) ->
+       A.sfoldl
+         (\s particle ->
+            s + (coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle))
+         0
+         (constant Z)
+         xs)
+    freqArr
+    
+
 {-# INLINE pinwheelAcc #-}
 pinwheelAcc ::
      forall a. (A.Floating a, A.Num a, A.RealFloat a, A.Elt (Complex a), Prelude.Fractional a)

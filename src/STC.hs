@@ -10,6 +10,7 @@ module STC
   , module STC.Point
   , module STC.PointSet
   , module STC.Shape
+  , module STC.Reversal
   ) where
 
 import           STC.Bias
@@ -21,5 +22,6 @@ import           STC.Plan
 import           STC.Point
 import           STC.PointSet
 import           STC.PowerMethod
+import           STC.Reversal
 import           STC.Shape
 import           STC.Utils

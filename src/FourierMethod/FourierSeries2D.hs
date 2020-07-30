@@ -3,28 +3,31 @@
 module FourierMethod.FourierSeries2D
   ( module FourierMethod.FourierSeries2D
   , module FourierMethod.BlockCudaMatrix
+  , module FourierMethod.BlockMatrixAcc
   ) where
 
 import           Control.DeepSeq
-import           Control.Monad                                 as M
+import           Control.Monad                               as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
-import qualified Data.Array.Accelerate                         as A
-import           Data.Array.Accelerate.LLVM.PTX                as A
-import           Data.Array.Repa                               as R
+import qualified Data.Array.Accelerate                       as A
+import           Data.Array.Accelerate.LLVM.PTX              as A
+import           Data.Array.Accelerate.Numeric.LinearAlgebra as A
+import           Data.Array.Repa                             as R
 import           Data.Complex
-import           Data.Conduit                                  as C
-import           Data.Conduit.List                             as CL
-import           Data.List                                     as L
-import           Data.Vector.Storable                          as VS
-import           Data.Vector.Unboxed                           as VU
-import           Foreign.CUDA.Driver                           as CUDA
+import           Data.Conduit                                as C
+import           Data.Conduit.List                           as CL
+import           Data.List                                   as L
+import           Data.Vector.Storable                        as VS
+import           Data.Vector.Unboxed                         as VU
+import           Foreign.CUDA.Driver                         as CUDA
 import           FourierMethod.BlockCudaMatrix
+import           FourierMethod.BlockMatrixAcc
 import           FourierMethod.FourierSeries2DAcc
 import           Utils.BLAS
 import           Utils.Distribution
 import           Utils.List
-import           Utils.Parallel                                hiding ((.|))
+import           Utils.Parallel                              hiding ((.|))
 import           Utils.Time
 
 {-# INLINE harmonicMatPTX #-}
@@ -76,7 +79,7 @@ inverseHarmonicMatPTX numFreqs period delta ptx r2Positions =
      run1With ptx (inverseHarmonicAcc numFreqs period delta) .
      A.fromList (A.Z A.:. (L.length r2Positions)) $
      r2Positions
-     
+
 {-# INLINE inverseHarmonicMatPTX1 #-}
 inverseHarmonicMatPTX1 ::
      ( Storable e
@@ -398,3 +401,120 @@ computeFourierSeriesR2Stream deviceIDs ptxs numFreqs numPoints period delta numB
     indexSource numPoints numBatch .|
     fourierSeriesConduit deviceIDs ptxs numFreqs period delta xs .|
     fourierSeriesSink numPoints
+    
+
+{-# INLINE fourierSeriesConduitAcc #-}
+fourierSeriesConduitAcc ::
+     ( A.Floating e
+     , A.Elt (Complex e)
+     , A.FromIntegral Int e
+     , Numeric (Complex e)
+     , Unbox e
+     )
+  => [PTX]
+  -> Int
+  -> e
+  -> e
+  -> A.Acc (Matrix (Complex e))
+  -> ConduitT [(Int, Int)] (VU.Vector (Complex e)) (ResourceT IO) ()
+fourierSeriesConduitAcc ptxs numFreqs period delta x =
+  awaitForever $ \idx' -> do
+    let idxs = divideListN (L.length ptxs) idx'
+        harmonics =
+          L.map
+            (\r2Positions ->
+               inverseHarmonicAcc2 numFreqs period delta .
+               A.fromList (A.Z A.:. (L.length r2Positions)) $
+               r2Positions) $
+          idxs
+    liftIO $ printCurrentTime "fourierSeriesConduit"
+    yield $!! blockMatrixMultiply ptxs harmonics x
+
+{-# INLINE fourierSeriesSinkAcc #-}
+fourierSeriesSinkAcc ::
+     (Unbox e)
+  => Int
+  -> Int
+  -> ConduitT (VU.Vector (Complex e)) Void (ResourceT IO) ((R.Array U DIM3 (Complex e)))
+fourierSeriesSinkAcc numPoints cols = do
+  xs <- CL.consume
+  return .
+    computeS .
+    R.backpermute
+      (Z :. cols :. numPoints :. numPoints)
+      (\(Z :. a :. b :. c) -> (Z :. b :. c :. a)) .
+    fromUnboxed (Z :. numPoints :. numPoints :. cols) . VU.concat $
+    xs
+
+computeFourierSeriesR2StreamAcc ::
+     ( A.Floating e
+     , A.Elt (Complex e)
+     , A.FromIntegral Int e
+     , Numeric (Complex e)
+     , Unbox e
+     )
+  => [PTX]
+  -> Int
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> Int
+  -> Acc (Matrix (Complex e))
+  -> IO (R.Array U DIM3 (Complex e))
+computeFourierSeriesR2StreamAcc ptxs numFreqs numPoints cols period delta numBatch x =
+  runConduitRes $
+  indexSource numPoints numBatch .|
+  fourierSeriesConduitAcc ptxs numFreqs period delta (A.compute x) .|
+  fourierSeriesSinkAcc numPoints cols
+
+{-# INLINE fourierSeriesConduitAcc' #-}
+fourierSeriesConduitAcc' ::
+     ( A.Floating e
+     , A.Elt (Complex e)
+     , A.FromIntegral Int e
+     , Numeric (Complex e)
+     , Unbox e
+     , Prelude.Num e
+     )
+  => [PTX]
+  -> Int
+  -> e
+  -> e
+  -> A.Acc (Matrix (Complex e))
+  -> ConduitT [(Int, Int)] (VU.Vector (Complex e)) (ResourceT IO) ()
+fourierSeriesConduitAcc' ptxs numFreqs period delta x =
+  awaitForever $ \idx' -> do
+    let idxs = divideListN (L.length ptxs) idx'
+        harmonics =
+          L.map
+            (\r2Positions ->
+               inverseHarmonicAcc2' numFreqs period delta .
+               A.fromList (A.Z A.:. (L.length r2Positions)) $
+               r2Positions) $
+          idxs
+    liftIO $ printCurrentTime "fourierSeriesConduit"
+    yield $ blockMatrixMultiply ptxs harmonics x
+
+computeFourierSeriesR2StreamAcc' ::
+     ( A.Floating e
+     , A.Elt (Complex e)
+     , A.FromIntegral Int e
+     , Numeric (Complex e)
+     , Unbox e
+     , Prelude.Num e
+     )
+  => [PTX]
+  -> Int
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> Int
+  -> Acc (Matrix (Complex e))
+  -> IO (R.Array U DIM3 (Complex e))
+computeFourierSeriesR2StreamAcc' ptxs numFreqs numPoints cols period delta numBatch x =
+  runConduitRes $
+  indexSource numPoints numBatch .|
+  fourierSeriesConduitAcc' ptxs numFreqs period delta (A.compute x) .|
+  fourierSeriesSinkAcc numPoints cols

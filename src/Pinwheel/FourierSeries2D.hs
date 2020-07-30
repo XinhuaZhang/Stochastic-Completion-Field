@@ -28,6 +28,9 @@ import           Utils.List
 import           Utils.Parallel                 hiding ((.|))
 import           Utils.SimpsonRule
 import           Utils.Time
+import DFT.Plan
+import Filter.Utils
+import Control.Concurrent.Async
 
 pinwheelFourierSeries ::
      ( Storable e
@@ -246,14 +249,22 @@ analyticalFourierSeriesFunc1 ::
   -> e
   -> e
   -> e
+  -> e
   -> Complex e
-analyticalFourierSeriesFunc1 angularFreq radialFreq sigma period phi rho =
-  ((0 :+ 1) ^ (abs angularFreq)) * ((cis (fromIntegral (-angularFreq) * phi))) *
-  (period / rho :+ 0) *
-  ((pi * rho / period :+ 0) ** ((-1 - sigma) :+ fromIntegral radialFreq)) *
-  (gamma $
-   ((2 + fromIntegral (abs angularFreq) + sigma) :+ fromIntegral (-radialFreq)) / 2) /
-  (gamma $ ((fromIntegral (abs angularFreq) - sigma) :+ (fromIntegral radialFreq)) / 2) 
+analyticalFourierSeriesFunc1 angularFreq radialFreq sigma periodR2 periodEnv phi rho =
+  let radialConst = 2 * pi / (log periodEnv)
+  in pi * ((0 :+ 1) ^ (abs angularFreq)) *
+     ((cis (fromIntegral (-angularFreq) * phi))) *
+     ((periodR2 / (pi * rho) :+ 0) **
+      ((2 + sigma) :+ (radialConst * fromIntegral (-radialFreq)))) *
+     (gamma $
+      ((2 + fromIntegral (abs angularFreq) + sigma) :+
+       (radialConst * fromIntegral (-radialFreq))) /
+      2) /
+     (gamma $
+      ((fromIntegral (abs angularFreq) - sigma) :+
+       (radialConst * fromIntegral radialFreq)) /
+      2) 
 
 -- The pinwheel is in the frequency domain, the function computes the Fourier series
 {-# INLINE analyticalFourierSeries1 #-}
@@ -265,8 +276,9 @@ analyticalFourierSeries1 ::
   -> Int
   -> e
   -> e
+  -> e
   -> R.Array D DIM2 (Complex e)
-analyticalFourierSeries1 numPoints delta angularFreq radialFreq sigma period =
+analyticalFourierSeries1 numPoints delta angularFreq radialFreq sigma periodR2 periodEnv =
   let center = div numPoints 2
   in fromFunction (Z :. numPoints :. numPoints) $ \(Z :. i :. j) ->
        let x = fromIntegral $ i - center
@@ -279,7 +291,8 @@ analyticalFourierSeries1 numPoints delta angularFreq radialFreq sigma period =
                    angularFreq
                    radialFreq
                    sigma
-                   period
+                   periodR2
+                   periodEnv
                    phi
                    (rho * delta)
 
@@ -293,11 +306,12 @@ analyticalFourierCoefficients1 ::
   -> Int
   -> e
   -> e
+  -> e
   -> R.Array D DIM2 (Complex e)
-analyticalFourierCoefficients1 numFreqs delta angularFreq radialFreq sigma period =
-  let c = (-1) ^ (abs angularFreq) :+ 0
+analyticalFourierCoefficients1 numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv =
+  let c = ((-1) ^ (abs angularFreq)) / periodR2 :+ 0
   in R.map (* c) $
-     analyticalFourierSeries1 numFreqs delta angularFreq radialFreq sigma period
+     analyticalFourierSeries1 numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv
 
 
 -- Analytical solution type 2
@@ -311,16 +325,23 @@ analyticalFourierSeriesFunc2 ::
   -> e
   -> e
   -> e
+  -> e
   -> Complex e
-analyticalFourierSeriesFunc2 angularFreq radialFreq sigma period phi rho =
-  ((0 :+ 1) ^ (abs angularFreq)) * ((cis (fromIntegral angularFreq * phi))) *
-  (period / rho :+ 0) *
-  ((pi * rho / period :+ 0) ** ((-1 - sigma) :+ fromIntegral (-radialFreq))) *
-  (gamma $
-   ((2 + fromIntegral (abs angularFreq) + sigma) :+ fromIntegral radialFreq) / 2) /
-  (gamma $
-   ((fromIntegral (abs angularFreq) - sigma) :+ (fromIntegral (-radialFreq))) /
-   2) 
+analyticalFourierSeriesFunc2 angularFreq radialFreq sigma periodR2 periodEnv phi rho =
+  let radialConst = 2 * pi / (log periodEnv)
+  in pi * ((0 :+ 1) ^ (abs angularFreq)) *
+     ((cis (fromIntegral angularFreq * phi))) *
+     ((periodR2 / (pi * rho) :+ 0) **
+      ((2 + sigma) :+ (radialConst * fromIntegral radialFreq))) *
+     (gamma $
+      ((2 + fromIntegral (abs angularFreq) + sigma) :+
+       (radialConst * fromIntegral radialFreq)) /
+      2) /
+     (gamma $
+      ((fromIntegral (abs angularFreq) - sigma) :+
+       (radialConst * fromIntegral (-radialFreq))) /
+      2) 
+  
 
 -- The pinwheel is in the frequency domain, the function computes the Fourier series
 {-# INLINE analyticalFourierSeries2 #-}
@@ -332,23 +353,30 @@ analyticalFourierSeries2 ::
   -> Int
   -> e
   -> e
+  -> e
   -> R.Array D DIM2 (Complex e)
-analyticalFourierSeries2 numPoints delta angularFreq radialFreq sigma period =
+analyticalFourierSeries2 numPoints delta angularFreq radialFreq sigma periodR2 periodEnv =
   let center = div numPoints 2
-  in fromFunction (Z :. numPoints :. numPoints) $ \(Z :. i :. j) ->
-       let x = fromIntegral $ i - center
-           y = fromIntegral $ j - center
-           rho = sqrt $ x ^ 2 + y ^ 2
-           phi = atan2 y x
-       in if rho <= 0
-            then 0
-            else analyticalFourierSeriesFunc2
-                   angularFreq
-                   radialFreq
-                   sigma
-                   period
-                   phi
-                   (rho * delta)
+      arr =
+        fromFunction (Z :. numPoints :. numPoints) $ \(Z :. i :. j) ->
+          let x = delta * (fromIntegral $ i - center)
+              y = delta * (fromIntegral $ j - center)
+              rho = sqrt $ x ^ 2 + y ^ 2
+              phi = atan2 y x
+          in if rho == 0 -- || (rho > period / 2) -- || phi /= 0
+               then 0
+               else analyticalFourierSeriesFunc2
+                      angularFreq
+                      radialFreq
+                      sigma
+                      periodR2
+                      periodEnv
+                      phi
+                      rho
+     -- if angularFreq == 0
+     --   then fromFunction (Z :. numPoints :. numPoints) $ \_ -> 0
+     --   else
+  in arr
 
 -- The pinwheel is in the spatial domain, the function computes the Fourier coefficients
 {-# INLINE analyticalFourierCoefficients2 #-}
@@ -360,11 +388,19 @@ analyticalFourierCoefficients2 ::
   -> Int
   -> e
   -> e
+  -> e
   -> R.Array D DIM2 (Complex e)
-analyticalFourierCoefficients2 numFreqs delta angularFreq radialFreq sigma period =
-  let c = (-1) ^ (abs angularFreq) :+ 0
+analyticalFourierCoefficients2 numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv =
+  let c = ((-1) ^ (abs angularFreq)) / periodR2 :+ 0
   in R.map (* c) $
-     analyticalFourierSeries2 numFreqs delta angularFreq radialFreq sigma period
+     analyticalFourierSeries2
+       numFreqs
+       delta
+       angularFreq
+       radialFreq
+       sigma
+       periodR2
+       periodEnv
 
 
 pinwheelFourierCoefficientsAnatical ::
@@ -381,8 +417,9 @@ pinwheelFourierCoefficientsAnatical ::
   -> Int
   -> e
   -> e
+  -> e
   -> IA.Array (Int, Int) (vector (Complex e))
-pinwheelFourierCoefficientsAnatical numR2Freqs phiFreq rhoFreq thetaFreq rFreq sigma periodR2 =
+pinwheelFourierCoefficientsAnatical numR2Freqs phiFreq rhoFreq thetaFreq rFreq sigma periodR2 periodEnv =
   let idxs =
         [ (radialFreq, angularFreq)
         | radialFreq <- pinwheelFreqs rhoFreq rFreq
@@ -395,6 +432,56 @@ pinwheelFourierCoefficientsAnatical numR2Freqs phiFreq rhoFreq thetaFreq rFreq s
         parMap
           rdeepseq
           (\(radialFreq, angularFreq) ->
+             VG.convert .
+             toUnboxed .
+             computeS -- .
+             -- R.zipWith
+             --   (*)
+             --   (fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
+             --      gaussian2D
+             --        (fromIntegral $ i - centerR2Freq)
+             --        (fromIntegral $ j - centerR2Freq)
+             --        (fromIntegral $ div centerR2Freq 1))
+            $
+             analyticalFourierCoefficients2
+               numR2Freqs
+               1
+               (angularFreq)
+               (radialFreq)
+               sigma
+               periodR2
+               periodEnv)
+          idxs
+  in listArray ((radialLB, angularLB), (radialUB, angularUB)) pinwheels
+  
+
+pinwheelFourierCoefficientsAnaticalList ::
+     ( Unbox e
+     , RealFloat e
+     , Gamma (Complex e)
+     , VG.Vector vector (Complex e)
+     , NFData (vector (Complex e))
+     )
+  => Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> e
+  -> [vector (Complex e)]
+pinwheelFourierCoefficientsAnaticalList numR2Freqs phiFreq rhoFreq thetaFreq rFreq sigma periodR2 periodEnv =
+  let idxs =
+        [ (radialFreq, angularFreq)
+        | radialFreq <- [-rhoFreq .. rhoFreq]
+        , angularFreq <- [-phiFreq .. phiFreq]
+        ]
+      centerR2Freq = div numR2Freqs 2
+      pinwheels =
+        parMap
+          rdeepseq
+          (\(radialFreq, angularFreq) ->
              VG.convert . toUnboxed . computeS $
              analyticalFourierCoefficients2
                numR2Freqs
@@ -402,6 +489,484 @@ pinwheelFourierCoefficientsAnatical numR2Freqs phiFreq rhoFreq thetaFreq rFreq s
                (angularFreq)
                (radialFreq)
                sigma
-               periodR2)
+               periodR2
+               periodEnv)
+          idxs
+  in pinwheels
+  
+pinwheelFourierCoefficientsAnaticalList1 ::
+     ( Unbox e
+     , RealFloat e
+     , Gamma (Complex e)
+     , VG.Vector vector (Complex e)
+     , NFData (vector (Complex e))
+     )
+  => Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> e
+  -> [vector (Complex e)]
+pinwheelFourierCoefficientsAnaticalList1 numR2Freqs phiFreq rhoFreq thetaFreq rFreq sigma periodR2 periodEnv =
+  let idxs =
+        [ (radialFreq, angularFreq)
+        | radialFreq <- [-rhoFreq .. rhoFreq]
+        , angularFreq <- [-phiFreq .. phiFreq]
+        ]
+      pinwheels =
+        parMap
+          rdeepseq
+          (\(radialFreq, angularFreq) ->
+             VG.convert . toUnboxed . computeS $
+             analyticalFourierCoefficients2
+               numR2Freqs
+               1
+               (angularFreq)
+               (radialFreq)
+               sigma
+               periodR2
+               periodEnv)
+          idxs
+  in pinwheels
+  
+pinwheelFourierCoefficientsAnaticalList2 ::
+     ( Unbox e
+     , RealFloat e
+     , Gamma (Complex e)
+     , VG.Vector vector (Complex e)
+     , NFData (vector (Complex e))
+     )
+  => Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> e
+  -> [vector (Complex e)]
+pinwheelFourierCoefficientsAnaticalList2 numR2Freqs phiFreq rhoFreq thetaFreq rFreq sigma periodR2 periodEnv =
+  let idxs =
+        [ (radialFreq, angularFreq)
+        | radialFreq <- [rFreq,(rFreq - 1) .. -rFreq]
+        , angularFreq <- [thetaFreq,(thetaFreq - 1) .. -thetaFreq]
+        ]
+      centerR2Freq = div numR2Freqs 2
+      radialConstant = 2 * pi / (log periodEnv)
+      pinwheels =
+        parMap
+          rdeepseq
+          (\(radialFreq, angularFreq) ->
+             VG.convert . toUnboxed . computeS $
+             fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. x :. y) ->
+               let xFreq = fromIntegral $ x - centerR2Freq
+                   yFreq = fromIntegral $ y - centerR2Freq
+                   rho = sqrt $ xFreq ^ 2 + yFreq ^ 2
+                   phi = atan2 yFreq xFreq
+               in if rho == 0
+                    then 0
+                    else ((0 :+ (-1)) ^ 1) *
+                         ((periodR2 / (pi * rho) :+ 0) **
+                          (0 :+ fromIntegral radialFreq * radialConstant)) *
+                         (cis $ phi * fromIntegral angularFreq))
+          idxs
+  in pinwheels
+
+  
+{-# INLINE analyticalFourierSeries2' #-}
+analyticalFourierSeries2' ::
+     (Eq e, Fractional e, RealFloat e, Gamma (Complex e), Unbox e)
+  => Int
+  -> e
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> e
+  -> R.Array D DIM2 (Complex e)
+analyticalFourierSeries2' numPoints _ angularFreq radialFreq sigma periodR2 periodEnv =
+  let center = div numPoints 2
+      arr =
+        fromFunction (Z :. numPoints :. numPoints) $ \(Z :. i :. j) ->
+          let x' = i - center
+              y' = j - center
+          in if x' == 0 && y' == 0
+               then 0
+               else let x =
+                          if x' == 0
+                            then 0
+                            else if x' > 0
+                                   then 1 / (fromIntegral $ center + 1 - x')
+                                   else (-1) / (fromIntegral $ center + 1 + x')
+                        y =
+                          if y' == 0
+                            then 0
+                            else if y' > 0
+                                   then 1 / (fromIntegral $ center + 1 - y')
+                                   else (-1) / (fromIntegral $ center + 1 + y')
+                        rho = sqrt $ x ^ 2 + y ^ 2
+                        phi = atan2 y x
+                    in analyticalFourierSeriesFunc2
+                         angularFreq
+                         radialFreq
+                         sigma
+                         periodR2
+                         periodEnv
+                         phi
+                         rho
+  in arr
+  
+{-# INLINE analyticalFourierCoefficients2' #-}
+analyticalFourierCoefficients2' ::
+     (Eq e, Fractional e, RealFloat e, Gamma (Complex e), Unbox e)
+  => Int
+  -> e
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> e
+  -> R.Array D DIM2 (Complex e)
+analyticalFourierCoefficients2' numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv =
+  let c = (-1) ^ (abs angularFreq) :+ 0
+  in R.map (* c) $
+     analyticalFourierSeries2'
+       numFreqs
+       delta
+       angularFreq
+       radialFreq
+       sigma
+       periodR2
+       periodEnv
+
+
+pinwheelFourierCoefficientsAnatical' ::
+     ( Unbox e
+     , RealFloat e
+     , Gamma (Complex e)
+     , VG.Vector vector (Complex e)
+     , NFData (vector (Complex e))
+     )
+  => Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> e
+  -> e
+  -> e
+  -> IA.Array (Int, Int) (vector (Complex e))
+pinwheelFourierCoefficientsAnatical' numR2Freqs phiFreq rhoFreq thetaFreq rFreq sigma periodR2 periodEnv =
+  let idxs =
+        [ (radialFreq, angularFreq)
+        | radialFreq <- pinwheelFreqs rhoFreq rFreq
+        , angularFreq <- pinwheelFreqs phiFreq thetaFreq
+        ]
+      centerR2Freq = div numR2Freqs 2
+      (radialLB, radialUB) = pinwheelFreqsBound rhoFreq rFreq
+      (angularLB, angularUB) = pinwheelFreqsBound phiFreq thetaFreq
+      pinwheels =
+        parMap
+          rdeepseq
+          (\(radialFreq, angularFreq) ->
+             VG.convert .
+             toUnboxed .
+             computeS -- .
+             -- R.zipWith
+             --   (*)
+             --   (fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
+             --      gaussian2D
+             --        (fromIntegral $ i - centerR2Freq)
+             --        (fromIntegral $ j - centerR2Freq)
+             --        (fromIntegral $ div centerR2Freq 2))
+            $
+             analyticalFourierCoefficients2'
+               numR2Freqs
+               1
+               (angularFreq)
+               (radialFreq)
+               sigma
+               periodR2
+               periodEnv)
           idxs
   in listArray ((radialLB, angularLB), (radialUB, angularUB)) pinwheels
+  
+{-# INLINE idealHighPassFilter #-}
+idealHighPassFilter ::
+     (VG.Vector vector (Complex Double))
+  => Double
+  -> Int
+  -> vector (Complex Double)
+idealHighPassFilter radius numR2Freq =
+  let a = 1 / (radius * 2)
+      r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+      sinc x =
+        if x == 0
+          then 1
+          else (sin (pi * x)) / (pi * x)
+  in VG.fromList
+       [ if xFreq == 0 && yFreq == 0
+         then (1 - 1 / a ^ 2) :+ 0
+         else ((-1) * (sinc (xFreq / a)) * (sinc (yFreq / a)) / (a ^ 2)) :+ 0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+
+{-# INLINE idealHighPassFilter1 #-}
+idealHighPassFilter1 :: Int -> VS.Vector (Complex Double)
+idealHighPassFilter1 numR2Freq =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  in VS.fromList
+       [ if xFreq == 0 && yFreq == 0
+         then 0
+         else (-1) :+ 0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+  
+{-# INLINE gaussianHighPassFilter #-}
+gaussianHighPassFilter :: Double -> Int -> VS.Vector (Complex Double)
+gaussianHighPassFilter alpha numR2Freq =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  in VS.fromList
+       [ if xFreq == 0 && yFreq == 0
+         then (1 - (pi / alpha)) :+ 0
+         else ((-1) * (pi / alpha) *
+               exp ((pi ^ 2 * (xFreq ^ 2 + yFreq ^ 2)) / (-alpha))) :+
+              0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+  
+{-# INLINE gaussianHighPassFilter1 #-}
+gaussianHighPassFilter1 :: Double -> Double -> Int -> VS.Vector (Complex Double)
+gaussianHighPassFilter1 radius alpha numR2Freq =
+  let a = 1 / (radius * 2)
+      r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+      sinc x =
+        if x == 0
+          then 1
+          else (sin (pi * x)) / (pi * x)
+  in VS.fromList
+       [ (sinc (xFreq / a) * sinc (yFreq / a) / (a ^ 2) -
+          (pi / alpha) * exp ((pi ^ 2 * (xFreq ^ 2 + yFreq ^ 2)) / (-alpha))) :+
+       0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+  
+{-# INLINE idealLowPassFilter #-}
+idealLowPassFilter ::
+     (VG.Vector vector (Complex Double))
+  => Double
+  -> Int
+  -> vector (Complex Double)
+idealLowPassFilter radius numR2Freq =
+  let a = 1 / (radius * 2)
+      r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+      sinc x =
+        if x == 0
+          then 1
+          else (sin (pi * x)) / (pi * x)
+  in VG.fromList
+       [ ((sinc (xFreq / a)) * (sinc (yFreq / a)) / (a ^ 2)) :+ 0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+
+{-# INLINE gaussianLowPassFilter #-}
+gaussianLowPassFilter :: Double -> Int -> VS.Vector (Complex Double)
+gaussianLowPassFilter std numR2Freq =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  in VS.fromList
+       [ ((std ^ 2) * exp ((-pi) * (xFreq ^ 2 + yFreq ^ 2) * (std ^ 2))) :+
+       0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+
+{-# INLINE laplacianLowPassFilter #-}
+laplacianLowPassFilter :: Double -> Int -> VS.Vector (Complex Double)
+laplacianLowPassFilter a numR2Freq =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  in VS.fromList
+       [ let s2 = xFreq ^ 2 + yFreq ^ 2
+         in if xFreq == 0 && yFreq == 0
+              then (1 - a / ((4 * pi * pi * s2 + a ^ 2) ** 1.5)) :+ 0
+              else (-a) / ((4 * pi * pi * s2 + a ^ 2) ** 1.5) :+ 0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+       
+{-# INLINE laplacianHighPassFilter #-}
+laplacianHighPassFilter :: Int -> VS.Vector (Complex Double)
+laplacianHighPassFilter numR2Freq =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  in VS.fromList
+       [ if xFreq == 0 && yFreq == 0
+         then 8 -- -3.33
+         else if xFreq == 0 && abs yFreq == 1
+                then -1 -- 0.67
+                else if abs xFreq == 1 && yFreq == 0
+                       then -1 -- 0.67
+                       else if abs xFreq == 1 && abs yFreq == 1
+                              then -1 -- 0.17
+                              else 0
+       | xFreq <- r2Freqs
+       , yFreq <- r2Freqs
+       ]
+
+{-# INLINE convolveFrequency #-}
+convolveFrequency ::
+     (VG.Vector vector (Complex Double))
+  => DFTPlan
+  -> Int
+  -> vector (Complex Double)
+  -> IA.Array (Int, Int) (vector (Complex Double))
+  -> IO (IA.Array (Int, Int) (vector (Complex Double)))
+convolveFrequency plan numR2Freq filter' arr = do
+  let dftPlanID = DFTPlanID DFT1DG [numR2Freq, numR2Freq] [0, 1]
+      idftPlanID = DFTPlanID IDFT1DG [numR2Freq, numR2Freq] [0, 1]
+      vecs = L.map VG.convert . IA.elems $ arr
+      filter =
+        VU.convert .
+        toUnboxed .
+        computeUnboxedS .
+        makeFilter2D . fromUnboxed (Z :. numR2Freq :. numR2Freq) . VG.convert $
+        filter'
+  dftF <- dftExecute plan dftPlanID filter
+  vecsF <- mapConcurrently (dftExecute plan dftPlanID) vecs
+  outputs <-
+    mapConcurrently (dftExecute plan idftPlanID . VS.zipWith (*) dftF) vecsF
+  return . listArray (bounds arr) . L.map VG.convert $ outputs
+  
+{-# INLINE convolveFrequency1 #-}
+convolveFrequency1 ::
+     (VG.Vector vector (Complex Double))
+  => DFTPlan
+  -> Int
+  -> vector (Complex Double)
+  -> IA.Array (Int, Int) (vector (Complex Double))
+  -> IO (IA.Array (Int, Int) (vector (Complex Double)))
+convolveFrequency1 plan numR2Freq filter' arr = do
+  let dftPlanID = DFTPlanID DFT1DG [numR2Freq, numR2Freq] [0, 1]
+      idftPlanID = DFTPlanID IDFT1DG [numR2Freq, numR2Freq] [0, 1]
+      vecs = L.map VG.convert . IA.elems $ arr
+      filter =
+        VU.convert .
+        toUnboxed .
+        computeUnboxedS .
+        makeFilter2D . fromUnboxed (Z :. numR2Freq :. numR2Freq) . VG.convert $
+        filter'
+  dftF <- dftExecute plan dftPlanID filter
+  vecsF <- mapConcurrently (dftExecute plan dftPlanID) vecs
+  outputs <-
+    mapConcurrently (dftExecute plan idftPlanID . VS.zipWith (*) dftF) vecsF
+  return .
+    listArray (bounds arr) . L.map VG.convert . L.zipWith (VG.zipWith (-)) vecs $
+    outputs
+    
+{-# INLINE centerHollow #-}
+centerHollow ::
+     (VG.Vector vector (Complex Double))
+  => Int
+  -> IA.Array (Int, Int) (vector (Complex Double))
+  -> IA.Array (Int, Int) (vector (Complex Double))
+centerHollow numR2Freq arr =
+  let vecs = L.map VG.convert . IA.elems $ arr
+      centerFreq = div numR2Freq 2
+      centerIdx = centerFreq * numR2Freq + centerFreq
+      filters =
+        L.map
+          (\vec ->
+             let s = VG.sum vec / (fromIntegral (numR2Freq ^ 2 - 1) :+ 0)
+             in VS.generate
+                  (numR2Freq ^ 2)
+                  (\i ->
+                     if i == centerIdx
+                       then 0
+                       else s))
+          vecs
+  in listArray (bounds arr) . L.map VG.convert . L.zipWith (VG.zipWith (-)) vecs $
+     filters  
+     
+{-# INLINE centerHollowVector #-}
+centerHollowVector ::
+     (VG.Vector vector (Complex Double))
+  => Int
+  -> vector (Complex Double)
+  -> vector (Complex Double)
+centerHollowVector numR2Freq vec =
+  let centerFreq = div numR2Freq 2
+      centerIdx = centerFreq * numR2Freq + centerFreq
+      filter =
+        let s = VG.sum vec / (fromIntegral (numR2Freq ^ 2 - 1) :+ 0)
+        in VG.generate
+             (numR2Freq ^ 2)
+             (\i ->
+                if i == centerIdx
+                  then 0
+                  else s)
+  in VG.zipWith (-) vec $ filter  
+  
+
+{-# INLINE centerHollowArray #-}
+centerHollowArray ::
+     (R.Source s (Complex Double)) => Int -> R.Array s DIM2 (Complex Double) -> R.Array U DIM2 (Complex Double)
+centerHollowArray numR2Freq arr' =
+  let centerFreq = div numR2Freq 2
+      centerIdx = centerFreq * numR2Freq + centerFreq
+      arr = computeUnboxedS . delay $ arr'
+      filter =
+        let s = R.sumAllS arr / (fromIntegral (numR2Freq ^ 2 - 1) :+ 0)
+        in fromFunction (Z :. numR2Freq :. numR2Freq) $ \(Z :. i :. j) ->
+             if i == centerFreq && j == centerFreq
+               then 0
+               else s
+  in computeUnboxedS . R.zipWith (-) arr $ filter  
+
+
+envelopIntegral ::
+     Double -> Double -> Double -> Double -> Double -> Int -> Complex Double
+envelopIntegral a b delta s period radialFreq =
+  let m = round $ (b - a) / delta
+      n =
+        if odd m
+          then m
+          else m - 1
+      -- weights = VU.fromList $ weightsSimpsonRule n
+      vec =
+        VU.generate n $ \i ->
+          let x = (a + fromIntegral i * delta)
+          -- in   ((x :+ 0) ** (s :+ freq)) * ((pi :+ 0) ** (0 :+ freq)) *
+          --      (gamma ((0.5 :+ 0) * (1 :+ (-freq)))) /
+          --      (gamma ((0.5 :+ 0) * (1 :+ freq)))
+          in analyticalFourierSeriesFunc2 0 radialFreq s period period 0 x
+  -- in (delta / 3 :+ 0) * (VU.sum . VU.zipWith (*) vec $ weights)
+  in VU.sum vec
+
+envelopIntegral2D ::
+     Int -> Double -> Double -> Double -> Int -> Complex Double
+envelopIntegral2D numPoints delta s period radialFreq =
+  let center = div numPoints 2
+      -- weights = VU.fromList $ weightsSimpsonRule n
+      arr = analyticalFourierSeries2 numPoints delta 0 radialFreq s period period
+  in sumAllS arr
+
+printEnvelopIntegral ::
+     Double -> Double -> Double -> Double -> Double -> Int -> IO ()
+printEnvelopIntegral a b delta s period radialFreq =
+  let m = round $ (b - a) / delta
+      n =
+        if odd m
+          then m
+          else m - 1
+      weights = VU.fromList $ weightsSimpsonRule n
+      vec =
+        VU.generate n $ \i ->
+          let x = a + fromIntegral i * delta  
+          in analyticalFourierSeriesFunc2 0 radialFreq s period period 0 x
+  in print $ VU.zipWith (*) weights vec

@@ -36,6 +36,7 @@ sampleCartesian ::
   -> [PTX]
   -> Int
   -> Double
+  -> Double
   -> Int
   -> Double
   -> Double
@@ -47,13 +48,13 @@ sampleCartesian ::
   -> Int
   -> Int
   -> IO (Histogram (Complex Double))
-sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs = do
+sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs = do
   let center = div numPoints 2
       deltaTheta = 2 * pi / fromIntegral oris
       origin = R2S1RP 0 0 0 gamma
       idx =
         L.filter
-          (\(R2S1RP c r _ g) -> ((c /= 0) || (r /= 0)) && g > 0)
+          (\(R2S1RP c r _ g) -> (sqrt (c^2 + r^2) > 2) && g > 0)
           [ R2S1RP
             ((fromIntegral $ c - center) * delta)
             ((fromIntegral $ r - center) * delta)
@@ -64,49 +65,51 @@ sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma t
           ]
       logGamma = 0 -- log gamma
       -- simpsonWeights = weightsSimpsonRule oris
-      -- xs =
-      --   L.concat .
-      --   L.zipWith
-      --     (\w -> L.map (\(a, b, c, d, v) -> (a, b, c, d, v * w)))
-      --     simpsonWeights $
-      --   parMap
-      --     rdeepseq
-      --     (\o ->
-      --        let ori = fromIntegral o * deltaTheta
-      --        in L.filter (\(_, _, _, _, v) -> v > threshold) .
-      --           L.map
-      --             (\point@(R2S1RP x y _ g) ->
-      --                let v = computePji thetaSigma tau origin (R2S1RP x y ori g)
-      --                    phi = atan2 y x
-      --                    logRho = log . sqrt $ (x ^ 2 + y ^ 2)
-      --                in (phi, logRho, ori, logGamma, v)) $
-      --           idx)
-      --     [0 .. oris - 1]
-  arr <-
-    computeUnboxedP . fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. i :. j) ->
-      let x = (fromIntegral $ i - center) * delta
-          y = (fromIntegral $ j - center) * delta
-          phi = atan2 y x
-          rho = sqrt $ (x ^ 2 + y ^ 2)
-          theta = fromIntegral o * deltaTheta
-          v = computePji thetaSigma tau origin (R2S1RP x y theta gamma)
-      in if x == 0 && y == 0
-           then (0, 0, 0, 0, 0)
-           else (phi, log rho, theta, logGamma, v)
-  plotImageRepa (folderPath </> "Pinwheel.png") .
-    ImageRepa 8 .
-    computeS .
-    reduceContrast 20 .
-    extend (Z :. (1 :: Int) :. All :. All) .
-    sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
-    arr
-  let simpsonWeights =
-        computeWeightArrFromListOfShape [numPoints, numPoints, oris]
       xs =
-        L.filter (\(_, _, _, _, v) -> v > threshold) .
-        R.toList .
-        R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights $
-        arr
+        L.concat -- .
+        -- L.zipWith
+        --   (\w -> L.map (\(a, b, c, d, v) -> (a, b, c, d, v * w)))
+        --   simpsonWeights 
+        $
+        parMap
+          rdeepseq
+          (\o ->
+             let ori = fromIntegral o * deltaTheta
+             in L.filter (\(_, _, _, _, v) -> v > threshold) .
+                L.map
+                  (\point@(R2S1RP x y _ g) ->
+                     let v = computePji thetaSigma tau origin (R2S1RP x y ori g)
+                         phi = atan2 y x
+                         logRho = log . sqrt $ (x ^ 2 + y ^ 2)
+                     in (phi, logRho, ori, logGamma, v)) $
+                idx)
+          [0 .. oris - 1]
+  -- arr <-
+  --   computeUnboxedP . fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. i :. j) ->
+  --     let x = (fromIntegral $ i - center) * delta
+  --         y = (fromIntegral $ j - center) * delta
+  --         phi = atan2 y x
+  --         rho = sqrt $ (x ^ 2 + y ^ 2)
+  --         theta = fromIntegral o * deltaTheta
+  --         v = computePji thetaSigma tau origin (R2S1RP x y theta gamma)
+  --     in if rho <= 1.5
+  --          then (1, 1, 1, 1, 0)
+  --          else (phi, log rho, theta, logGamma, v)
+  -- plotImageRepa (folderPath </> "GreensFunction.png") .
+  --   ImageRepa 8 .
+  --   computeS .
+  --   -- reduceContrast 20 .
+  --   extend (Z :. (1 :: Int) :. All :. All) .
+  --   sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
+  --   arr
+  let -- simpsonWeights =
+      --   computeWeightArrFromListOfShape [numPoints, numPoints, oris]
+      -- xs =
+      --   L.filter (\(_, _, _, _, v) -> v > threshold) .
+      --   R.toList -- .
+      --   -- R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights 
+      --   $
+      --   arr
   printCurrentTime $
     printf
       "Sparsity: %f%%\n"
@@ -123,6 +126,7 @@ sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma t
           (\ptx ys ->
              computeFourierCoefficientsGPU'
                r2Sigma
+               period
                phiFreqs
                rhoFreqs
                thetaFreqs
@@ -136,86 +140,86 @@ sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma t
   return hist
 
 
-sampleLogpolar ::
-     FilePath
-  -> [PTX]
-  -> Int
-  -> Int
-  -> Int
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> IO (Histogram (Complex Double))
-sampleLogpolar filePath ptxs phis rhos oris maxScale gamma sigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs = do
-  let deltaPhi = 2 * pi / fromIntegral phis
-      deltaTheta = 2 * pi / fromIntegral oris
-      logMaxScale = log maxScale
-      deltaLogRho = logMaxScale / fromIntegral rhos
-      logGamma = 0 -- log gamma
-      origin = R2S1RP 0 0 0 gamma
-      -- xs =
-      --   parMap
-      --     rdeepseq
-      --     (\(phi, logRho, theta) ->
-      --        let x = (exp logRho) * cos phi
-      --            y = (exp logRho) * sin phi
-      --            v = computePji sigma tau origin (R2S1RP x y theta gamma)
-      --        in (phi, logRho, theta, 0, v))
-      --     [ ( deltaTheta * fromIntegral iPhi
-      --       , deltaLogRho * fromIntegral iLogRho - logMaxScale
-      --       , deltaTheta * fromIntegral iTheta)
-      --     | iPhi <- [0 .. oris - 1]
-      --     , iLogRho <- [0 .. rhos - 1]
-      --     , iTheta <- [0 .. oris - 1]
-      --     ]
-  arr <-
-    computeUnboxedP . R.fromFunction (Z :. oris :. rhos :. phis) $ \(Z :. iTheta :. iLogRho :. iPhi) ->
-      let theta = deltaTheta * fromIntegral iTheta
-          phi = deltaPhi * fromIntegral iPhi
-          logRho = deltaLogRho * fromIntegral iLogRho -- logMaxScale
-          x = (exp logRho) * cos phi
-          y = (exp logRho) * sin phi
-          v = computePji sigma tau origin (R2S1RP x y theta gamma)
-      in (phi, logRho, theta, logGamma, v)
-  let simpsonWeights = computeWeightArrFromListOfShape [phis, rhos, oris]
-      xs =
-        L.filter (\(_, _, _, _, v) -> v > threshold) .
-        R.toList .
-        R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights $
-        arr
-  printCurrentTime $
-    printf
-      "Sparsity: %f%%\n"
-      (100 * (fromIntegral . L.length $ xs) / (fromIntegral $ oris * phis * rhos) :: Double)
-  let phiFreqs = L.map fromIntegral [-maxPhiFreqs .. maxPhiFreqs]
-      rhoFreqs = L.map fromIntegral [-maxRhoFreqs .. maxRhoFreqs]
-      thetaFreqs = L.map fromIntegral [-maxThetaFreqs .. maxThetaFreqs]
-      rFreqs = L.map fromIntegral [-maxRFreqs .. maxRFreqs]
-      hist =
-        L.foldl1' (addHistogram) .
-        parZipWith
-          rdeepseq
-          (\ptx ys ->
-             computeFourierCoefficientsGPU'
-               r2Sigma
-               phiFreqs
-               rhoFreqs
-               thetaFreqs
-               rFreqs
-               ptx
-               ys)
-          ptxs .
-        divideListN (L.length ptxs) $
-        xs
-  encodeFile filePath hist
-  return hist
+-- sampleLogpolar ::
+--      FilePath
+--   -> [PTX]
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> IO (Histogram (Complex Double))
+-- sampleLogpolar filePath ptxs phis rhos oris maxScale gamma sigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs = do
+--   let deltaPhi = 2 * pi / fromIntegral phis
+--       deltaTheta = 2 * pi / fromIntegral oris
+--       logMaxScale = log maxScale
+--       deltaLogRho = logMaxScale / fromIntegral rhos
+--       logGamma = 0 -- log gamma
+--       origin = R2S1RP 0 0 0 gamma
+--       -- xs =
+--       --   parMap
+--       --     rdeepseq
+--       --     (\(phi, logRho, theta) ->
+--       --        let x = (exp logRho) * cos phi
+--       --            y = (exp logRho) * sin phi
+--       --            v = computePji sigma tau origin (R2S1RP x y theta gamma)
+--       --        in (phi, logRho, theta, 0, v))
+--       --     [ ( deltaTheta * fromIntegral iPhi
+--       --       , deltaLogRho * fromIntegral iLogRho - logMaxScale
+--       --       , deltaTheta * fromIntegral iTheta)
+--       --     | iPhi <- [0 .. oris - 1]
+--       --     , iLogRho <- [0 .. rhos - 1]
+--       --     , iTheta <- [0 .. oris - 1]
+--       --     ]
+--   arr <-
+--     computeUnboxedP . R.fromFunction (Z :. oris :. rhos :. phis) $ \(Z :. iTheta :. iLogRho :. iPhi) ->
+--       let theta = deltaTheta * fromIntegral iTheta
+--           phi = deltaPhi * fromIntegral iPhi
+--           logRho = deltaLogRho * fromIntegral iLogRho -- logMaxScale
+--           x = (exp logRho) * cos phi
+--           y = (exp logRho) * sin phi
+--           v = computePji sigma tau origin (R2S1RP x y theta gamma)
+--       in (phi, logRho, theta, logGamma, v)
+--   let simpsonWeights = computeWeightArrFromListOfShape [phis, rhos, oris]
+--       xs =
+--         L.filter (\(_, _, _, _, v) -> v > threshold) .
+--         R.toList .
+--         R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights $
+--         arr
+--   printCurrentTime $
+--     printf
+--       "Sparsity: %f%%\n"
+--       (100 * (fromIntegral . L.length $ xs) / (fromIntegral $ oris * phis * rhos) :: Double)
+--   let phiFreqs = L.map fromIntegral [-maxPhiFreqs .. maxPhiFreqs]
+--       rhoFreqs = L.map fromIntegral [-maxRhoFreqs .. maxRhoFreqs]
+--       thetaFreqs = L.map fromIntegral [-maxThetaFreqs .. maxThetaFreqs]
+--       rFreqs = L.map fromIntegral [-maxRFreqs .. maxRFreqs]
+--       hist =
+--         L.foldl1' (addHistogram) .
+--         parZipWith
+--           rdeepseq
+--           (\ptx ys ->
+--              computeFourierCoefficientsGPU'
+--                r2Sigma
+--                phiFreqs
+--                rhoFreqs
+--                thetaFreqs
+--                rFreqs
+--                ptx
+--                ys)
+--           ptxs .
+--         divideListN (L.length ptxs) $
+--         xs
+--   encodeFile filePath hist
+--   return hist
 
 {-# INLINE sampleR2S1 #-}
 sampleR2S1 ::

@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE Strict #-}
+{-# LANGUAGE Strict       #-}
 module STC.InitialDistribution where
 
 import           Array.UnboxedArray  as AU
@@ -11,8 +11,10 @@ import           STC.Convolution
 import           STC.DFTArray
 import           STC.Point
 import           STC.Utils
+import           Utils.Distribution
 import           Utils.List
 import           Utils.Parallel
+import            Pinwheel.FourierSeries2D
 
 {-# INLINE computeInitialDistribution #-}
 computeInitialDistribution ::
@@ -161,4 +163,81 @@ computeInitialDistributionFull' numR2Freq period phiFreq rhoFreq points =
          , freqX <- r2Freqs
          ]
        | angularFreq <- phiFreqs
+       ]
+
+computeInitialDistributionPowerMethodPinwheelBasis' ::
+     Int -> Double -> Double -> Int -> Int -> [Point] -> DFTArray
+computeInitialDistributionPowerMethodPinwheelBasis' numR2Freq sigma period phiFreq rhoFreq points =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+      phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
+      rhoFreqs = L.map fromIntegral [-rhoFreq .. rhoFreq]
+      zeroVec = VG.replicate (numR2Freq ^ 2) 0
+      envelope =
+        VG.convert .
+        toUnboxed . computeS . fromFunction (Z :. numR2Freq :. numR2Freq) $ \(Z :. i :. j) ->
+          (exp $
+           (fromIntegral $ (i - div numR2Freq 2) ^ 2 + (j - div numR2Freq 2) ^ 2) *
+           (sigma ^ 2) /
+           (-2)) *
+          (sigma ^ 2) /
+          (2 * pi) :+
+          0
+  in DFTArray
+       numR2Freq
+       numR2Freq
+       phiFreqs
+       rhoFreqs
+       [ if angularFreq == 0
+         then VG.zipWith (*) envelope . VG.fromList $
+              [ L.foldl'
+                (\b (Point x y _ _) ->
+                   b + cis (-(freqX * x + freqY * y) * 2 * pi / period))
+                0
+                points
+              | freqY <- r2Freqs
+              , freqX <- r2Freqs
+              ]
+         else zeroVec
+       | angularFreq <- phiFreqs
+       ]
+       
+computeInitialDistributionPowerMethodPinwheelBasis ::
+     Int -> Double -> Double -> Int -> Int -> [Point] -> DFTArray
+computeInitialDistributionPowerMethodPinwheelBasis numR2Freq sigma period phiFreq rhoFreq points =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+      phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
+      rhoFreqs = L.map fromIntegral [-rhoFreq .. rhoFreq]
+      zeroVec = VG.replicate (numR2Freq ^ 2) 0
+      envelope =
+        VG.convert .
+        toUnboxed . computeS . fromFunction (Z :. numR2Freq :. numR2Freq) $ \(Z :. i :. j) ->
+          (exp $
+           (fromIntegral $ (i - div numR2Freq 2) ^ 2 + (j - div numR2Freq 2) ^ 2) *
+           (sigma ^ 2) /
+           (-2)) *
+          (sigma ^ 2) /
+          (2 * pi) :+
+          0
+      -- envelope =
+      --   VG.convert . toUnboxed . computeUnboxedS $
+      --   analyticalFourierCoefficients2 numR2Freq 1 0 0 sigma period (period * sqrt 2)
+  in DFTArray
+       numR2Freq
+       numR2Freq
+       phiFreqs
+       rhoFreqs
+       [ if angularFreq == 0 && radialFreq == 0
+         then VG.zipWith (*) envelope . 
+              VG.fromList $
+              [ L.foldl'
+                (\b (Point x y _ _) ->
+                   b + cis (-(freqX * x + freqY * y) * 2 * pi / period))
+                0
+                points
+              | freqY <- r2Freqs
+              , freqX <- r2Freqs
+              ]
+         else zeroVec
+       | radialFreq <- rhoFreqs
+       , angularFreq <- phiFreqs
        ]

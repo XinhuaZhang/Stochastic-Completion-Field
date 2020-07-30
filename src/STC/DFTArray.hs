@@ -25,7 +25,7 @@ data DFTArray =
            ![VS.Vector (Complex Double)]
 
 instance Show DFTArray where
-  show (DFTArray rows cols thetaFreqs rFreqs vecs) = printf "DFTArray rows = %d cols = %d\nthetaFreqs: %s\nrFreqs: %s\n%s\n" rows cols (show thetaFreqs) (show rFreqs) (show . L.take 10 . VS.toList . L.head $ vecs)
+  show (DFTArray rows cols thetaFreqs rFreqs vecs) = printf "DFTArray rows = %d cols = %d\nthetaFreqs: %s\nrFreqs: %s\n%s\n%d\n" rows cols (show thetaFreqs) (show rFreqs) (show . VS.length . L.head $ vecs) (L.length vecs) --(show . L.take 10 . VS.toList . L.head $ vecs)
 
 {-# INLINE getDFTArrayVector #-}
 getDFTArrayVector :: DFTArray -> [VS.Vector (Complex Double)]
@@ -35,6 +35,12 @@ getDFTArrayVector (DFTArray _ _ _ _ vecs) = vecs
 dftArrayToRepa :: DFTArray -> R.Array U DIM4 (Complex Double)
 dftArrayToRepa (DFTArray rows cols thetaFreqs rFreqs vecs) =
   fromUnboxed (Z :. (L.length rFreqs) :. (L.length thetaFreqs) :. cols :. rows) .
+  VS.convert . VS.concat $vecs
+  
+{-# INLINE dftArrayToRepa1 #-}
+dftArrayToRepa1 :: Int -> Int -> DFTArray -> R.Array U DIM4 (Complex Double)
+dftArrayToRepa1 numThetaFreq numRFreq (DFTArray rows cols thetaFreqs rFreqs vecs) =
+  fromUnboxed (Z :. numRFreq :. numThetaFreq :. cols :. rows) .
   VS.convert . VS.concat $vecs
 
 {-# INLINE repaToDFTArray #-}
@@ -125,7 +131,7 @@ sparseArrayToDFTArray ::
   -> Int
   -> [Double]
   -> [Double]
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> [R.Array U DIM2 (Complex Double)]
   -> DFTArray
 sparseArrayToDFTArray rows cols thetaFreqs rFreqs xs sparseArray =
@@ -144,7 +150,7 @@ sparseArrayToDFTArray rows cols thetaFreqs rFreqs xs sparseArray =
      L.zipWith
        (\(x, y) arr ->
           R.toList . R.traverse arr id $ \f idx@(Z :. i :. j) ->
-            ((i, j, x, y), f idx))
+            ((i, j, round x, round y), f idx))
        xs -- .
      -- L.map
      --   (\arr ->

@@ -62,6 +62,8 @@ extra-deps:
 - gamma-0.10.0.0@sha256:0d666fc486899a2e22f44aec1aa32c168e0803e6c2ddb266a18a07700ca5d95b,2051
 - continued-fractions-0.10.0.2@sha256:82808ad1721046ca406659331402c5d894946d974f9ba4925931e9c7e6934549,1782
 - converge-0.1.0.1@sha256:47e5534a30ab798062012c003df12efcb9b3fbc63ac4f80525dcfc70737f1dc0,1203
+- accelerate-blas-0.2.0.1@sha256:46913ac95906c2cb32f7d79af4695d2c2019070c3c7908116b8a4e169fa97fbc,6953
+- hmatrix-special-0.19.0.0@sha256:09cc1020ea21d28570cff9e98164773cddb7d757aaf20aff5b59458204bd83c4,2817
 # - friday-juicypixels-0.1.2.4
 
 # Override default flag values for local packages and extra-deps

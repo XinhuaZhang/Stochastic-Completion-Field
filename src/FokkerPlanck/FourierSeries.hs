@@ -14,7 +14,7 @@ module FokkerPlanck.FourierSeries
   , computeFourierSeriesThetaR
   -- , computeFourierSeriesR2
   , normalizeFreqArr
-  , normalizeFreqArr'
+  -- , normalizeFreqArr'
   , plotThetaDimension
   , computeFourierSeriesOfLogPolarHarmonicsArray
   , computeRectangularInverseHarmonics
@@ -139,48 +139,76 @@ sampleScale !phiFreq !rhoFreq !thetaFreq !rFreq !halfLogPeriod =
 --       ]
 
 
+-- {-# INLINE normalizeFreqArr #-}
+-- normalizeFreqArr ::
+--      Double
+--   -> [Double]
+--   -> [Double]
+--   -> R.Array U DIM4 (Complex Double)
+--   -> R.Array U DIM4 (Complex Double)
+-- normalizeFreqArr !std !phiFreqs !rhoFreqs arr =
+--   computeUnboxedS .
+--   R.traverse3
+--     arr
+--     (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
+--     (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
+--     (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. r :. theta :. rho :. phi) ->
+--     fArr idx *
+--     ((exp $
+--       (-1) *
+--       ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2 + (fRho (Z :. rho)) ^ 2 +
+--        (fRho (Z :. r)) ^ 2) /
+--       2 /
+--       (std ^ 2)) :+
+--      0)
+
 {-# INLINE normalizeFreqArr #-}
 normalizeFreqArr ::
      Double
+  -> Double
   -> [Double]
   -> [Double]
   -> R.Array U DIM4 (Complex Double)
   -> R.Array U DIM4 (Complex Double)
-normalizeFreqArr !std !phiFreqs !rhoFreqs arr =
-  computeUnboxedS .
-  R.traverse3
-    arr
-    (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
-    (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
-    (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. r :. theta :. rho :. phi) ->
-    fArr idx *
-    ((exp $
-      (-1) *
-      ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2 + (fRho (Z :. rho)) ^ 2 +
-       (fRho (Z :. r)) ^ 2) /
-      2 /
-      (std ^ 2)) :+
-     0)
+normalizeFreqArr !stdA !stdR !phiFreqs !rhoFreqs arr
+  | stdA == 0 && stdR == 0 = arr
+  | stdA == 0 =
+    computeUnboxedS .
+    R.traverse3
+      arr
+      (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
+      (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
+      (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. r :. theta :. rho :. phi) ->
+      fArr idx *
+      (exp $
+       ((-1) * ((fRho (Z :. rho)) ^ 2 + (fRho (Z :. r)) ^ 2) / (2 * stdR ^ 2)) :+
+       0)
+  | stdR == 0 =
+    computeUnboxedS .
+    R.traverse3
+      arr
+      (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
+      (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
+      (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. _ :. theta :. rho :. phi) ->
+      fArr idx *
+      ((exp $
+        (-1) * ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2) /
+        (2 * stdA ^ 2)) :+
+       0)
+  | otherwise =
+    computeUnboxedS .
+    R.traverse3
+      arr
+      (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
+      (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
+      (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. r :. theta :. rho :. phi) ->
+      fArr idx *
+      ((exp $
+        (-1) * ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2) /
+        (2 * stdA ^ 2) -
+        ((fRho (Z :. rho)) ^ 2 + (fRho (Z :. r)) ^ 2) / (2 * stdR ^ 2)) :+
+       0)
 
-{-# INLINE normalizeFreqArr' #-}
-normalizeFreqArr' ::
-     Double
-  -> [Double]
-  -> [Double]
-  -> R.Array U DIM4 (Complex Double)
-  -> R.Array U DIM4 (Complex Double)
-normalizeFreqArr' !std !phiFreqs !rhoFreqs arr =
-  computeUnboxedS .
-  R.traverse3
-    arr
-    (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
-    (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
-    (\sh _ _ -> sh) $ \fArr fPhi fRho idx@(Z :. _ :. theta :. rho :. phi) ->
-    fArr idx *
-    ((exp $
-      (-1) * ((fPhi (Z :. phi)) ^ 2 + (fPhi (Z :. theta)) ^ 2) / (2 * std ^ 2) -
-      ((fRho (Z :. rho)) ^ 2) / (2 * (std) ^ 2)) :+
-     0)
 
 -- {-# INLINE computeHarmonicsArray #-}
 computeHarmonicsArray ::
@@ -244,8 +272,9 @@ computeHarmonicsArraySparse ::
   -> [Double]
   -> Double
   -> Double
+  -> Double
   -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
-computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPeriod !cutoff =
+computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !halfLogPeriod !cutoff !envelopeSigma =
   let !centerRow = div numRows 2
       !centerCol = div numCols 2
       rangeFunc1 xs ys =
@@ -254,7 +283,6 @@ computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rho
         ((round $ (L.head xs - L.last ys)), (round $ (L.last xs - L.head ys)))
       (!tfLB, !tfUB) = rangeFunc2 phiFreqs thetaFreqs
       (!rfLB, !rfUB) = rangeFunc2 rhoFreqs rFreqs
-      !logDR = halfLogPeriod / fromIntegral (min centerRow centerCol)
       !xs =
         parMap
           rseq
@@ -271,7 +299,7 @@ computeHarmonicsArraySparse !numRows !deltaRow !numCols !deltaCol !phiFreqs !rho
                           then 0
                           else (x :+ y) ** (fromIntegral tf :+ 0) *
                                (((x ^ 2 + y ^ 2) :+ 0) **
-                                (((-(fromIntegral tf) - 1) :+ fromIntegral rf) /
+                                (((-(fromIntegral tf) - envelopeSigma) :+ (2 * pi / halfLogPeriod * fromIntegral rf)) /
                                  2))
              in deepSeqArray arr ((rf, tf), arr))
           [ (rf, tf)

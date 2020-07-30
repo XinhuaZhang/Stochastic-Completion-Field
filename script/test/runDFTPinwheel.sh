@@ -1,11 +1,13 @@
 #!/bin/bash
 GPUID="[4,5,6,7]"
-Size=128
-NumR2Freq=128
+Size=512
+NumR2Freq=1024
 Delta=1
-PeriodR2=128
-AngularFreq=5
-RadialFreq=10
-Sigma=0
+PeriodR2=512
+PeriodEnvelope=256
+AngularFreq=-5
+RadialFreq=0
+Sigma=1
+NumBatch=128
 
-time stack test :DFTPinwheel-test --test-arguments "${GPUID} ${Size} ${NumR2Freq} ${Delta} ${PeriodR2} ${AngularFreq} ${RadialFreq} ${Sigma} +RTS -N28 -RTS"
+time stack test :DFTPinwheel-test --test-arguments "${GPUID} ${Size} ${NumR2Freq} ${Delta} ${PeriodR2} ${AngularFreq} ${RadialFreq} ${Sigma} ${PeriodEnvelope} ${NumBatch} +RTS -N28 -RTS"

@@ -27,6 +27,7 @@ import qualified Data.Array.Accelerate.Data.Complex as A
 import           Data.Array.Accelerate.LLVM.PTX
 import Debug.Trace
 import Utils.List
+import Utils.BLAS
 
 data Field
   = Source
@@ -132,11 +133,6 @@ convolve !field !plan !coefficients !harmonicsArray !arr@(DFTArray rows cols the
     parMap
       rdeepseq
       (\((!r, !rFreq), (!theta, !thetaFreq)) ->
-         VS.map
-           (\x ->
-              case field of
-                Source -> x
-                Sink -> x * cis (thetaFreq * pi)) .
          L.foldl'
            (\(!vec) (((!rho, !rhoFreq), (!phi, !phiFreq)), inputVec) ->
               VS.zipWith
@@ -385,8 +381,8 @@ convolveSingle ::
   -> IA.Array (Int, Int) (R.Array U DIM2 (Complex Double))
   -> R.Array U DIM1 Double
   -> R.Array U DIM1 Double
-  -> Int
-  -> Int
+  -> Double
+  -> Double
   -> R.Array U DIM2 (Complex Double)
   -> VU.Vector (Complex Double)
 convolveSingle !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !x !y !input =
@@ -394,12 +390,19 @@ convolveSingle !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !x !y !i
       rowCenter = div rows 2
       colCenter = div cols 2
       (Z :. _ :. _ :. numRFreq :. numThetaFreq) = extent coefficients
+      -- harmonics =
+      --   R.traverse2 thetaFreqs rFreqs (\_ _ -> extent coefficients) $ \fThetaFreq fRFreq (Z :. r :. theta :. rho :. phi) ->
+      --     (harmonicsArray IA.!
+      --      ( round (fRFreq (Z :. rho) - fRFreq (Z :. r))
+      --      , round $ (fThetaFreq (Z :. phi) - (fThetaFreq (Z :. theta))))) R.!
+      --     (Z :. (x + colCenter) :. (y + rowCenter))
       harmonics =
-        R.traverse2 thetaFreqs rFreqs (\_ _ -> extent coefficients) $ \fThetaFreq fRFreq (Z :. r :. theta :. rho :. phi) ->
-          (harmonicsArray IA.!
-           ( round (fRFreq (Z :. rho) - fRFreq (Z :. r))
-           , round $ (fThetaFreq (Z :. phi) - (fThetaFreq (Z :. theta))))) R.!
-          (Z :. (x + colCenter) :. (y + rowCenter))
+        R.traverse2 thetaFreqs rFreqs (\_ _ -> extent coefficients) $ \fPhiFreq fRhoFreq (Z :. r :. theta :. rho :. phi) ->
+          let !tf = fPhiFreq (Z :. phi) - fPhiFreq (Z :. theta)
+              !rf = fRhoFreq (Z :. rho) - fRhoFreq (Z :. r)
+          in (x :+ y) ** (tf :+ 0) *
+             ((x ^ 2 + y ^ 2) :+ 0) **
+             (((-tf - 1) :+ 2 * pi * rf / (log $ (sqrt 2) * 512)) / 2)
       product =
         R.traverse2 (R.zipWith (*) coefficients harmonics) input const $ \fCoefficient fInput idx@(Z :. _ :. _ :. rho :. phi) ->
           fCoefficient idx * fInput (Z :. rho :. phi)
@@ -421,7 +424,7 @@ convolveSparse ::
   -> R.Array U DIM1 Double
   -> R.Array U DIM1 Double
   -> Double
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> [R.Array U DIM2 (Complex Double)]
   -> [R.Array U DIM2 (Complex Double)]
 convolveSparse !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !cutoff !xs !inputs =
@@ -435,7 +438,7 @@ convolveSparse !field !coefficients !harmonicsArray !thetaFreqs !rFreqs !cutoff 
             let !x'' = x - x'
                 !y'' = y - y'
                 (!a, !b) =
-                  if (fromIntegral $ x'' ^ 2 + y'' ^ 2) <= cutoff ^ 2
+                  if (x'' ^ 2 + y'' ^ 2) <= cutoff ^ 2
                     then (x'', y'')
                     else (0, 0)
             in convolveSingle
@@ -550,11 +553,11 @@ convoluvePinhweelBasis ::
   -> DFTArray
   -> DFTArray
 convoluvePinhweelBasis coefficients harmonicsArray arr@(DFTArray xFreq yFreq thetaFreqs rFreqs vecs) =
-  let initVec = VS.replicate (VS.length . L.head $ vecs) 0
-      idxs = (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
+ let initVec = VS.replicate (VS.length . L.head $ vecs) 0
+     idxs = (,) <$> (L.zip [0 ..] rFreqs) <*> (L.zip [0 ..] thetaFreqs)
   in DFTArray xFreq yFreq thetaFreqs rFreqs .
      parMap
-       rdeepseq
+      rdeepseq
        (\((r, rFreq), (theta, thetaFreq)) ->
           L.foldl'
             (\vec (((rho, rhoFreq), (phi, phiFreq)), inputVec) ->
@@ -645,3 +648,69 @@ convolveFull'' !coefficients !harmonicsArray !arr@(DFTArray r2Freq _ thetaFreqs 
           L.zip [0 ..] $
           rFreqs) $
      idxTheta
+
+
+{-# INLINE convoluvePinhweelBasisTest #-}
+convoluvePinhweelBasisTest ::
+     VS.Vector (Complex Double)
+  -> [VS.Vector (Complex Double)]
+  -> [VS.Vector (Complex Double)]
+  -> DFTArray
+  -> IO DFTArray
+convoluvePinhweelBasisTest coefficients harmonicsArray1 harmonicsArray2 arr@(DFTArray xFreq yFreq thetaFreqs rFreqs vecs) = do
+  let vecs1 = parZipWith rdeepseq (VS.zipWith (*)) vecs harmonicsArray1
+      m = L.length thetaFreqs * L.length rFreqs
+      n = xFreq * yFreq
+  vec2 <- gemmBLAS m n m coefficients . VS.concat $ vecs1
+  let arr =
+        fromUnboxed
+          (Z :. (L.length rFreqs) :. (L.length thetaFreqs) :. xFreq :. yFreq) .
+        VS.convert $
+        vec2
+      vecs2 =
+        parMap
+          rdeepseq
+          (\(i, j) ->
+             VS.convert . toUnboxed . computeS . R.slice arr $
+             (Z :. i :. j :. All :. All))
+          [ (i, j)
+          | i <- [0 .. L.length rFreqs - 1]
+          , j <- [0 .. L.length thetaFreqs - 1]
+          ] :: [VS.Vector (Complex Double)]
+      vecs3 = parZipWith rdeepseq (VS.zipWith (*)) vecs2 harmonicsArray2
+  return . DFTArray xFreq yFreq thetaFreqs rFreqs $ vecs3
+
+
+{-# INLINE convoluvePinhweelBasisTest' #-}
+convoluvePinhweelBasisTest' ::
+     R.Array U DIM4 (Complex Double)
+  -> [VS.Vector (Complex Double)]
+  -> [VS.Vector (Complex Double)]
+  -> DFTArray
+  -> IO DFTArray
+convoluvePinhweelBasisTest' coefficients harmonicsArray1 harmonicsArray2 arr@(DFTArray xFreq yFreq thetaFreqs rFreqs vecs) = do
+  let (Z :. numRFreq :. numThetaFreq :. numRhoFreq :. numPhiFreq) =
+        extent coefficients
+      coefVec = VU.convert . toUnboxed $ coefficients
+      vecs1 =
+        parZipWith rdeepseq (VS.zipWith (*)) harmonicsArray1 .
+        L.concat . L.replicate numRhoFreq $
+        vecs
+      m = numRFreq * numThetaFreq
+      n = xFreq * yFreq
+      k = numRhoFreq * numPhiFreq
+  print (m, n, k)
+  vec2 <- gemmBLAS m n k coefVec . VS.concat $ vecs1
+  let arr =
+        fromUnboxed (Z :. numRFreq :. numThetaFreq :. xFreq :. yFreq) .
+        VS.convert $
+        vec2
+      vecs2 =
+        parMap
+          rdeepseq
+          (\(i, j) ->
+             VS.convert . toUnboxed . computeS . R.slice arr $
+             (Z :. i :. j :. All :. All))
+          [(i, j) | i <- [0 .. numRFreq - 1], j <- [0 .. numThetaFreq - 1]] :: [VS.Vector (Complex Double)]
+      vecs3 = parZipWith rdeepseq (VS.zipWith (*)) vecs2 harmonicsArray2
+  return . DFTArray xFreq yFreq thetaFreqs rFreqs $ vecs3

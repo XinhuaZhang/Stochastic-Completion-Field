@@ -22,6 +22,7 @@ import           System.FilePath
 import           Text.Printf
 import           Utils.Parallel
 import           Utils.Time
+import FourierMethod.FourierSeries2D
 
 main = do
   args@(gpuIDsStr:lenStr:deltaStr:inverseDeltaStr:numR2FreqsStr:periodStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:coefFilePath:stdStr:batchSizePolarFreqsStr:batchSizeR2FreqsStr:batchSizeR2Str:numThreadStr:_) <-
@@ -48,9 +49,9 @@ main = do
       batchSizeR2 = read batchSizeR2Str :: Int
   removePathForcibly (folderPath </> "Recons")
   createDirectoryIfMissing True folderPath
-  let !numAngularFreqs = getNumFreqs phiFreq thetaFreq
+  let !numAngularFreqs = 2 * (phiFreq + thetaFreq) + 1
       !angularFreqsCenter = div numAngularFreqs 2
-      !numRadialFreqs = getNumFreqs rhoFreq scaleFreq
+      !numRadialFreqs = 2 * (rhoFreq + scaleFreq) + 1
       !numPoints' = round $ len / delta :: Int
       !numPoints =
         if odd numPoints'
@@ -72,7 +73,7 @@ main = do
     readArrayFromStorableFile
       coefFilePath
       (Z :. numRadialFreqs :. numAngularFreqs :. numR2Freqs :. numR2Freqs) :: IO (R.Array F DIM4 (Complex Double))
-  coefficientsArr <- applyGaussian std coefficientsArr'
+  coefficientsArr <- applyGaussian 1 std coefficientsArr'
   let coefficientsVecs =
         L.map
           (\(!rf, !af) ->

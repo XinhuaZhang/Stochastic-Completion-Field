@@ -195,6 +195,7 @@ computeFrequencyArray !phiFreqs !rhoFreqs !thetaFreqs !rFreqs =
 
 computeFourierCoefficientsGPU' ::
      Double
+  -> Double
   -> [Double]
   -> [Double]
   -> [Double]
@@ -202,7 +203,7 @@ computeFourierCoefficientsGPU' ::
   -> PTX
   -> [(Double, Double, Double, Double, Double)]
   -> Histogram (Complex Double)
-computeFourierCoefficientsGPU' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
+computeFourierCoefficientsGPU' !sigma !period !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
   let !freqArr =
         A.use $ computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
   in Histogram
@@ -214,7 +215,9 @@ computeFourierCoefficientsGPU' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !p
        1 .
      VU.fromList .
      A.toList .
-     runNWith ptx (gpuKernel' (A.constant sigma) freqArr) .
+     runNWith
+       ptx
+       (gpuKernel'' (A.constant sigma) (A.constant (log period)) freqArr) .
      A.fromList (A.Z A.:. (L.length xs)) $
      xs
 

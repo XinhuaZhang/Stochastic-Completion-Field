@@ -141,6 +141,7 @@ matMul lock doesTranspose deviceID rows matA' matB' = do
   when (L.length matA' == 1) (freeCuMat . L.head $ matA)
   when (L.length matB' == 1) (freeCuMat . L.head $ matB)
   BLAS.destroy handle
+  CudaRT.sync
   return output
 
 -- matA is divided into [rowsA1 x colsA .. rowsAN x colsA]
@@ -226,7 +227,7 @@ blockMatrixMultiply3 doesTranspose deviceIDs matAs matBs = do
   lock <- newMVar ()
   output <-
     fmap concatCuMat .
-    mapConcurrently (\(deviceID, rows, matA) -> matMul lock False deviceID rows [matA] matBs) .
+    M.mapM (\(deviceID, rows, matA) -> matMul lock False deviceID rows [matA] matBs) .
     L.zip3 deviceIDs rowss $
     matAs
   return $!!

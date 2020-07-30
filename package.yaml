@@ -21,6 +21,7 @@ description:         Please see the README on GitHub at <https://github.com/Xinh
 
 dependencies:
 - accelerate >= 1.2.0.1 && < 2
+- accelerate-blas >= 0.2.0.1 && < 0.3
 - accelerate-llvm >= 1.2.0.1 && < 2
 - accelerate-io >= 1.2 && < 2
 - accelerate-llvm-native >= 1.2.0.1 && < 2
@@ -52,6 +53,7 @@ dependencies:
 - hblas >= 0.4.0.1 && < 0.5
 - hmatrix >= 0.19.0.0 && < 0.21.0.0
 - hmatrix-gsl >= 0.19.0.1 && < 0.20.0.0
+- hmatrix-special >= 0.19.0.0 && < 0.20
 - JuicyPixels >= 3.2.9.5 && < 4.0.0
 - linear >= 1.20.8 && < 2
 - llvm-hs >= 8.0.0 && < 10
@@ -1184,6 +1186,98 @@ tests:
     - -O2
     - -j4
     - -main-is DFTPinwheel
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  IllusoryContourShapePinwheelBasis-test:
+    main:                IllusoryContourShapePinwheelBasis.hs
+    source-dirs:         test/IllusoryContourShapePinwheelBasis
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is IllusoryContourShapePinwheelBasis
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  HollowPinwheel-test:
+    main:                HollowPinwheel.hs
+    source-dirs:         test/HollowPinwheel
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is HollowPinwheel
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  EnvelopeTest-test:
+    main:                EnvelopeTest.hs
+    source-dirs:         test/EnvelopeTest
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is EnvelopeTest
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    # - -fllvm
+    # - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
+  AsteriskGaussian-test:
+    main:                AsteriskGaussian.hs
+    source-dirs:         test/AsteriskGaussian
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is AsteriskGaussian
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000

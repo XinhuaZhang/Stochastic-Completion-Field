@@ -3,17 +3,19 @@ module STCPinwheel where
 
 import           Control.Monad                  as M
 import           Control.Monad.Parallel         as MP
+import qualified Data.Array.Accelerate          as A
 import           Data.Array.Accelerate.LLVM.PTX
 import           Data.Array.Repa                as R
 import           Data.Binary
 import           Data.Complex
 import           Data.List                      as L
+import           Data.Vector.Storable           as VS
 import           Data.Vector.Unboxed            as VU
-import           Data.Vector.Storable            as VS
 import           FokkerPlanck.FourierSeries
 import           FokkerPlanck.GreensFunction
 import           FokkerPlanck.Histogram
 import           Foreign.CUDA.Driver            as CUDA
+import           FourierMethod.BlockMatrixAcc
 import           FourierMethod.FourierSeries2D
 import           Image.IO
 import           Pinwheel.FourierSeries2D
@@ -24,9 +26,11 @@ import           System.FilePath
 import           Text.Printf
 import           Utils.Array
 import           Utils.Time
+import Data.Array.IArray as IA
+import Filter.Utils
 
 main = do
-  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:numThreadStr:_) <-
+  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:periodEnvelopeStr:numThreadStr:_) <-
     getArgs
   let deviceIDs = read deviceIDsStr :: [Int]
       numPoints = read numPointsStr :: Int
@@ -42,7 +46,7 @@ main = do
       numR2Freq = read numR2FreqStr :: Int
       periodR2 = read periodR2Str :: Double
       phiFreq = read phiFreqsStr :: Int
-      phiFreqs = L.minitap fromIntegral [-phiFreq .. phiFreq]
+      phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
       rhoFreq = read rhoFreqsStr :: Int
       rhoFreqs = L.map fromIntegral [-rhoFreq .. rhoFreq]
       thetaFreq = read thetaFreqsStr :: Int
@@ -52,7 +56,9 @@ main = do
       initScale = read initScaleStr :: Double
       initDist = read initDistStr :: [(Double, Double, Double, Double)]
       initPoints = L.map (\(x, y, t, s) -> Point x y t s) initDist
-      numThread = reinad numThreadStr :: Int
+      initSource = [L.head initPoints]
+      initSink = [L.last initPoints]
+      numThread = read numThreadStr :: Int
       folderPath = "output/test/STCPinwheel"
       maxScale = read maxScaleStr :: Double
       halfLogPeriod = log maxScale
@@ -63,6 +69,7 @@ main = do
       numBatchOri = read numBatchOriStr :: Int
       batchSize = read batchSizeStr :: Int
       s = read sStr :: Double
+      periodEnvelope = read periodEnvelopeStr :: Double
   removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
@@ -72,13 +79,14 @@ main = do
   ptxs <- M.mapM createTargetFromContext ctxs
   printCurrentTime "Start computing coefficients..."
   hist <-
-    if False
+    if flag
       then decodeFile histFilePath
       else sampleCartesian
              histFilePath
              folderPath
              ptxs
              numPoints
+             periodEnvelope
              delta
              numOrientation
              initScale
@@ -92,17 +100,10 @@ main = do
              scaleFreq
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
-  let coefficients =
-        normalizeFreqArr' std phiFreqs rhoFreqs . getNormalizedHistogramArr $
-        hist
-      initialDistribution =
-        computeInitialDistributionFull'
-          numR2Freq
-          periodR2
-          phiFreq
-          rhoFreq
-          initPoints
+  let coefficients = getNormalizedHistogramArr $ hist
+        -- normalizeFreqArr' std phiFreqs rhoFreqs .
       harmonicsArray' =
+        centerHollow numR2Freq $
         pinwheelFourierCoefficientsAnatical
           numR2Freq
           phiFreq
@@ -111,43 +112,189 @@ main = do
           scaleFreq
           (-s)
           periodR2
-      source =
-        convoluvePinhweelBasis' coefficients harmonicsArray' initialDistribution
-      -- source = convolveFull'' coefficients harmonicsArray' initialDistribution
-      sourceMat = createCuMat . getDFTArrayVector $ source
-  print sourceMat
+          periodEnvelope
+      -- harmonicsArray1' =
+      --   -- L.map (centerHollowVector numR2Freq) $
+      --   pinwheelFourierCoefficientsAnaticalList1
+      --     numR2Freq
+      --     phiFreq
+      --     rhoFreq
+      --     thetaFreq
+      --     scaleFreq
+      --     (-s)
+      --     periodR2
+      --     periodEnvelope
+      -- harmonicsArray2' =
+      --   -- L.map (centerHollowVector numR2Freq) $
+      --   pinwheelFourierCoefficientsAnaticalList2
+      --     numR2Freq
+      --     phiFreq
+      --     rhoFreq
+      --     thetaFreq
+      --     scaleFreq
+      --     (-s)
+      --     periodR2
+      --     periodEnvelope
+      initialSourceDistribution =
+        computeInitialDistributionFull'
+          numR2Freq
+          periodR2
+          phiFreq
+          rhoFreq
+          initSource
+      -- initialSourceDistribution =
+      --   computeInitialDistributionPowerMethodPinwheelBasis'
+      --     numR2Freq
+      --     (-s)
+      --     periodR2
+      --     phiFreq
+      --     rhoFreq
+      --     initSource
+      initialSinkDistribution =
+        computeInitialDistributionFull'
+          numR2Freq
+          periodR2
+          phiFreq
+          rhoFreq
+          initSink
+  -- source <-
+  --   convoluvePinhweelBasisTest'
+  --     coefficients
+  --     harmonicsArray1'
+  --     harmonicsArray2'
+  --     initialSourceDistribution
+  -- sink <-
+  --   timeReversal' <$>
+  --   convoluvePinhweelBasisTest'
+  --     coefficients
+  --     harmonicsArray1'
+  --     harmonicsArray2'
+  --     initialSinkDistribution
+  let source = convoluvePinhweelBasis' coefficients harmonicsArray' initialSourceDistribution
+      sink = timeReversal' $ convoluvePinhweelBasis' coefficients harmonicsArray' initialSinkDistribution
+      sourceMat =
+        A.transpose . A.use . fromDFTArray . getDFTArrayVector $ source
+      sinkMat = A.transpose . A.use . fromDFTArray . getDFTArrayVector $ sink
+  plan <-
+    makePlan
+      folderPath
+      emptyPlan
+      numPointsRecon
+      numPointsRecon
+      numR2Freq
+      (2 * thetaFreq + 1)
+      (2 * scaleFreq + 1)
+  -- completion <- completionField' plan source (timeReversal' sink)
+  -- let completionMat = createCuMat . getDFTArrayVector $ completion
+  -- print completionMat
+  let numLogPolarFreq = ((2 * scaleFreq + 1) * (2 * thetaFreq + 1))
   sourceR2 <-
-    computeFourierSeriesR2Stream
-      deviceIDs
+    computeFourierSeriesR2StreamAcc
       ptxs
       numR2Freq
       numPointsRecon
+      numLogPolarFreq
       periodR2
       deltaRecon
       numBatchR2
-      [transposeCuMat sourceMat]
+      sourceMat
+  sinkR2 <-
+    computeFourierSeriesR2StreamAcc
+      ptxs
+      numR2Freq
+      numPointsRecon
+      numLogPolarFreq
+      periodR2
+      deltaRecon
+      numBatchR2
+      sinkMat
+  completionR2 <-
+    completionFieldRepa
+      plan
+      (R.reshape
+         (Z :. (L.length scaleFreqs) :. (L.length thetaFreqs) :. numPointsRecon :.
+          numPointsRecon) $
+       sourceR2)
+      (R.reshape
+         (Z :. (L.length scaleFreqs) :. (L.length thetaFreqs) :. numPointsRecon :.
+          numPointsRecon) $
+       sinkR2)
+  -- completionR2 <-
+  --   computeFourierSeriesR2Stream
+  --     deviceIDs
+  --     ptxs
+  --     numR2Freq
+  --     numPointsRecon
+  --     periodR2
+  --     deltaRecon
+  --     numBatchR2
+  --     [transposeCuMat completionMat]
   printCurrentTime "Start ploting.."
-  plotDFTArrayPower
-    (folderPath </> "CoefficientsPower.png")
-    numR2Freq
-    numR2Freq
-    source
-  plotImageRepaComplex (folderPath </> "Coefficients.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numR2Freq :. numR2Freq) .
-    VU.convert . L.foldl1' (VS.zipWith (+)) . getDFTArrayVector $
-    source
-  plotImageRepaComplex (folderPath </> "Source.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-    toUnboxed . sumS . rotate3D $
-    sourceR2
+  -- plotDFTArrayPower
+  --   (folderPath </> "CoefficientsPower.png")
+  --   numR2Freq
+  --   numR2Freq
+  --   source
+  -- plotImageRepaComplex (folderPath </> "Coefficients.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numR2Freq :. numR2Freq) .
+  --   VU.convert . L.foldl1' (VS.zipWith (+)) . getDFTArrayVector $
+  --   source
+  -- plotImageRepaComplex (folderPath </> "Source.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+  --   toUnboxed . sumS . rotate3D $
+  --   sourceR2
   plotImageRepa (folderPath </> "SourcePower.png") .
     ImageRepa 8 .
-    -- computeS .
-    -- reduceContrast 20 .
     fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
     VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
     sourceR2
-  -- plotDFTArrayPower (folderPath </> "SourcePower.png") numPointsRecon numPointsRecon source
+  plotImageRepa (folderPath </> "SinkPower.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+    sinkR2
+  plotImageRepa (folderPath </> "CompletionPower.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+    VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    completionR2
   printCurrentTime "Done"
+  -- sparse
+  let harmonicsArraySparse =
+        computeHarmonicsArraySparse
+          numPointsRecon
+          deltaRecon
+          numPointsRecon
+          deltaRecon
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          scaleFreqs
+          -- (2 * pi)
+          (log (periodR2 / 4))
+          64
+          s
+      init =
+        computeInitialDistribution'
+          numPointsRecon
+          numPointsRecon
+          phiFreqs
+          rhoFreqs
+          0
+          initSource
+  harmonicsArrayDFT <-
+    fmap (listArray (bounds harmonicsArraySparse)) .
+    dftExecuteBatchP
+      plan
+      (DFTPlanID DFT1DG [numPointsRecon, numPointsRecon] [0, 1]) .
+    L.map (VS.convert . toUnboxed . computeUnboxedS . makeFilter2D) . IA.elems $
+    harmonicsArraySparse
+  sourceSparse <- convolve' Source plan coefficients harmonicsArrayDFT init
+  plotDFTArrayPower
+    (folderPath </> "SourcePower_Sparse.png")
+    numPointsRecon
+    numPointsRecon
+    sourceSparse

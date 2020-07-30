@@ -1,4 +1,5 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Strict #-}
 module STC.CompletionField where
 
 import           Control.Monad.Parallel as MP
@@ -16,10 +17,10 @@ import           Utils.Parallel
 
 {-# INLINE completionField #-}
 completionField :: DFTPlan -> DFTArray -> DFTArray -> IO DFTArray
-completionField !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = do
-  let !numThetaFreq = L.length thetaFreqs
-      !numRFreq = L.length rFreqs
-      !sourceFilter =
+completionField plan source@(DFTArray rows cols thetaFreqs rFreqs _) sink = do
+  let numThetaFreq = L.length thetaFreqs
+      numRFreq = L.length rFreqs
+      sourceFilter =
         VS.convert .
         toUnboxed .
         computeUnboxedS .
@@ -33,16 +34,9 @@ completionField !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = d
         pad [rows, cols, numThetaFreq, numRFreq] 0 . 
         dftArrayToRepa $
         source
-      -- !sinkVec =
-      --   VS.convert .
-      --   toUnboxed .
-      --   computeUnboxedS .
-      --   pad [rows, cols, numThetaFreq, numRFreq] 0 . dftArrayToRepa $
-      --   sink
-      !dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
+      dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
   dftSource <- dftExecute plan dftID sourceFilter
   dftSink <- dftExecute plan dftID . VS.concat . getDFTArrayVector $ sink
-  -- dftSink <- dftExecute plan dftID sinkVec
   arr <-
     fmap
       (fromUnboxed (Z :. numRFreq :. numThetaFreq :. cols :. rows) . VS.convert) .
@@ -51,13 +45,13 @@ completionField !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = d
       (DFTPlanID IDFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]) .
     VS.zipWith (*) dftSource $
     dftSink
-  return $! repaToDFTArray thetaFreqs rFreqs $ arr
+  return $ repaToDFTArray thetaFreqs rFreqs $ arr
 
 {-# INLINE completionField' #-}
 completionField' :: DFTPlan -> DFTArray -> DFTArray -> IO DFTArray
-completionField' !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = do
-  let !numThetaFreq = L.length thetaFreqs
-      !sourceFilter =
+completionField' plan source@(DFTArray rows cols thetaFreqs rFreqs _) sink = do
+  let numThetaFreq = L.length thetaFreqs
+      sourceFilter =
         VS.convert .
         toUnboxed .
         computeUnboxedS .
@@ -67,8 +61,8 @@ completionField' !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = 
              (Z :. (0 :: Int) :. (makeFilterHelper numThetaFreq b) :. c :. d)) .
         dftArrayToRepa $
         source
-      !dftID = DFTPlanID DFT1DG [1, numThetaFreq, cols, rows] [0, 1]
-  dftSource <- dftExecute plan dftID $ sourceFilter
+      dftID = DFTPlanID DFT1DG [1, numThetaFreq, cols, rows] [0, 1]
+  dftSource <- dftExecute plan dftID sourceFilter
   dftSink <- dftExecute plan dftID . VS.concat . getDFTArrayVector $ sink
   arr <-
     fmap
@@ -77,14 +71,51 @@ completionField' !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = 
     dftExecute plan (DFTPlanID IDFT1DG [1, numThetaFreq, cols, rows] [0, 1]) .
     VS.zipWith (*) dftSource $
     dftSink
-  return $! repaToDFTArray thetaFreqs rFreqs $ arr
+  return $ repaToDFTArray thetaFreqs rFreqs $ arr
+  
+
+{-# INLINE completionFieldRepa #-}
+completionFieldRepa ::
+     (R.Source s1 (Complex Double), R.Source s2 (Complex Double))
+  => DFTPlan
+  -> R.Array s1 DIM4 (Complex Double)
+  -> R.Array s2 DIM4 (Complex Double)
+  -> IO (R.Array U DIM4 (Complex Double))
+completionFieldRepa plan source sink = do
+  print . extent $ source
+  let (Z :. numRFreq :. numThetaFreq :. cols :. rows) = extent source
+      sourceFilter =
+        VS.convert .
+        toUnboxed .
+        computeUnboxedS .
+        R.backpermute
+          (extent source)
+          (\(Z :. a :. b :. c :. d) ->
+             (Z :. (makeFilterHelper numRFreq a) :.
+              (makeFilterHelper numThetaFreq b) :.
+              c :.
+              d)) $
+        source
+      dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
+  dftSource <- dftExecute plan dftID sourceFilter
+  dftSink <-
+    dftExecute plan dftID . VS.convert . toUnboxed . computeUnboxedS . delay $
+    sink
+  fmap (fromUnboxed (extent source) . VS.convert) .
+    dftExecute
+      plan
+      (DFTPlanID IDFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]) .
+    VS.zipWith (*) dftSource $
+    dftSink
+  
+
 
 -- {-# INLINE completionField #-}
 -- completionField :: DFTPlan -> DFTArray -> DFTArray -> IO DFTArray
--- completionField !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = do
---   let !numThetaFreq = L.length thetaFreqs
---       !numRFreq = L.length rFreqs
---       !sourceFilter =
+-- completionField plan source@(DFTArray rows cols thetaFreqs rFreqs _) sink = do
+--   let numThetaFreq = L.length thetaFreqs
+--       numRFreq = L.length rFreqs
+--       sourceFilter =
 --         VS.convert .
 --         toUnboxed .
 --         computeUnboxedS .
@@ -97,7 +128,7 @@ completionField' !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = 
 --               d)) .
 --         dftArrayToRepa $
 --         source
---       !dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
+--       dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
 --   dftSource <- dftExecute plan dftID $ sourceFilter
 --   dftSink <- dftExecute plan dftID . VS.concat . getDFTArrayVector $ sink
 --   arr <-
@@ -108,4 +139,4 @@ completionField' !plan !source@(DFTArray rows cols thetaFreqs rFreqs _) !sink = 
 --       (DFTPlanID IDFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]) .
 --     VS.zipWith (*) dftSource $
 --     dftSink
---   return $! repaToDFTArray thetaFreqs rFreqs $ arr
+--   return $ repaToDFTArray thetaFreqs rFreqs $ arr

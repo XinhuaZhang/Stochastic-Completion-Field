@@ -62,16 +62,36 @@ main = do
   --         initSpeed
   --         histFilePath
   --         -- (0, 0, 0, 0, initOri / 180 * pi, initSpeed)
-  let arrG' =
-        sampleR2S1 numPoint numPoint numOrientation delta initSpeed sigma tao
-      arrG =
-        computeS . R.traverse arrG' id $ \f idx@(Z :. k :. i :. j) ->
-          let r' =
-                sqrt . fromIntegral $
-                (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2
-          in if r' > 49 -- || r' <= 2
-              then 0
-              else f idx
+  arrG' <-
+    sampleR2S1
+      numPoint
+      numPoint
+      delta
+      (2 * pi / fromIntegral numOrientation)
+      initSpeed
+      sigma
+      tao
+      [0 .. numOrientation - 1]
+  let -- arrG' =
+      --   sampleR2S1
+      --     numPoint
+      --     numPoint
+      --     delta
+      --     (2 * pi / fromIntegral numOrientation)
+      --     initSpeed
+      --     sigma
+      --     tao
+      --     [0 .. numOrientation - 1]
+      -- arrG =
+      --   computeS . R.traverse arrG' id $ \f idx@(Z :. k :. i :. j) ->
+      --     let r' =
+      --           sqrt . fromIntegral $
+      --           (i - div numPoint 2) ^ 2 + (j - div numPoint 2) ^ 2
+      --     in -- if r' > 49 -- || r' <= 2
+      --        --   then 0
+      --        --   else
+      --       f idx
+      arrG = computeS . rotate3DR $ arrG'
       -- r = 16
   let numTheta = 8
       deltaTheta = (2 * pi) / numTheta

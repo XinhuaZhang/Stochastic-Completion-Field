@@ -1,26 +1,36 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Strict       #-}
 module STC.PowerMethod where
 
-import           Control.Monad        as M
-import           Data.Array.IArray    as IA
-import           Data.Array.Repa      as R
+import           Control.Monad                  as M
+import qualified Data.Array.Accelerate          as A
+import           Data.Array.Accelerate.LLVM.PTX as A
+import           Data.Array.IArray              as IA
+import           Data.Array.Repa                as R
 import           Data.Complex
-import           Data.List            as L
-import           Data.Vector.Storable as VS
-import           Data.Vector.Unboxed  as VU
+import           Data.List                      as L
+import           Data.Vector.Storable           as VS
+import           Data.Vector.Unboxed            as VU
 import           DFT.Plan
 import           Filter.Utils
+import           FokkerPlanck.FourierSeries
+import           FourierMethod.BlockMatrixAcc
+import           FourierMethod.FourierSeries2D
+import           Graphics.Gnuplot.Simple
 import           Image.IO
 import           STC.CompletionField
 import           STC.Convolution
 import           STC.DFTArray
+import           STC.Multiplication
 import           STC.Plan
-import           System.FilePath      ((</>))
+import           STC.Reversal
+import           STC.Utils
+import           System.FilePath                ((</>))
 import           Text.Printf
+import           Utils.Array
+import           Utils.List
 import           Utils.Parallel
 import           Utils.Time
-import Graphics.Gnuplot.Simple
-import           FokkerPlanck.FourierSeries
 
 powerMethod ::
      DFTPlan
@@ -220,7 +230,7 @@ computeContour' !plan !folderPath !writeFlag !coefficients !harmonicsArray !bias
     R.map magnitude $
     sink'
   return completion
-  
+
 powerMethodG' ::
      DFTPlan
   -> FilePath
@@ -305,7 +315,7 @@ powerMethodSparse ::
   -> R.Array U DIM1 Double
   -> R.Array U DIM1 Double
   -> Double
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> Int
   -> [R.Array U DIM2 (Complex Double)]
   -> [R.Array U DIM2 (Complex Double)]
@@ -348,21 +358,16 @@ computeContourSparse ::
   -> R.Array U DIM1 Double
   -> R.Array U DIM1 Double
   -> Double
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> Int
   -> String
   -> [R.Array U DIM2 (Complex Double)]
-  -> IO DFTArray
+  -> IO [R.Array U DIM2 (Complex Double)]
+  -- -> IO DFTArray
 computeContourSparse !plan !folderPath !coefficients !harmonicsArray !thetaFreqs !rFreqs !cutoff !xs !numIteration !suffix !input = do
   printCurrentTime $ printf "Power Method %d iterations" numIteration
   let (Z :. cols :. rows) = extent (harmonicsArray IA.! (0, 0))
-      !eigenSourceSparse =
-        sparseArrayToDFTArray
-          rows
-          cols
-          (R.toList thetaFreqs)
-          (R.toList rFreqs)
-          xs .
+      ys =
         powerMethodSparse
           Source
           coefficients
@@ -371,8 +376,16 @@ computeContourSparse !plan !folderPath !coefficients !harmonicsArray !thetaFreqs
           rFreqs
           cutoff
           xs
-          numIteration $
-        input
+          numIteration
+          input
+      !eigenSourceSparse =
+        sparseArrayToDFTArray
+          rows
+          cols
+          (R.toList thetaFreqs)
+          (R.toList rFreqs)
+          xs
+          ys
   harmonicsArrayDFT <-
     fmap (listArray (bounds harmonicsArray)) .
     dftExecuteBatchP plan (DFTPlanID DFT1DG [cols, rows] [0, 1]) .
@@ -381,7 +394,7 @@ computeContourSparse !plan !folderPath !coefficients !harmonicsArray !thetaFreqs
   printCurrentTime "Source"
   source <-
     convolve Source plan coefficients harmonicsArrayDFT eigenSourceSparse
-  plotDFTArrayPower (folderPath </> "SourcePower.png") rows cols source
+  plotDFTArrayPower (folderPath </> "SourcePower_Sparse.png") rows cols source
   printCurrentTime "Sink"
   let sink =
         parZipWithDFTArray
@@ -389,7 +402,7 @@ computeContourSparse !plan !folderPath !coefficients !harmonicsArray !thetaFreqs
           source
           ((,) <$> (R.toList rFreqs) <*> (R.toList thetaFreqs))
   -- sink <- convolve Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
-  plotDFTArrayPower (folderPath </> "SinkPower.png") rows cols sink
+  plotDFTArrayPower (folderPath </> "SinkPower_Sparse.png") rows cols sink
   printCurrentTime "Completion"
   completion <- completionField plan source sink
   let mm =
@@ -397,12 +410,12 @@ computeContourSparse !plan !folderPath !coefficients !harmonicsArray !thetaFreqs
         completion
   print mm
   plotDFTArrayPower
-    (folderPath </> (printf "CompletionPower_%s.png" suffix))
+    (folderPath </> ("CompletionPower_Sparse.png"))
     rows
     cols .
     parMapDFTArray (VS.map (/ (mm :+ 0))) $
     completion
-  return completion
+  return ys
 
 {-# INLINE computeContourSparseG #-}
 computeContourSparseG ::
@@ -414,7 +427,7 @@ computeContourSparseG ::
   -> R.Array U DIM1 Double
   -> Double
   -> VS.Vector (Complex Double)
-  -> [(Int, Int)]
+  -> [(Double, Double)]
   -> Int
   -> String
   -> [R.Array U DIM2 (Complex Double)]
@@ -517,7 +530,7 @@ powerMethodSparse' !field !coefficients !harmonicsArray !phiFreqs !rhoFreqs  !cu
         convolvedArr
       !normalizedConvolvedArr =
         parMap rseq (computeS . R.map (\x -> x / (maxMag :+ 0))) convolvedArr
-  in do 
+  in do
         powerMethodSparse'
           field
           coefficients
@@ -544,12 +557,24 @@ computeContourSparse' ::
   -> Int
   -> String
   -> [R.Array U DIM1 (Complex Double)]
-  -> IO DFTArray
-computeContourSparse' !plan !folderPath !coefficients !harmonicsArray !thetaRHarmonics !phiFreqs !rhoFreqs !cutoff !xs !numIteration !suffix !input = do
+  -> IO [R.Array U DIM1 (Complex Double)]
+  -- -> IO DFTArray
+computeContourSparse' !plan !folderPath !coefficients !harmonicsArray thetaRHarmonics !phiFreqs !rhoFreqs !cutoff !xs !numIteration !suffix !input = do
   printCurrentTime $ printf "Power Method %d iterations" numIteration
   let (Z :. cols :. rows) = extent (harmonicsArray IA.! (0, 0))
-  !eigenSourceSparse <-
-    sparseArrayToDFTArray' rows cols (R.toList phiFreqs) (R.toList rhoFreqs) xs <$>
+  -- !eigenSourceSparse <-
+  --   sparseArrayToDFTArray' rows cols (R.toList phiFreqs) (R.toList rhoFreqs) xs <$>
+    -- powerMethodSparse'
+    --   Source
+    --   coefficients
+    --   harmonicsArray
+    --   phiFreqs
+    --   rhoFreqs
+    --   cutoff
+    --   xs
+    --   numIteration
+    --   input
+  ys <-
     powerMethodSparse'
       Source
       coefficients
@@ -560,6 +585,14 @@ computeContourSparse' !plan !folderPath !coefficients !harmonicsArray !thetaRHar
       xs
       numIteration
       input
+  let eigenSourceSparse =
+        sparseArrayToDFTArray'
+          rows
+          cols
+          (R.toList phiFreqs)
+          (R.toList rhoFreqs)
+          xs
+          ys
   print (bounds harmonicsArray)
   print . L.length . IA.elems $ harmonicsArray
   harmonicsArrayDFT <-
@@ -570,51 +603,53 @@ computeContourSparse' !plan !folderPath !coefficients !harmonicsArray !thetaRHar
   printCurrentTime "Source"
   source <-
     convolve' Source plan coefficients harmonicsArrayDFT eigenSourceSparse
-  plotDFTArrayPower (folderPath </> "SourcePower.png") rows cols source
-  plotDFTArrayThetaR
-    (folderPath </> "Source.png")
-    rows
-    cols
-    thetaRHarmonics
-    source
+  plotDFTArrayPower (folderPath </> "SourcePower_Sparse.png") rows cols source
+  -- plotDFTArrayThetaR
+  --   (folderPath </> "Source.png")
+  --   rows
+  --   cols
+  --   thetaRHarmonics
+  --   source
   printCurrentTime "Sink"
-  sink <- convolve' Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
-  plotDFTArrayPower (folderPath </> "SinkPower.png") rows cols sink
-  plotDFTArrayThetaR (folderPath </> "Sink.png") rows cols thetaRHarmonics sink
+  -- sink <- convolve' Sink plan coefficients harmonicsArrayDFT eigenSourceSparse
+  let sink =
+        parZipWithDFTArray
+          (\vec thetaFreq -> VS.map (* (cis (thetaFreq * pi))) vec)
+          source
+          (R.toList phiFreqs)
+  plotDFTArrayPower (folderPath </> "SinkPower_Sparse.png") rows cols sink
+  -- plotDFTArrayThetaR (folderPath </> "Sink.png") rows cols thetaRHarmonics sink
   printCurrentTime "Completion"
   completion <- completionField' plan source sink
   let mm =
         L.maximum . L.map (VS.maximum . VS.map magnitude) . getDFTArrayVector $
         completion
   print mm
-  plotDFTArrayPower
-    (folderPath </> (printf "CompletionPower_%s.png" suffix))
-    rows
-    cols .
-    parMapDFTArray (VS.map (/ (mm :+ 0))) $
+  plotDFTArrayPower (folderPath </> ("CompletionPower_Sparse.png")) rows cols -- .
+    -- parMapDFTArray (VS.map (/ (mm :+ 0))) $
     completion
-  let point = (31, -4)
-      source' =
-        fromUnboxed (Z :. 72 :. cols :. rows) .
-        VS.convert .
-        VS.concat .
-        computeFourierSeriesThetaR thetaRHarmonics .
-        getDFTArrayVector $
-        source
-      sink' =
-        fromUnboxed (Z :. 72 :. cols :. rows) .
-        VS.convert .
-        VS.concat .
-        computeFourierSeriesThetaR thetaRHarmonics .
-        getDFTArrayVector $
-        sink
-      completion' =
-        fromUnboxed (Z :. 72 :. cols :. rows) .
-        VS.convert .
-        VS.concat .
-        computeFourierSeriesThetaR thetaRHarmonics .
-        getDFTArrayVector $
-        completion
+  -- let point = (31, -4)
+  --     source' =
+  --       fromUnboxed (Z :. 72 :. cols :. rows) .
+  --       VS.convert .
+  --       VS.concat .
+  --       computeFourierSeriesThetaR thetaRHarmonics .
+  --       getDFTArrayVector $
+  --       source
+  --     sink' =
+  --       fromUnboxed (Z :. 72 :. cols :. rows) .
+  --       VS.convert .
+  --       VS.concat .
+  --       computeFourierSeriesThetaR thetaRHarmonics .
+  --       getDFTArrayVector $
+  --       sink
+  --     completion' =
+  --       fromUnboxed (Z :. 72 :. cols :. rows) .
+  --       VS.convert .
+  --       VS.concat .
+  --       computeFourierSeriesThetaR thetaRHarmonics .
+  --       getDFTArrayVector $
+  --       completion
   -- plotThetaDimension
   --   folderPath
   --   ("FourierSeries_Completion_")
@@ -633,8 +668,9 @@ computeContourSparse' !plan !folderPath !coefficients !harmonicsArray !thetaRHar
   --   point .
   --   R.map magnitude $
   --   sink'
-  return completion
-  
+  -- return completion
+  return ys
+
 {-# INLINE computeContourSparseG' #-}
 computeContourSparseG' ::
      DFTPlan
@@ -866,3 +902,355 @@ computeContourSparse''' !plan !folderPath !coefficients !harmonicsArray !thetaRH
     parMapDFTArray (VS.map (/ (mm :+ 0))) $
     completion
   return completion
+
+powerMethodPinwheelBasis' ::
+     DFTPlan
+  -> FilePath
+  -> [PTX]
+  -> Bool
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> VS.Vector (Complex Double)
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> DFTArray
+  -> IO DFTArray
+powerMethodPinwheelBasis' _ _ _ _ _ _ _ _ _ _ _ _ 0 arr = return arr
+powerMethodPinwheelBasis' plan folderPath ptxs writeFlag coefficients harmonicsArray dftBias numPoints numR2Freqs delta periodR2 numBatch numStep input@(DFTArray rows cols _ _ _) = do
+  printCurrentTime (show numStep)
+  let convolvedArr = convoluvePinhweelBasis' coefficients harmonicsArray input
+  biasedConvolvedArr <-
+    multiplyPinwheelBasisBatch1 plan numBatch dftBias convolvedArr
+  let s =
+        L.maximum .
+        parMap rdeepseq (VS.maximum . VS.map (\x -> (magnitude x) )) .
+        getDFTArrayVector $
+        biasedConvolvedArr
+      normalizedBiasedConvolvedArr =
+        parMapDFTArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
+      -- envelope =
+      --   VU.convert .
+      --   toUnboxed . computeS . fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
+      --     let r =
+      --           sqrt . fromIntegral $
+      --           (i - div numR2Freqs 2) ^ 2 + (j - div numR2Freqs 2) ^ 2
+      --     in if r == 0
+      --          then 0
+      --          else r ** (-0.75) :+ 0
+      -- normalizedBiasedConvolvedArr =
+      --   parMapDFTArray (VS.zipWith (*) envelope) normalizedBiasedConvolvedArr'
+  when
+    writeFlag
+    (do let eigenMat =
+              A.transpose . A.use . fromDFTArray . getDFTArrayVector $
+              convolvedArr
+        eigenR2 <-
+          computeFourierSeriesR2StreamAcc
+            ptxs
+            numR2Freqs
+            numPoints
+            (L.length . getDFTArrayVector $ convolvedArr)
+            periodR2
+            delta
+            numBatch
+            eigenMat
+        plotImageRepa (folderPath </> (printf "Source_%03d.png" numStep)) .
+          ImageRepa 8 .
+          fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+          -- VU.map sqrt .
+          toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+          eigenR2
+        -- let biasMat =
+        --       A.transpose . A.use . fromDFTArray . getDFTArrayVector $
+        --       normalizedBiasedConvolvedArr
+        -- biasR2 <-
+        --   computeFourierSeriesR2StreamAcc
+        --     ptxs
+        --     numR2Freqs
+        --     numPoints
+        --     (L.length . getDFTArrayVector $ convolvedArr)
+        --     periodR2
+        --     delta
+        --     1
+        --     biasMat
+        -- plotImageRepa (folderPath </> (printf "Biased_%03d.png" numStep)) .
+        --   ImageRepa 8 .
+        --   fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+        --   VU.map sqrt .
+        --   toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+        --   biasR2
+    )
+  powerMethodPinwheelBasis'
+    plan
+    folderPath
+    ptxs
+    writeFlag
+    coefficients
+    harmonicsArray
+    dftBias
+    numPoints
+    numR2Freqs
+    delta
+    periodR2
+    numBatch
+    (numStep - 1)
+    normalizedBiasedConvolvedArr
+
+
+computeContourPinwheelBasis' ::
+     DFTPlan
+  -> FilePath
+  -> [PTX]
+  -> Bool
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> VS.Vector (Complex Double)
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> DFTArray
+  -> IO (R.Array U DIM4 (Complex Double))
+computeContourPinwheelBasis' plan folderPath ptxs writeFlag coefficients harmonicsArray dftBias numStep numBatch numPoints numR2Freqs delta periodR2 thetaFreqs rFreqs input = do
+  eigenSource' <-
+    powerMethodPinwheelBasis'
+      plan
+      folderPath
+      ptxs
+      writeFlag
+      coefficients
+      harmonicsArray
+      dftBias
+      numPoints
+      numR2Freqs
+      delta
+      periodR2
+      numBatch
+      numStep
+      input
+  let eigenSource =
+        convoluvePinhweelBasis' coefficients harmonicsArray eigenSource'
+      numLogPolarFreqs = thetaFreqs * rFreqs
+      eigenSourceMat =
+        A.transpose . A.use . fromDFTArray . getDFTArrayVector $ eigenSource
+  eigenSourceR2' <-
+    computeFourierSeriesR2StreamAcc
+      ptxs
+      numR2Freqs
+      numPoints
+      numLogPolarFreqs
+      periodR2
+      delta
+      numBatch
+      eigenSourceMat
+  let eigenSourceR2 =
+        R.reshape (Z :. rFreqs :. thetaFreqs :. numPoints :. numPoints) $
+        eigenSourceR2'
+      eigenSinkR2 =
+        timeReversalRepa
+          (L.map fromIntegral . getListFromNumber $ thetaFreqs)
+          eigenSourceR2
+  completionR2 <- completionFieldRepa plan eigenSourceR2 eigenSinkR2
+  plotImageRepa (folderPath </> "Source.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+    -- VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    eigenSourceR2
+  plotImageRepa (folderPath </> "Sink.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+    -- VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    eigenSinkR2
+  plotImageRepa (folderPath </> "Completion.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+    -- VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    completionR2
+  return completionR2
+  
+powerMethodPinwheelBasis ::
+     DFTPlan
+  -> FilePath
+  -> [PTX]
+  -> Bool
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> VS.Vector (Complex Double)
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> DFTArray
+  -> IO DFTArray
+powerMethodPinwheelBasis _ _ _ _ _ _ _ _ _ _ _ _ 0 arr = return arr
+powerMethodPinwheelBasis plan folderPath ptxs writeFlag coefficients harmonicsArray dftBias numPoints numR2Freqs delta periodR2 numBatch numStep input@(DFTArray rows cols _ _ _) = do
+  printCurrentTime (show numStep)
+  let convolvedArr = convoluvePinhweelBasis coefficients harmonicsArray input
+  biasedConvolvedArr <-
+    multiplyPinwheelBasisBatch1 plan numBatch dftBias convolvedArr
+  let s =
+        L.maximum .
+        parMap rdeepseq (VS.maximum . VS.map (\x -> (magnitude x) )) .
+        getDFTArrayVector $
+        biasedConvolvedArr
+      normalizedBiasedConvolvedArr =
+        parMapDFTArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
+      -- envelope =
+      --   VU.convert .
+      --   toUnboxed . computeS . fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
+      --     let r =
+      --           sqrt . fromIntegral $
+      --           (i - div numR2Freqs 2) ^ 2 + (j - div numR2Freqs 2) ^ 2
+      --     in if r == 0
+      --          then 0
+      --          else r ** (-0.75) :+ 0
+      -- normalizedBiasedConvolvedArr =
+      --   parMapDFTArray (VS.zipWith (*) envelope) normalizedBiasedConvolvedArr'
+  when
+    writeFlag
+    (do let eigenMat =
+              A.transpose . A.use . fromDFTArray . getDFTArrayVector $
+              convolvedArr
+        eigenR2 <-
+          computeFourierSeriesR2StreamAcc
+            ptxs
+            numR2Freqs
+            numPoints
+            (L.length . getDFTArrayVector $ convolvedArr)
+            periodR2
+            delta
+            numBatch
+            eigenMat
+        plotImageRepa (folderPath </> (printf "Source_%03d.png" numStep)) .
+          ImageRepa 8 .
+          fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+          VU.map sqrt .
+          toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+          eigenR2
+        let biasMat =
+              A.transpose . A.use . fromDFTArray . getDFTArrayVector $
+              normalizedBiasedConvolvedArr
+        biasR2 <-
+          computeFourierSeriesR2StreamAcc
+            ptxs
+            numR2Freqs
+            numPoints
+            (L.length . getDFTArrayVector $ convolvedArr)
+            periodR2
+            delta
+            numBatch
+            biasMat
+        plotImageRepa (folderPath </> (printf "Biased_%03d.png" numStep)) .
+          ImageRepa 8 .
+          fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+          VU.map sqrt .
+          toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+          biasR2
+    )
+  powerMethodPinwheelBasis
+    plan
+    folderPath
+    ptxs
+    writeFlag
+    coefficients
+    harmonicsArray
+    dftBias
+    numPoints
+    numR2Freqs
+    delta
+    periodR2
+    numBatch
+    (numStep - 1)
+    normalizedBiasedConvolvedArr
+
+
+computeContourPinwheelBasis ::
+     DFTPlan
+  -> FilePath
+  -> [PTX]
+  -> Bool
+  -> R.Array U DIM4 (Complex Double)
+  -> IA.Array (Int, Int) (VS.Vector (Complex Double))
+  -> VS.Vector (Complex Double)
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> DFTArray
+  -> IO (R.Array U DIM4 (Complex Double))
+computeContourPinwheelBasis plan folderPath ptxs writeFlag coefficients harmonicsArray dftBias numStep numBatch numPoints numR2Freqs delta periodR2 thetaFreqs rFreqs input = do
+  eigenSource' <-
+    powerMethodPinwheelBasis
+      plan
+      folderPath
+      ptxs
+      writeFlag
+      coefficients
+      harmonicsArray
+      dftBias
+      numPoints
+      numR2Freqs
+      delta
+      periodR2
+      numBatch
+      numStep
+      input
+  let eigenSource =
+        convoluvePinhweelBasis coefficients harmonicsArray eigenSource'
+      numLogPolarFreqs = thetaFreqs * rFreqs
+      eigenSourceMat =
+        A.transpose . A.use . fromDFTArray . getDFTArrayVector $ eigenSource
+  eigenSourceR2' <-
+    computeFourierSeriesR2StreamAcc
+      ptxs
+      numR2Freqs
+      numPoints
+      numLogPolarFreqs
+      periodR2
+      delta
+      numBatch
+      eigenSourceMat
+  let eigenSourceR2 =
+        R.reshape (Z :. rFreqs :. thetaFreqs :. numPoints :. numPoints) $
+        eigenSourceR2'
+      eigenSinkR2 =
+        timeReversalRepa
+          (L.map fromIntegral . getListFromNumber $ thetaFreqs)
+          eigenSourceR2
+  completionR2 <- completionFieldRepa plan eigenSourceR2 eigenSinkR2
+  plotImageRepa (folderPath </> "Source.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+    VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    eigenSourceR2
+  plotImageRepa (folderPath </> "Sink.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+    VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    eigenSinkR2
+  plotImageRepa (folderPath </> "Completion.png") .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+    VU.map sqrt .
+    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+    completionR2
+  return completionR2
