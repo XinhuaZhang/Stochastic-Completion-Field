@@ -27,9 +27,10 @@ import           Utils.Array
 import           Utils.Time
 import           Utils.List
 import Data.Array.IArray as IA
+import FourierPinwheel
 
 main = do
-  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdAStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
+  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdThetaStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
     getArgs
   let deviceIDs = read deviceIDsStr :: [Int]
       numPoints = read numPointsStr :: Int
@@ -62,7 +63,7 @@ main = do
       maxScale = read maxScaleStr :: Double
       halfLogPeriod = log maxScale
       stdR2 = read stdR2Str :: Double
-      stdA = read stdAStr :: Double
+      stdTheta = read stdThetaStr :: Double
       stdR = read stdRStr :: Double
       numBatchR2 = read numBatchR2Str :: Int
       numBatchR2Freqs = read numBatchR2FreqsStr :: Int
@@ -73,6 +74,7 @@ main = do
       numIteration = read numIterationStr :: Int
       shape2D@(Points _ minDist _) = read shape2DStr :: Points Shape2D
       radius = read radiusStr :: Double
+      periodEnv = periodR2 * sqrt 2
   -- removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
@@ -92,7 +94,7 @@ main = do
           folderPath
           ptxs
           numPoints
-          (periodR2 * sqrt 2)
+          periodEnv
           delta
           numOrientation
           initScale
@@ -115,12 +117,15 @@ main = do
       numR2Freq
       (2 * thetaFreq + 1)
       (2 * scaleFreq + 1)
-  let coefficients =
-        normalizeFreqArr stdA stdR phiFreqs rhoFreqs . getNormalizedHistogramArr $
-        hist
-      harmonicsArray =
-        centerHollow numR2Freq $
-        pinwheelFourierCoefficientsAnatical
+      (2 * phiFreq + 1)
+      (2 * rhoFreq + 1)
+  let coefficients = getNormalizedHistogramArr $ hist
+  -- coefficients <- hollowCoefficients plan radius periodEnv coefficients'
+      -- coefficients
+      --   -- normalizeFreqArr stdA stdR phiFreqs rhoFreqs .
+      --  = getNormalizedHistogramArr $ hist
+  let harmonicsArray =
+        createHarmonics
           numR2Freq
           phiFreq
           rhoFreq
@@ -128,207 +133,44 @@ main = do
           scaleFreq
           (-s)
           periodR2
-          (periodR2 * sqrt 2)
+          periodEnv
+          coefficients
       points =
         L.map (\(x, y) -> Point ( x) ( y) 0 1) .
         getShape2DIndexList' . makeShape2D $
         shape2D
-      pinwheelMat =
-        A.use .
-        A.fromList (A.Z A.:. (numR2Freq ^ 2) A.:. (1 :: Int)) . VS.toList $
-        (harmonicsArray IA.! (0, 0))
-  pinwheelR2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
+  (bias, dftBias) <-
+    computeBiasFourierPinwheelFull
+      plan
       numR2Freq
-      numPointsRecon
-      1
+      thetaFreq
+      scaleFreq
+      (-s)
       periodR2
-      deltaRecon
-      numBatchR2
-      pinwheelMat
-  plotImageRepaComplex (folderPath </> "Pinwheel.png") .
-    ImageRepa 8 .
-    computeS . extend (Z :. (1 :: Int) :. All :. All) . sumS . rotate3D $
-    pinwheelR2
-  dftBias <- computeBiasGaussian plan numR2Freq stdR2 periodR2 points
-  let biasMat =
-        A.use .
-        A.fromList (A.Z A.:. (numR2Freq ^ 2) A.:. (1 :: Int)) . VU.toList $
-        computeBiasGaussian1 plan numR2Freq stdR2 periodR2 points
-  print points
-  plotImageRepa (folderPath </> "BiasFreq.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numR2Freq :. numR2Freq) . VU.map magnitude $
-    computeBiasGaussian1 plan numR2Freq stdR2 periodR2 points
-  biasR2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numR2Freq
-      numPointsRecon
-      1
-      periodR2
-      deltaRecon
-      numBatchR2
-      biasMat
-  plotImageRepa (folderPath </> "Bias.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-    biasR2
-  -- -- For debugging
-  -- printCurrentTime "Discrete and sparse method"
-  -- plan <-
-  --   makePlan
-  --     folderPath
-  --     plan
-  --     numPointsRecon
-  --     numPointsRecon
-  --     numPointsRecon
-  --     (2 * thetaFreq + 1)
-  --     (2 * scaleFreq + 1)
-  -- let xs =
-  --       L.map (\(a, b) -> (a, b)) . getShape2DIndexList' . makeShape2D $ shape2D
-  --     initSourceSparse =
-  --       computeInitialDistributionPowerMethodSparse phiFreqs rhoFreqs points
-  --     harmonicsArraySparse =
-  --       computeHarmonicsArraySparse
-  --         numPointsRecon
-  --         deltaRecon
-  --         numPointsRecon
-  --         deltaRecon
-  --         phiFreqs
-  --         rhoFreqs
-  --         thetaFreqs
-  --         scaleFreqs
-  --         -- (2 * pi)
-  --         (log (periodR2 * sqrt 2))
-  --         64
-  --         s
-  -- ys <-
-  --   computeContourSparse
-  --     plan
-  --     folderPath
-  --     coefficients
-  --     harmonicsArraySparse
-  --     -- []
-  --     (fromListUnboxed (Z :. L.length phiFreqs) phiFreqs)
-  --     (fromListUnboxed (Z :. L.length rhoFreqs) rhoFreqs)
-  --     64
-  --     xs
-  --     numIteration
-  --     ""
-  --     initSourceSparse
-  -- let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
-  --     idxVec = VU.fromList [(freqX, freqY) | freqX <- r2Freqs, freqY <- r2Freqs]
-  --     eigenSourceSparse' =
-  --       DFTArray numR2Freq numR2Freq phiFreqs rhoFreqs .
-  --       L.map
-  --         (L.foldl'
-  --            (\vec ((x, y), z) ->
-  --               VS.zipWith (+) vec .
-  --               VU.convert .
-  --               VU.map
-  --                 (\(freqX, freqY) ->
-  --                    z * (cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))) $
-  --               idxVec)
-  --            (VS.replicate (numR2Freq ^ 2) 0) .
-  --          L.zip xs) .
-  --       L.transpose . L.map R.toList $
-  --       ys
-  --     eigenSourceSparse =
-  --       convoluvePinhweelBasis coefficients harmonicsArray eigenSourceSparse'
-  --     eigenSourceSparseMat =
-  --       A.transpose . A.use . fromDFTArray . getDFTArrayVector $
-  --       eigenSourceSparse
-  -- eigenSourceSparseR2' <-
-  --   computeFourierSeriesR2StreamAcc
-  --     ptxs
-  --     numR2Freq
-  --     numPointsRecon
-  --     ((2 * scaleFreq + 1) * (2 * thetaFreq + 1))
-  --     periodR2
-  --     deltaRecon
-  --     numBatchR2
-  --     eigenSourceSparseMat
-  -- let eigenSourceSparseR2 =
-  --       R.reshape
-  --         (Z :. (2 * scaleFreq + 1) :. (2 * thetaFreq + 1) :. numPointsRecon :.
-  --          numPointsRecon) $
-  --       eigenSourceSparseR2'
-  --     eigenSinkSparseR2 =
-  --       timeReversalRepa
-  --         (L.map fromIntegral . getListFromNumber $ (2 * thetaFreq + 1))
-  --         eigenSourceSparseR2
-  -- completionSparseR2 <-
-  --   completionFieldRepa plan eigenSourceSparseR2 eigenSinkSparseR2
-  -- plotImageRepa (folderPath </> "SourceSparsePinwheel.png") .
-  --   ImageRepa 8 .
-  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-  --   VU.map sqrt .
-  --   toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
-  --   eigenSourceSparseR2
-  -- plotImageRepa (folderPath </> "SinkSparsePinwheel.png") .
-  --   ImageRepa 8 .
-  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-  --   VU.map sqrt .
-  --   toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
-  --   eigenSinkSparseR2
-  -- plotImageRepa (folderPath </> "CompletionSparsePinwheel.png") .
-  --   ImageRepa 8 .
-  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-  --   VU.map sqrt .
-  --   toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
-  --   completionSparseR2
-  -- printCurrentTime "Discrete and sparse done"
-  if scaleFreq == 0
-    then let initialSourceDistribution =
-               computeInitialDistributionPowerMethodPinwheelBasis'
-                 numR2Freq
-                 stdR2
-                 periodR2
-                 phiFreq
-                 rhoFreq
-                 points
-         in computeContourPinwheelBasis'
-              plan
-              folderPath
-              ptxs
-              writeFlag
-              coefficients
-              harmonicsArray
-              dftBias
-              numIteration
-              numBatchR2
-              numPointsRecon
-              numR2Freq
-              deltaRecon
-              periodR2
-              (2 * thetaFreq + 1)
-              (2 * scaleFreq + 1)
-              initialSourceDistribution
-    else let initialSourceDistribution =
-               computeInitialDistributionPowerMethodPinwheelBasis
-                 numR2Freq
-                 stdR2
-                 periodR2
-                 phiFreq
-                 rhoFreq
-                 points
-         in computeContourPinwheelBasis
-              plan
-              folderPath
-              ptxs
-              writeFlag
-              coefficients
-              harmonicsArray
-              dftBias
-              numIteration
-              numBatchR2
-              numPointsRecon
-              numR2Freq
-              deltaRecon
-              periodR2
-              (2 * thetaFreq + 1)
-              (2 * scaleFreq + 1)
-              initialSourceDistribution
+      periodEnv
+      radius
+      stdTheta
+      stdR
+      stdR2
+      points
+  let initDist =
+        computeInitialDistributionPowerMethodFourierPinwheelFull
+          numR2Freq
+          phiFreq
+          rhoFreq
+          thetaFreq
+          scaleFreq
+          bias
+  computeContourFourierPinwheel
+    plan
+    folderPath
+    ptxs
+    writeFlag
+    harmonicsArray
+    dftBias
+    numIteration
+    numBatchR2
+    numPointsRecon
+    deltaRecon
+    periodR2
+    initDist

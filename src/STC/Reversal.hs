@@ -9,6 +9,7 @@ import           Data.Vector.Storable as VS
 import           Data.Vector.Unboxed  as VU
 import           STC.DFTArray
 import           Types
+import FourierPinwheel.Array
 
 {-# INLINE computeReversalR2Z2T0S0 #-}
 computeReversalR2Z2T0S0 ::

@@ -10,14 +10,19 @@ import           Foreign.CUDA.BLAS               as BLAS
 import           Foreign.CUDA.Driver             as CUDA
 import           Foreign.Marshal
 import           Numerical.HBLAS.BLAS.FFI
+import           Numerical.HBLAS.BLAS.FFI.Level1
 import           Numerical.HBLAS.BLAS.FFI.Level3
 
 type BLASMMT e
    = Int -> Int -> Int -> VS.Vector e -> VS.Vector e -> IO (VS.Vector e)
+   
+type BLASDOTU e = VS.Vector e -> VS.Vector e -> IO e
 
 class BLAS a where
   gemmBLAS :: BLASMMT a
+  dotuBLAS :: BLASDOTU a
 
+ 
 instance BLAS Double where
   {-# INLINE gemmBLAS #-}
   gemmBLAS m' n' k' a b = do
@@ -44,6 +49,11 @@ instance BLAS Double where
             cPtr
             n
     return output
+  {-# INLINE dotuBLAS #-}
+  dotuBLAS vec1 vec2 =
+    unsafeWith vec1 $ \ptr1 ->
+      unsafeWith vec2 $ \ptr2 ->
+        cblas_ddot_safe (fromIntegral . VS.length $ vec1) ptr1 1 ptr2 1
 
 instance BLAS (Complex Double) where
   {-# INLINE gemmBLAS #-}
@@ -73,6 +83,22 @@ instance BLAS (Complex Double) where
                 cPtr
                 n
     return output
+  {-# INLINE dotuBLAS #-}
+  dotuBLAS vec1 vec2 = do
+    let output = VS.singleton 0
+    unsafeWith vec1 $ \ptr1 ->
+      unsafeWith vec2 $ \ptr2 ->
+        unsafeWith output $ \outPtr ->
+          cblas_zdotu_safe
+            (fromIntegral . VS.length $ vec1)
+            ptr1
+            1
+            ptr2
+            1
+            outPtr
+    return . VS.head $ output
+
+
 
 type CUBLASMMT a b e
    = Handle -> Int -> Int -> Int -> a e -> b e -> IO (VS.Vector e)

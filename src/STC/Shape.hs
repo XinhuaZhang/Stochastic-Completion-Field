@@ -50,6 +50,8 @@ data Shape2D
                , ehrensteinLength      :: Int }
   | Circle { circleNum    :: Int
            , circleRadius :: Int }
+  | KoffkaCross { koffkaCrossW :: Double
+                , koffkaCrossD :: Double }
   deriving (Show, Read)
 
 isDuplicate :: Int -> (Double,Double) -> [(Double,Double)] -> Bool
@@ -71,7 +73,7 @@ removeDuplicate len (x:xs) =
 getShape2DIndexList :: [(Double, Double)] -> [(Int, Int)]
 getShape2DIndexList  =
   L.map (\(x, y) -> (round x, round y))
-  
+
 {-# INLINE getShape2DIndexListGaussian #-}
 getShape2DIndexListGaussian ::
      Int -> Double -> [(Double, Double)] -> [(Int, Int, Double)]
@@ -225,6 +227,10 @@ makeShape2D (Points (centerC, centerR) _ (Circle num r)) =
         , fromIntegral r * sin (n * deltaThetaRad) + centerR)
       | n <- [0 .. (fromIntegral num - 1)]
       ]
+makeShape2D (Points (centerC, centerR) _ (KoffkaCross w d)) =
+  let w2 = w / 2
+      d2 = d / 2
+   in L.concat [[(x, y), (y, x)] | x <- [-w2, w2], y <- [-d2, d2]]
 
 {-# INLINE makeShape2DContrast #-}
 makeShape2DContrast :: Int -> Int -> ContrastArea Shape2D -> R.Array D DIM2 Int

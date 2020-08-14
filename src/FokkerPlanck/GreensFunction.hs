@@ -54,7 +54,7 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
       origin = R2S1RP 0 0 0 gamma
       idx =
         L.filter
-          (\(R2S1RP c r _ g) -> (sqrt (c^2 + r^2) > 2) && g > 0)
+          (\(R2S1RP c r _ g) -> (sqrt (c ^ 2 + r ^ 2) >= 1) && g > 0)
           [ R2S1RP
             ((fromIntegral $ c - center) * delta)
             ((fromIntegral $ r - center) * delta)
@@ -69,20 +69,26 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
         L.concat -- .
         -- L.zipWith
         --   (\w -> L.map (\(a, b, c, d, v) -> (a, b, c, d, v * w)))
-        --   simpsonWeights 
-        $
+        --   simpsonWeights
+         $
         parMap
           rdeepseq
           (\o ->
              let ori = fromIntegral o * deltaTheta
-             in L.filter (\(_, _, _, _, v) -> v > threshold) .
-                L.map
-                  (\point@(R2S1RP x y _ g) ->
-                     let v = computePji thetaSigma tau origin (R2S1RP x y ori g)
-                         phi = atan2 y x
-                         logRho = log . sqrt $ (x ^ 2 + y ^ 2)
-                     in (phi, logRho, ori, logGamma, v)) $
-                idx)
+              in L.filter (\(_, _, _, _, v) -> v > threshold) .
+                 L.map
+                   (\point@(R2S1RP x y _ g) ->
+                      let v =
+                            computePji thetaSigma tau origin (R2S1RP x y ori g)
+                          phi = atan2 y x
+                          rho = sqrt $ (x ^ 2 + y ^ 2)
+                       in ( phi
+                          , log rho
+                          , ori
+                          , logGamma
+                          , v -- * (1 - rho ** (-r2Sigma))
+                          )) $
+                 idx)
           [0 .. oris - 1]
   -- arr <-
   --   computeUnboxedP . fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. i :. j) ->
@@ -102,14 +108,15 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
   --   extend (Z :. (1 :: Int) :. All :. All) .
   --   sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
   --   arr
-  let -- simpsonWeights =
+      -- simpsonWeights =
       --   computeWeightArrFromListOfShape [numPoints, numPoints, oris]
       -- xs =
       --   L.filter (\(_, _, _, _, v) -> v > threshold) .
       --   R.toList -- .
-      --   -- R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights 
+      --   -- R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights
       --   $
       --   arr
+  let
   printCurrentTime $
     printf
       "Sparsity: %f%%\n"

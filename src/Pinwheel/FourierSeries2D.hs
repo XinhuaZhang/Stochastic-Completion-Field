@@ -31,6 +31,7 @@ import           Utils.Time
 import DFT.Plan
 import Filter.Utils
 import Control.Concurrent.Async
+import Numeric.GSL.Special.Bessel
 
 pinwheelFourierSeries ::
      ( Storable e
@@ -309,7 +310,7 @@ analyticalFourierCoefficients1 ::
   -> e
   -> R.Array D DIM2 (Complex e)
 analyticalFourierCoefficients1 numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv =
-  let c = ((-1) ^ (abs angularFreq)) / periodR2 :+ 0
+  let c = ((-1) ^ (abs angularFreq)) :+ 0
   in R.map (* c) $
      analyticalFourierSeries1 numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv
 
@@ -762,20 +763,19 @@ gaussianHighPassFilter1 radius alpha numR2Freq =
 idealLowPassFilter ::
      (VG.Vector vector (Complex Double))
   => Double
+  -> Double
   -> Int
   -> vector (Complex Double)
-idealLowPassFilter radius numR2Freq =
-  let a = 1 / (radius * 2)
-      r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
-      sinc x =
-        if x == 0
-          then 1
-          else (sin (pi * x)) / (pi * x)
-  in VG.fromList
-       [ ((sinc (xFreq / a)) * (sinc (yFreq / a)) / (a ^ 2)) :+ 0
-       | xFreq <- r2Freqs
-       , yFreq <- r2Freqs
-       ]
+idealLowPassFilter radius periodR2 numR2Freq =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+   in VG.fromList
+        [ let rho = 2 * pi * sqrt (xFreq ^ 2 + yFreq ^ 2) / periodR2
+           in if rho == 0
+                then 0
+                else radius / rho  * bessel_J1 (radius * rho) / periodR2 / (2 * pi)^2 :+ 0
+        | xFreq <- r2Freqs
+        , yFreq <- r2Freqs
+        ]
 
 {-# INLINE gaussianLowPassFilter #-}
 gaussianLowPassFilter :: Double -> Int -> VS.Vector (Complex Double)
@@ -915,7 +915,10 @@ centerHollowVector numR2Freq vec =
 
 {-# INLINE centerHollowArray #-}
 centerHollowArray ::
-     (R.Source s (Complex Double)) => Int -> R.Array s DIM2 (Complex Double) -> R.Array U DIM2 (Complex Double)
+     (R.Source s (Complex e), Unbox e, RealFloat e)
+  => Int
+  -> R.Array s DIM2 (Complex e)
+  -> R.Array U DIM2 (Complex e)
 centerHollowArray numR2Freq arr' =
   let centerFreq = div numR2Freq 2
       centerIdx = centerFreq * numR2Freq + centerFreq

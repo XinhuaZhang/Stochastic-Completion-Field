@@ -13,6 +13,15 @@ import           Pinwheel.FourierSeries2D
 import           STC.Point
 import           STC.Utils
 import           Utils.List
+import FourierPinwheel.AsteriskGaussian
+import Filter.Utils
+import           Data.Array.Accelerate.LLVM.PTX as A
+import qualified Data.Array.Accelerate          as A
+import FourierMethod.FourierSeries2D
+import Image.IO
+import Utils.Array
+import System.FilePath
+import Utils.Parallel
 
 {-# INLINE computeBias #-}
 computeBias ::
@@ -122,3 +131,282 @@ computeBiasGaussian1 plan numR2Freq sigma period points =
      | freqY <- r2Freqs
      , freqX <- r2Freqs
      ]
+
+computeBiasFourierPinwheel ::
+     DFTPlan
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Point]
+  -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
+computeBiasFourierPinwheel plan numR2Freqs thetaFreq alpha periodR2 periodEnv radius stdTheta points = do
+  asteriskGaussianVec <-
+    asteriskGaussianLowPass
+      plan
+      numR2Freqs
+      thetaFreq
+      alpha
+      periodR2
+      periodEnv
+      stdTheta
+      radius
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+      numThetaFreq = 2 * thetaFreq + 1
+      shiftVec =
+        VS.concat . L.replicate numThetaFreq . VS.fromList $
+        [ L.foldl'
+          (\b (Point x y theta scale) ->
+             b + cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))
+          0
+          points
+        | freqY <- r2Freqs
+        , freqX <- r2Freqs
+        ]
+      biasVec = VS.zipWith (*) asteriskGaussianVec shiftVec
+      -- centerFreq = div numR2Freqs 2
+      -- gaussian2D =
+      --   VU.convert .
+      --   toUnboxed . computeS . fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i' :. j') ->
+      --     let i = i' - centerFreq
+      --         j = j' - centerFreq
+      --      in exp
+      --           (pi * fromIntegral (i ^ 2 + j ^ 2) /
+      --            ((-1) * periodR2 ^ 2 * stdR2 ^ 2)) /
+      --         (2 * pi * stdR2 ^ 2) :+
+      --         0
+      -- zeroVec = VS.replicate (numR2Freqs ^ 2) 0
+      -- shiftVec =
+      --   VS.concat .
+      --   L.map
+      --     (\af ->
+      --        if af == 0
+      --          then VS.zipWith (*) gaussian2D . VS.fromList $
+      --               [ L.foldl'
+      --                 (\b (Point x y theta scale) ->
+      --                    b + cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))
+      --                 0
+      --                 points
+      --               | freqY <- r2Freqs
+      --               , freqX <- r2Freqs
+      --               ]
+      --          else zeroVec) $
+      --   [-thetaFreq .. thetaFreq]
+  biasVecF <-
+    dftExecute
+      plan
+      (DFTPlanID DFT1DG [numThetaFreq, numR2Freqs, numR2Freqs] [0, 1, 2]) .
+    VU.convert .
+    toUnboxed .
+    computeS .
+    makeFilter3D .
+    fromUnboxed (Z :. numThetaFreq :. numR2Freqs :. numR2Freqs) . VS.convert $
+    -- shiftVec
+    biasVec
+  return (biasVec, biasVecF)
+  -- return (shiftVec, biasVecF)
+  
+computeBiasFourierPinwheelFull ::
+     DFTPlan
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Point]
+  -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
+computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 points = do
+  asteriskGaussianVec <-
+    asteriskGaussian2Full
+      plan
+      numR2Freqs
+      thetaFreq
+      rFreq
+      alpha
+      periodR2
+      periodEnv
+      stdTheta
+      stdR
+      stdR2
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+      numThetaFreq = 2 * thetaFreq + 1
+      numRFreq = 2 * rFreq + 1
+      shiftVec =
+        VS.concat . L.replicate (numThetaFreq * numRFreq) . VS.fromList $
+        [ L.foldl'
+          (\b (Point x y theta scale) ->
+             b + cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))
+          0
+          points
+        | freqY <- r2Freqs
+        , freqX <- r2Freqs
+        ]
+      biasVec = VS.zipWith (*) asteriskGaussianVec shiftVec
+  biasVecF <-
+    dftExecute
+      plan
+      (DFTPlanID
+         DFT1DG
+         [numRFreq, numThetaFreq, numR2Freqs, numR2Freqs]
+         [0, 1, 2, 3]) .
+    VU.convert .
+    toUnboxed .
+    computeS .
+    makeFilter4D .
+    fromUnboxed (Z :. numRFreq :. numThetaFreq :. numR2Freqs :. numR2Freqs) .
+    VS.convert $
+    biasVec
+  return (biasVec, biasVecF)
+
+
+-- computeBiasFourierPinwheel ::
+--      DFTPlan
+--   -> Int
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> [Point]
+--   -> FilePath
+--   -> [PTX]
+--   -> Int
+--   -> Int
+--   -> IO (VS.Vector (Complex Double))
+-- computeBiasFourierPinwheel plan numR2Freqs thetaFreq alpha periodR2 periodEnv stdR2 stdTheta points folderPath ptxs numPoints numBatch = do
+--   let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+--       numThetaFreq = 2 * thetaFreq + 1
+--       gaussianVec =
+--         asteriskGaussian1 numR2Freqs thetaFreq alpha periodR2 periodEnv stdR2
+--       shiftCoef =
+--         [ L.foldl'
+--           (\b (Point x y theta scale) ->
+--              b + cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))
+--           0
+--           points
+--         | freqY <- r2Freqs
+--         , freqX <- r2Freqs
+--         ]
+--       shiftVec = VS.concat . L.replicate numThetaFreq . VS.fromList $ shiftCoef
+--       biasVec = VS.zipWith (*) (VS.concat gaussianVec) shiftVec
+--       biasMat =
+--         A.transpose .
+--         A.use .
+--         A.fromList (A.Z A.:. numThetaFreq A.:. (numR2Freqs ^ 2)) . VS.toList $
+--         biasVec
+--   biasR2 <-
+--     computeFourierSeriesR2StreamAcc
+--       ptxs
+--       numR2Freqs
+--       numPoints
+--       numThetaFreq
+--       periodR2
+--       1
+--       numBatch
+--       biasMat
+--   plotImageRepa (folderPath </> "AsteriskBias.png") .
+--     ImageRepa 8 .
+--     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+--     VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+--     biasR2
+--   let centerFreq = div numR2Freqs 2
+--       shiftArr = fromListUnboxed (Z :. numR2Freqs :. numR2Freqs) shiftCoef
+--       gaussian2D =
+--         computeUnboxedS . fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i' :. j') ->
+--           let i = i' - centerFreq
+--               j = j' - centerFreq
+--            in (exp
+--                  ((pi * (fromIntegral $ i ^ 2 + j ^ 2)) /
+--                   ((-1) * periodR2 ^ 2 * stdR2 ^ 2))) /
+--               (2 * pi * stdR2 ^ 2) :+
+--               0
+--       gaussian2DMat =
+--         A.use .
+--         A.fromList (A.Z A.:. (numR2Freqs ^ 2) A.:. (1 :: Int)) .
+--         R.toList . R.zipWith (*) shiftArr $
+--         gaussian2D
+--   gaussian2DR2 <-
+--     computeFourierSeriesR2StreamAcc
+--       ptxs
+--       numR2Freqs
+--       numPoints
+--       1
+--       periodR2
+--       1
+--       numBatch
+--       gaussian2DMat
+--   plotImageRepa (folderPath </> "Gaussian2D.png") .
+--     ImageRepa 8 .
+--     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+--     VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+--     gaussian2DR2
+--   let planID = DFTPlanID DFT1DG [numR2Freqs, numR2Freqs] [0, 1]
+--       inversePlanID = DFTPlanID IDFT1DG [numR2Freqs, numR2Freqs] [0, 1]
+--   gaussian2DF <-
+--     dftExecute plan planID . VU.convert . toUnboxed . computeS . makeFilter2D $
+--     gaussian2D
+--   asteriskGaussianF <- dftExecuteBatchP plan planID gaussianVec
+--   outputVec <-
+--     fmap VS.concat .
+--     dftExecuteBatchP plan inversePlanID .
+--     parMap rdeepseq (VS.zipWith (*) gaussian2DF) $
+--     asteriskGaussianF
+--   let outputMat =
+--         A.transpose .
+--         A.use .
+--         A.fromList (A.Z A.:. numThetaFreq A.:. (numR2Freqs ^ 2)) . VS.toList $
+--         outputVec
+--   outputR2 <-
+--     computeFourierSeriesR2StreamAcc
+--       ptxs
+--       numR2Freqs
+--       numPoints
+--       numThetaFreq
+--       periodR2
+--       1
+--       numBatch
+--       outputMat
+--   plotImageRepa (folderPath </> "AsteriskGaussian.png") .
+--     ImageRepa 8 .
+--     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+--     VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+--     outputR2
+--   dftExecute
+--     plan
+--     (DFTPlanID DFT1DG [numThetaFreq, numR2Freqs, numR2Freqs] [0, 1, 2]) .
+--     VU.convert .
+--     toUnboxed .
+--     computeS .
+--     makeFilter3D .
+--     fromUnboxed (Z :. numThetaFreq :. numR2Freqs :. numR2Freqs) . VS.convert $
+--     -- shiftVec
+    -- VS.zipWith (*) outputVec shiftVec
+
+
+
+-- zeroVec = VS.replicate (numR2Freqs ^ 2) 0
+-- shiftVec =
+--   VS.concat .
+--   L.map
+--     (\angularFreq ->
+--        if angularFreq == 0
+--          then VS.fromList $
+--               [ L.foldl'
+--                 (\b (Point x y _ _) ->
+--                    b + cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))
+--                 0
+--                 points
+--               | freqY <- r2Freqs
+--               , freqX <- r2Freqs
+--               ]
+--          else zeroVec) $
+--   [-thetaFreq .. thetaFreq]

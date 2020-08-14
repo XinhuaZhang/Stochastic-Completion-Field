@@ -1,12 +1,17 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE Strict       #-}
+{-# LANGUAGE BangPatterns     #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Strict           #-}
 module STC.InitialDistribution where
 
-import           Array.UnboxedArray  as AU
-import           Data.Array.Repa     as R
+import           Array.UnboxedArray       as AU
+import           Data.Array.Repa          as R
 import           Data.Complex
-import           Data.List           as L
-import           Data.Vector.Generic as VG
+import           Data.List                as L
+import           Data.Vector.Generic      as VG
+import           Data.Vector.Storable     as VS
+import           DFT.Plan
+import           FourierPinwheel
+import           Pinwheel.FourierSeries2D
 import           STC.Convolution
 import           STC.DFTArray
 import           STC.Point
@@ -14,7 +19,6 @@ import           STC.Utils
 import           Utils.Distribution
 import           Utils.List
 import           Utils.Parallel
-import            Pinwheel.FourierSeries2D
 
 {-# INLINE computeInitialDistribution #-}
 computeInitialDistribution ::
@@ -200,7 +204,7 @@ computeInitialDistributionPowerMethodPinwheelBasis' numR2Freq sigma period phiFr
          else zeroVec
        | angularFreq <- phiFreqs
        ]
-       
+
 computeInitialDistributionPowerMethodPinwheelBasis ::
      Int -> Double -> Double -> Int -> Int -> [Point] -> DFTArray
 computeInitialDistributionPowerMethodPinwheelBasis numR2Freq sigma period phiFreq rhoFreq points =
@@ -227,7 +231,7 @@ computeInitialDistributionPowerMethodPinwheelBasis numR2Freq sigma period phiFre
        phiFreqs
        rhoFreqs
        [ if angularFreq == 0 && radialFreq == 0
-         then VG.zipWith (*) envelope . 
+         then VG.zipWith (*) envelope .
               VG.fromList $
               [ L.foldl'
                 (\b (Point x y _ _) ->
@@ -241,3 +245,109 @@ computeInitialDistributionPowerMethodPinwheelBasis numR2Freq sigma period phiFre
        | radialFreq <- rhoFreqs
        , angularFreq <- phiFreqs
        ]
+
+
+computeInitialDistributionFourierPinwheel ::
+     (VG.Vector vector (Complex Double), NFData (vector (Complex Double)))
+  => Int
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> [Point]
+  -> FPArray (vector (Complex Double))
+computeInitialDistributionFourierPinwheel numR2Freqs period periodEnv phiFreq rhoFreq thetaFreq rFreq points =
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+      thetaFreqs = L.map fromIntegral [-thetaFreq .. thetaFreq]
+      rFreqs = L.map fromIntegral [-rFreq .. rFreq]
+   in FPArray
+        numR2Freqs
+        numR2Freqs
+        (2 * rFreq + 1)
+        (2 * thetaFreq + 1)
+        (2 * rhoFreq + 1)
+        (2 * phiFreq + 1) .
+      L.map
+        (\radialFreq ->
+           VG.concat .
+           parMap
+             rdeepseq
+             (\angularFreq ->
+                VG.fromList
+                  [ L.foldl'
+                    (\b (Point x y theta scale) ->
+                       b +
+                       cis
+                         (-(angularFreq * theta * pi / 180 +
+                            (freqX * x + freqY * y) * 2 * pi / period +
+                            2 * pi / (log periodEnv) * log scale * radialFreq)))
+                    0
+                    points
+                  | freqY <- r2Freqs
+                  , freqX <- r2Freqs
+                  ]) $
+           thetaFreqs) $
+      rFreqs
+
+
+computeInitialDistributionPowerMethodFourierPinwheel ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> FPArray (VS.Vector (Complex Double))
+computeInitialDistributionPowerMethodFourierPinwheel numR2Freqs phiFreq rhoFreq thetaFreq rFreq bias =
+  let thetaFreqs = L.map fromIntegral [-thetaFreq .. thetaFreq]
+      rFreqs = L.map fromIntegral [-rFreq .. rFreq]
+      numThetaFreq = 2 * thetaFreq + 1
+      zeroVec = VG.replicate (numThetaFreq * numR2Freqs ^ 2) 0
+   in FPArray
+        numR2Freqs
+        numR2Freqs
+        (2 * rFreq + 1)
+        numThetaFreq
+        (2 * rhoFreq + 1)
+        (2 * phiFreq + 1) .
+      L.map
+        (\radialFreq ->
+           if radialFreq == 0
+             then bias
+             else zeroVec) $
+      rFreqs
+      
+
+computeInitialDistributionPowerMethodFourierPinwheelFull ::
+     Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> FPArray (VS.Vector (Complex Double))
+computeInitialDistributionPowerMethodFourierPinwheelFull numR2Freqs phiFreq rhoFreq thetaFreq rFreq bias =
+  let numThetaFreq = 2 * thetaFreq + 1
+      numRFreq = 2 * rFreq + 1
+   in FPArray
+        numR2Freqs
+        numR2Freqs
+        (2 * rFreq + 1)
+        numThetaFreq
+        (2 * rhoFreq + 1)
+        (2 * phiFreq + 1) .
+      parMap
+        rdeepseq
+        (\radialFreq ->
+           VG.convert .
+           toUnboxed .
+           computeS .
+           R.slice
+             (fromUnboxed
+                (Z :. numRFreq :. numThetaFreq :. numR2Freqs :. numR2Freqs) .
+              VG.convert $
+              bias) $
+           (Z :. radialFreq :. All :. All :. All)) $
+      [0 .. 2 * rFreq]

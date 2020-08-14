@@ -1,0 +1,23 @@
+cradle:
+  stack:    
+    - path: ./test/AsteriskGaussian/
+      component: "Stochastic-Completion-Field:test:AsteriskGaussian-test"
+    - path: ./test/HollowPinwheel/
+      component: "Stochastic-Completion-Field:test:HollowPinwheel-test"
+    - path: ./test/IllusoryContourShapePinwheelBasis
+      component: "Stochastic-Completion-Field:test:IllusoryContourShapePinwheelBasis-test"
+    - path: ./test/STCPinwheel/
+      component: "Stochastic-Completion-Field:test:STCPinwheel-test"
+    - path: ./src
+      component: "Stochastic-Completion-Field:lib"
+  # multi:
+  #   - path: "./"
+  #     config:
+  # 	cradle:
+  # 	  stack:
+  # 	  - path: "./src/"
+  #         component: "Stochastic-Completion-Field:lib"
+  #   - path: "./test"
+  #     config:
+  #       cradle:
+  # 	  none:
