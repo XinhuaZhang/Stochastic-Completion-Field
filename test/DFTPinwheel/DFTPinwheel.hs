@@ -27,17 +27,19 @@ import Numeric.GSL.Special.Bessel
 import           Utils.Distribution
 
 main = do
-  args@(deviceIDsStr:numPointsStr:numR2FreqStr:deltaStr:periodR2Str:angularFreqStr:radialFreqStr:sigmaStr:periodEnvelopeStr:numBatchStr:_) <-
+  args@(deviceIDsStr:numPointsStr:numR2FreqStr:deltaStr:deltaReconStr:periodR2Str:angularFreqStr:radialFreqStr:sigmaStr:periodEnvelopeStr:stdStr:numBatchStr:_) <-
     getArgs
   let deviceIDs = read deviceIDsStr :: [Int]
       numPoints = read numPointsStr :: Int
       numR2Freqs = read numR2FreqStr :: Int
       delta = read deltaStr :: Double
+      deltaRecon = read deltaReconStr :: Double
       periodR2 = read periodR2Str :: Double
       angularFreq = read angularFreqStr :: Int
       radialFreq = read radialFreqStr :: Int
       sigma = read sigmaStr :: Double
       periodEnvelope = read periodEnvelopeStr :: Double
+      std = read stdStr :: Double
       numBatch = read numBatchStr :: Int
       folderPath = "output/test/DFTPinwheel"
   removePathForcibly folderPath
@@ -54,21 +56,22 @@ main = do
             (periodEnvelope * sqrt 2)
             angularFreq
             radialFreq
-            (fromIntegral (x - center), fromIntegral (y - center))
+            ( deltaRecon * fromIntegral (x - center)
+            , deltaRecon * fromIntegral (y - center))
       pinwheelMat =
         CuMat (numPoints ^ 2) 1 . CuVecHost . VU.convert . toUnboxed $ pinwheel
       centerFreq = div numR2Freqs 2
-      pinwheelFreq =
-        computeUnboxedS . R.fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. x :. y) ->
-          fourierMellin
-            sigma
-            angularFreq
-            radialFreq
-            ( delta * fromIntegral (x - centerFreq)
-            , delta * fromIntegral (y - centerFreq))
-      pinwheelFreqMat =
-        CuMat 1 (numR2Freqs ^ 2) . CuVecHost . VU.convert . toUnboxed $ -- . computeS . weightedArray
-        pinwheelFreq
+      -- pinwheelFreq =
+      --   computeUnboxedS . R.fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. x :. y) ->
+      --     fourierMellin
+      --       sigma
+      --       angularFreq
+      --       radialFreq
+      --       ( delta * fromIntegral (x - centerFreq)
+      --       , delta * fromIntegral (y - centerFreq))
+      -- pinwheelFreqMat =
+      --   CuMat 1 (numR2Freqs ^ 2) . CuVecHost . VU.convert . toUnboxed $ -- . computeS . weightedArray
+      --   pinwheelFreq
   -- invHarmonics <-
   --   createInverseHarmonicMatriesGPU ptxs 1 numPoints numR2Freqs periodR2 delta
   -- pinwheelCoef <-
@@ -96,10 +99,10 @@ main = do
     let x = fromIntegral $ i - center
         y = fromIntegral $ j - center
         r = sqrt $ x ^ 2 + y ^ 2
-    in -- if r <= 6
+       -- if r <= 6
        --   then 0
        --   else
-      f idx
+     in f idx
   -- plotImageRepaComplex (folderPath </> "PinwheelTest.png") .
   --   ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) $
   --   pinwheelTest
@@ -117,14 +120,14 @@ main = do
   -- plotImageRepaComplex (folderPath </> "PinwheelFrequencySeries.png") .
   --   ImageRepa 8 $
   --   pinwheelFreqSeries
-  -- initVec <-
-  --   (VS.fromList . L.map (\x -> x :+ 0)) <$>
-  --   M.replicateM (numPoints ^ 2) randomIO
-  -- lock <- getFFTWLock
-  -- plan <-
-  --   fst <$> dft1dGPlan lock emptyPlan [numPoints, numPoints] [0, 1] initVec
+  initVec <-
+    (VS.fromList . L.map (\x -> x :+ 0)) <$>
+    M.replicateM (numPoints ^ 2) randomIO
+  lock <- getFFTWLock
+  plan <-
+    fst <$> idft1dGPlan lock emptyPlan [numPoints, numPoints] [0, 1] initVec
   -- dftPinwheel <-
-  --   dftExecute plan (DFTPlanID DFT1DG [numPoints, numPoints] [0, 1]) .
+  --   dftExecute plan (DFTPlanID IDFT1DG [numPoints, numPoints] [0, 1]) .
   --   VU.convert . toUnboxed . computeUnboxedS . makeFilter2D $
   --   pinwheel
   -- plotImageRepaComplex (folderPath </> "DFTPinwheel.png") .
@@ -133,16 +136,32 @@ main = do
   --   makeFilter2D .
   --   fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) . VS.convert $
   --   dftPinwheel
-  let pinwheelFreqAnatical =
+  let centerR2Freq = div numR2Freqs 2
+      gaussian2D =
+        computeUnboxedS . fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i' :. j') ->
+          let i = i' - centerR2Freq
+              j = j' - centerR2Freq
+              rho = (sqrt . fromIntegral $ i ^ 2 + j ^ 2) / periodR2 * 2*pi
+           in (-- rho ^ (abs angularFreq) *
+               exp
+                 (pi * fromIntegral (i ^ 2 + j ^ 2) /
+                  ((-1) * periodR2 ^ 2 * std ^ 2)) /
+               (2 * pi * std ^ 2)) :+
+              0
+      -- pinwheelFreqAnaticalNonGaussian =
+      --   centerHollowArray numR2Freqs . computeUnboxedS $
+      --   analyticalFourierCoefficients2
+      --     numR2Freqs
+      --     delta
+      --     angularFreq
+      --     radialFreq
+      --     (-sigma) --(sigma - 1)
+      --     periodR2
+      --     (periodEnvelope * sqrt 2)
+      pinwheelFreqAnatical =
         centerHollowArray numR2Freqs .
-        computeUnboxedS -- .
-        -- R.zipWith
-        --   (*)
-        --   (fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
-        --      gaussian2D
-        --        (fromIntegral $ i - centerFreq)
-        --        (fromIntegral $ j - centerFreq)
-        --        (fromIntegral $ div centerFreq 1)) 
+        computeUnboxedS 
+        -- . R.zipWith (*) gaussian2D 
         $
         analyticalFourierCoefficients2
           numR2Freqs
@@ -152,10 +171,10 @@ main = do
           (-sigma) --(sigma - 1)
           periodR2
           (periodEnvelope * sqrt 2)
-      pinwheelFreqAnaticalMat =
-        A.use .
-        A.fromList (A.Z A.:. (numR2Freqs ^ 2) A.:. (1 :: Int)) . R.toList $
-        pinwheelFreqAnatical
+      -- pinwheelFreqAnaticalMat =
+      --   A.use .
+      --   A.fromList (A.Z A.:. (numR2Freqs ^ 2) A.:. (1 :: Int)) . R.toList $
+      --   pinwheelFreqAnatical
       -- pinwheelFreqAnaticalInner =
       --   centerHollowArray numR2Freqs . computeUnboxedS $
       --   analyticalFourierCoefficients2'
@@ -183,6 +202,10 @@ main = do
     ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) $
     pinwheelFreqAnatical
   -- plotImageRepaComplex
+  --   (folderPath </> "PinwheelCoefficientsAnalyticalNonGaussian.png") .
+  --   ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) $
+  --   pinwheelFreqAnaticalNonGaussian
+  -- plotImageRepaComplex
   --   (folderPath </> "PinwheelCoefficientsAnalyticalInner.png") .
   --   ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) $
   --   pinwheelFreqAnaticalInner
@@ -207,32 +230,42 @@ main = do
   --   in if r <= 0
   --        then 0
   --        else f idx
-  pinwheelCoefficientsAnalyticalSeriesStream <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numR2Freqs
-      numPoints
-      1
-      periodR2
-      delta
-      numBatch
-      pinwheelFreqAnaticalMat
-      -- [ transposeCuMat . createCuMat $
-      --   [VU.convert . toUnboxed $ pinwheelFreqAnatical]
-      -- ]
-  plotImageRepaComplex
-    (folderPath </> "PinwheelCoefficientsAnalyticalSeries.png") .
+  -- pinwheelCoefficientsAnalyticalSeriesStream <-
+  --   computeFourierSeriesR2StreamAcc
+  --     ptxs
+  --     numR2Freqs
+  --     numPoints
+  --     1
+  --     periodR2
+  --     deltaRecon
+  --     numBatch
+  --     pinwheelFreqAnaticalMat
+  --     -- [ transposeCuMat . createCuMat $
+  --     --   [VU.convert . toUnboxed $ pinwheelFreqAnatical]
+  --     -- ]
+  -- plotImageRepaComplex
+  --   (folderPath </> "PinwheelCoefficientsAnalyticalSeries.png") .
+  --   ImageRepa 8 .
+  --   computeS .
+  --   extend (Z :. (1 :: Int) :. All :. All) .
+  --   R.traverse (sumS . rotate3D $ pinwheelCoefficientsAnalyticalSeriesStream) id $ \f idx@(Z :. i :. j) ->
+  --   let x = fromIntegral $ i - center
+  --       y = fromIntegral $ j - center
+  --       r = sqrt $ x ^ 2 + y ^ 2
+  --      -- if r <= 6
+  --      --   then 0
+  --      --   else
+  --    in f idx
+  pinwheelCoefficientsAnalyticalIDFT <-
+    dftExecute plan (DFTPlanID IDFT1DG [numPoints, numPoints] [0, 1]) .
+    VU.convert . toUnboxed . computeS . makeFilter2D $
+    pinwheelFreqAnatical
+  plotImageRepaComplex (folderPath </> "PinwheelCozefficientsIDFT.png") .
     ImageRepa 8 .
     computeS .
-    extend (Z :. (1 :: Int) :. All :. All) .
-    R.traverse (sumS . rotate3D $ pinwheelCoefficientsAnalyticalSeriesStream) id $ \f idx@(Z :. i :. j) ->
-    let x = fromIntegral $ i - center
-        y = fromIntegral $ j - center
-        r = sqrt $ x ^ 2 + y ^ 2
-    in -- if r <= 6
-       --   then 0
-       --   else
-      f idx
+    makeFilter2DInverse .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) . VS.convert $
+    pinwheelCoefficientsAnalyticalIDFT
   -- pinwheelCoefficientsAnalyticalInnerSeriesStream <-
   --   computeFourierSeriesR2StreamAcc'
   --     ptxs

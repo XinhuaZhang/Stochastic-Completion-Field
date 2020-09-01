@@ -10,9 +10,7 @@ import           Data.Complex
 import           Data.List                      as L
 import           Data.Vector.Storable           as VS
 import           Data.Vector.Unboxed            as VU
-import           FokkerPlanck.FourierSeries
-import           FokkerPlanck.GreensFunction
-import           FokkerPlanck.Histogram
+import           FokkerPlanck
 import           Foreign.CUDA.Driver            as CUDA
 import           FourierMethod.BlockMatrixAcc
 import           FourierMethod.FourierSeries2D
@@ -30,7 +28,7 @@ import Data.Array.IArray as IA
 import FourierPinwheel
 
 main = do
-  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdThetaStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
+  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:tauStr:numTrailsStr:deltaTStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdThetaStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
     getArgs
   let deviceIDs = read deviceIDsStr :: [Int]
       numPoints = read numPointsStr :: Int
@@ -43,6 +41,8 @@ main = do
       thetaSigma = read thetaSigmaStr :: Double
       scaleSigma = read scaleSigmaStr :: Double
       tau = read tauStr :: Double
+      numTrails = read numTrailsStr :: Int
+      deltaT = read deltaTStr :: Double
       numR2Freq = read numR2FreqStr :: Int
       periodR2 = read periodR2Str :: Double
       phiFreq = read phiFreqsStr :: Int
@@ -60,7 +60,6 @@ main = do
       initSink = [L.last initPoints]
       numThread = read numThreadStr :: Int
       folderPath = "output/test/IllusoryContourShapePinwheelBasis"
-      maxScale = read maxScaleStr :: Double
       halfLogPeriod = log maxScale
       stdR2 = read stdR2Str :: Double
       stdTheta = read stdThetaStr :: Double
@@ -72,16 +71,13 @@ main = do
       s = read sStr :: Double
       writeFlag = read writeFlagStr :: Bool
       numIteration = read numIterationStr :: Int
-      shape2D@(Points _ minDist _) = read shape2DStr :: Points Shape2D
+      shape2D@(Points _ minDist shape) = read shape2DStr :: Points Shape2D
       radius = read radiusStr :: Double
-      periodEnv = periodR2 * sqrt 2
+      periodEnv = periodR2 * sqrt 2 -- ^ 2 * 2
+      maxScale =  sqrt periodEnv -- periodR2 / 2 * sqrt 2
   -- removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
-  initialise []
-  devs <- M.mapM device deviceIDs
-  ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
-  ptxs <- M.mapM createTargetFromContext ctxs
   hist <-
     if flag
       then do
@@ -89,23 +85,44 @@ main = do
         decodeFile histFilePath
       else do
         printCurrentTime "Start computing coefficients..."
-        sampleCartesian
-          histFilePath
-          folderPath
-          ptxs
-          numPoints
-          periodEnv
-          delta
-          numOrientation
-          initScale
+        initialise []
+        devs <- M.mapM device deviceIDs
+        ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
+        ptxs <- M.mapM createTargetFromContext ctxs
+        runMonteCarloFourierCoefficientsGPU
+          deviceIDs
+          numThread
+          numTrails
+          batchSize
           thetaSigma
-          tau
-          threshold
+          scaleSigma
+          0
           s
-          phiFreq
-          rhoFreq
-          thetaFreq
-          scaleFreq
+          tau
+          deltaT
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          scaleFreqs          
+          periodEnv
+          histFilePath
+        -- sampleCartesian
+        --   histFilePath
+        --   folderPath
+        --   ptxs
+        --   numPoints
+        --   periodEnv
+        --   delta
+        --   numOrientation
+        --   initScale
+        --   thetaSigma
+        --   tau
+        --   threshold
+        --   s
+        --   phiFreq
+        --   rhoFreq
+        --   thetaFreq
+        --   scaleFreq
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
   plan <-
@@ -119,27 +136,28 @@ main = do
       (2 * scaleFreq + 1)
       (2 * phiFreq + 1)
       (2 * rhoFreq + 1)
-  let coefficients = getNormalizedHistogramArr $ hist
+  printCurrentTime "Compute DFT Plan done."
+  let coefficients = getNormalizedHistogramArr hist
   -- coefficients <- hollowCoefficients plan radius periodEnv coefficients'
       -- coefficients
       --   -- normalizeFreqArr stdA stdR phiFreqs rhoFreqs .
       --  = getNormalizedHistogramArr $ hist
-  let harmonicsArray =
-        createHarmonics
-          numR2Freq
-          phiFreq
-          rhoFreq
-          thetaFreq
-          scaleFreq
-          (-s)
-          periodR2
-          periodEnv
-          coefficients
-      points =
-        L.map (\(x, y) -> Point ( x) ( y) 0 1) .
-        getShape2DIndexList' . makeShape2D $
+  harmonicsArray <-
+    createHarmonics
+      numR2Freq
+      phiFreq
+      rhoFreq
+      thetaFreq
+      scaleFreq
+      (-s)
+      periodR2
+      periodEnv
+      coefficients
+  let points =
+        L.map (\(x, y) -> Point x y 0 1) . getShape2DIndexList' . makeShape2D $
         shape2D
-  (bias, dftBias) <-
+  (bias, dftBias) <- --Full
+  -- (dftBias, bias) <- -- Discrete
     computeBiasFourierPinwheelFull
       plan
       numR2Freq
@@ -160,17 +178,34 @@ main = do
           rhoFreq
           thetaFreq
           scaleFreq
-          bias
+          bias -- dftBias
+  -- initDist <- multiplyRFunction plan periodEnv initDist'
   computeContourFourierPinwheel
     plan
     folderPath
-    ptxs
     writeFlag
     harmonicsArray
-    dftBias
+    dftBias -- bias
     numIteration
     numBatchR2
     numPointsRecon
     deltaRecon
     periodR2
     initDist
+    (show . circleRadius $ shape)
+  -- let initMat = A.transpose . toMatrixAcc $ initDist
+  -- initR2 <-
+  --   computeFourierSeriesR2StreamAcc
+  --     ptxs
+  --     (getFPArrayNumXFreq initDist)
+  --     numPoints
+  --     (getFPArrayNumRFreq initDist * getFPArrayNumThetaFreq initDist)
+  --     periodR2
+  --     delta
+  --     numBatchR2
+  --     initMat
+  -- plotImageRepa (folderPath </> "Init.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+  --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+  --   initR2

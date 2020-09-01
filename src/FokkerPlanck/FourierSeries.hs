@@ -68,7 +68,7 @@ sampleScale ::
 sampleScale !phiFreq !rhoFreq !thetaFreq !rFreq !halfLogPeriod =
   L.sum .
   L.map
-    (\(Particle newPhi newRho theta newR) ->
+    (\(Particle newPhi newRho theta newR _) ->
        if newRho == 0 -- || newR == 0
          then 0
          else (cos (phiFreq * newPhi + thetaFreq * (theta - newPhi)) :+ 0) *

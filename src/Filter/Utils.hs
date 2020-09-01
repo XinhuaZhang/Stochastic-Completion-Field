@@ -77,3 +77,62 @@ makeFilter4D arr =
             (makeFilterHelper tf a) :.
             (makeFilterHelper sf b)))
         arr
+
+
+{-# INLINE makeFilterInverseHelper #-}
+makeFilterInverseHelper :: Int -> Int -> Int
+makeFilterInverseHelper len i
+  | even len =
+    if i < c
+      then i + c
+      else i - c
+  | otherwise =
+    if i < c
+      then i + c + 1
+      else i - c
+  where
+    c = center len
+
+
+{-# INLINE makeFilter2DInverse #-}
+makeFilter2DInverse ::
+     (Source r e, Shape sh)
+  => R.Array r (sh :. Int :. Int) e
+  -> R.Array D (sh :. Int :. Int) e
+makeFilter2DInverse arr =
+  let (cols:rows:_) = L.take 2 . listOfShape . extent $ arr
+   in R.backpermute
+        (extent arr)
+        (\(sh :. i :. j) ->
+           (sh :. (makeFilterInverseHelper rows i) :. (makeFilterInverseHelper cols j)))
+        arr
+
+{-# INLINE makeFilter3DInverse #-}
+makeFilter3DInverse ::
+     (Source r e, Shape sh)
+  => R.Array r (sh :. Int :. Int :. Int) e
+  -> R.Array D (sh :. Int :. Int :. Int) e
+makeFilter3DInverse arr =
+  let (sf:tf:cols:_) = L.take 3 . listOfShape . extent $ arr
+   in R.backpermute
+        (extent arr)
+        (\(sh :. j :. a :. b) ->
+           (sh :. (makeFilterInverseHelper cols j) :. (makeFilterInverseHelper tf a) :.
+            (makeFilterInverseHelper sf b)))
+        arr
+
+
+{-# INLINE makeFilter4DInverse #-}
+makeFilter4DInverse ::
+     (Source r e, Shape sh)
+  => R.Array r (sh :. Int :. Int :. Int :. Int) e
+  -> R.Array D (sh :. Int :. Int :. Int :. Int) e
+makeFilter4DInverse arr =
+  let (sf:tf:cols:rows:_) = L.take 4 . listOfShape . extent $ arr
+   in R.backpermute
+        (extent arr)
+        (\(sh :. i :. j :. a :. b) ->
+           (sh :. (makeFilterInverseHelper rows i) :. (makeFilterInverseHelper cols j) :.
+            (makeFilterInverseHelper tf a) :.
+            (makeFilterInverseHelper sf b)))
+        arr

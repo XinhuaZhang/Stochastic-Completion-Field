@@ -2,6 +2,10 @@ cradle:
   stack:    
     - path: ./test/AsteriskGaussian/
       component: "Stochastic-Completion-Field:test:AsteriskGaussian-test"
+    - path: ./test/AsteriskGaussianConvolution/
+      component: "Stochastic-Completion-Field:test:AsteriskGaussianConvolution-test"
+    - path: ./test/HankelTransform/
+      component: "Stochastic-Completion-Field:test:HankelTransform-test"
     - path: ./test/HollowPinwheel/
       component: "Stochastic-Completion-Field:test:HollowPinwheel-test"
     - path: ./test/IllusoryContourShapePinwheelBasis

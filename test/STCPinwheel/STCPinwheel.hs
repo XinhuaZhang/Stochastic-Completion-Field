@@ -13,9 +13,7 @@ import           Data.List                      as L
 import           Data.Vector.Storable           as VS
 import           Data.Vector.Unboxed            as VU
 import           Filter.Utils
-import           FokkerPlanck.FourierSeries
-import           FokkerPlanck.GreensFunction
-import           FokkerPlanck.Histogram
+import           FokkerPlanck
 import           Foreign.CUDA.Driver            as CUDA
 import           FourierMethod.BlockMatrixAcc
 import           FourierMethod.FourierSeries2D
@@ -31,7 +29,7 @@ import           Utils.Array
 import           Utils.Time
 
 main = do
-  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:maxScaleStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:radiusStr:numThreadStr:_) <-
+  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:tauStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:radiusStr:deltaTStr:numThreadStr:_) <-
     getArgs
   let deviceIDs = read deviceIDsStr :: [Int]
       numPoints = read numPointsStr :: Int
@@ -61,8 +59,6 @@ main = do
       initSink = [L.last initPoints]
       numThread = read numThreadStr :: Int
       folderPath = "output/test/STCPinwheel"
-      maxScale = read maxScaleStr :: Double
-      halfLogPeriod = log maxScale
       stdR2 = read stdR2Str :: Double
       std = read stdStr :: Double
       numBatchR2 = read numBatchR2Str :: Int
@@ -71,39 +67,60 @@ main = do
       batchSize = read batchSizeStr :: Int
       s = read sStr :: Double
       radius = read radiusStr :: Double
-      periodEnvelope = periodR2 * sqrt 2
+      deltaT = read deltaTStr :: Double
+      periodEnvelope = periodR2 ^ 2 * 2
+      maxScale = sqrt periodEnvelope
   removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
-  flag <- doesFileExist histFilePath
-  initialise []
-  devs <- M.mapM device deviceIDs
-  ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
-  ptxs <- M.mapM createTargetFromContext ctxs
-  printCurrentTime "Start computing coefficients..."
+  flag <- doesFileExist histFilePath  
+  
   hist <-
     if flag
-      then decodeFile histFilePath
-      else sampleCartesian
-             histFilePath
-             folderPath
-             ptxs
-             numPoints
-             periodEnvelope
-             delta
-             numOrientation
-             initScale
-             thetaSigma
-             tau
-             threshold
-             s
-             phiFreq
-             rhoFreq
-             thetaFreq
-             scaleFreq
+      then do printCurrentTime "read from files..."
+              decodeFile histFilePath
+      else do printCurrentTime "Start computing coefficients..."
+              initialise []
+              devs <- M.mapM device deviceIDs
+              ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
+              ptxs <- M.mapM createTargetFromContext ctxs
+              runMonteCarloFourierCoefficientsGPU
+                deviceIDs
+                numThread
+                1000000
+                500000
+                thetaSigma
+                scaleSigma
+                0
+                s
+                tau
+                deltaT
+                phiFreqs
+                rhoFreqs
+                thetaFreqs
+                scaleFreqs
+                maxScale
+                histFilePath
+      -- else sampleCartesian
+      --        histFilePath
+      --        folderPath
+      --        ptxs
+      --        numPoints
+      --        periodEnvelope
+      --        delta
+      --        numOrientation
+      --        initScale
+      --        thetaSigma
+      --        tau
+      --        threshold
+      --        s
+      --        phiFreq
+      --        rhoFreq
+      --        thetaFreq
+      --        scaleFreq
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
   plan <-
-    makePlan
+    makePlanDiscrete
       folderPath
       emptyPlan
       numPointsRecon
@@ -117,33 +134,33 @@ main = do
   -- coefficients <- hollowCoefficients plan radius periodEnvelope coefficients'
       -- coefficients = getNormalizedHistogramArr $ hist
         -- normalizeFreqArr' std phiFreqs rhoFreqs .
-  let !harmonicsArray =
-        createHarmonics
-          numR2Freq
-          phiFreq
-          rhoFreq
-          thetaFreq
-          scaleFreq
-          (-s)
-          periodR2
-          (periodR2 * sqrt 2)
-          coefficients
-      harmonicsArray1 =
-        createHarmonics
-          numR2Freq
-          phiFreq
-          rhoFreq
-          thetaFreq
-          scaleFreq
-          (-1.25)
-          periodR2
-          (periodR2 * sqrt 2)
-          coefficients
-      !initialSourceDistribution =
+  harmonicsArray <-
+    createHarmonics
+      numR2Freq
+      phiFreq
+      rhoFreq
+      thetaFreq
+      scaleFreq
+      (-s)
+      periodR2
+      periodEnvelope
+      coefficients
+      -- harmonicsArray1 =
+      --   createHarmonics
+      --     numR2Freq
+      --     phiFreq
+      --     rhoFreq
+      --     thetaFreq
+      --     scaleFreq
+      --     (-1.25)
+      --     periodR2
+      --     periodEnvelope
+      --     coefficients
+  let !initialSourceDistribution =
         computeInitialDistributionFourierPinwheel
           numR2Freq
           periodR2
-          (periodR2 * sqrt 2)
+          periodEnvelope
           phiFreq
           rhoFreq
           thetaFreq
@@ -153,7 +170,7 @@ main = do
         computeInitialDistributionFourierPinwheel
           numR2Freq
           periodR2
-          (periodR2 * sqrt 2)
+          periodEnvelope
           phiFreq
           rhoFreq
           thetaFreq
@@ -242,78 +259,80 @@ main = do
   --       A.transpose . A.use . fromDFTArray . getDFTArrayVector $ source
   --     sinkMat = A.transpose . A.use . fromDFTArray . getDFTArrayVector $ sink-
   source <- convolve harmonicsArray initialSourceDistribution
-  source1 <- convolve harmonicsArray1 initialSourceDistribution
+  -- source1 <- convolve harmonicsArray1 initialSourceDistribution
   let numLogPolarFreq = ((2 * scaleFreq + 1) * (2 * thetaFreq + 1))
-      sourceMat = A.transpose . toMatrixAcc $ source
-      sourceMat1 = A.transpose . toMatrixAcc $ source1
-      sourceMat2 =
-        A.transpose . toMatrixAcc $
-        parZipWithFPArray (VS.zipWith (-)) source source1
-  sourceR2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numR2Freq
-      numPointsRecon
-      numLogPolarFreq
-      periodR2
-      deltaRecon
-      numBatchR2
-      sourceMat
-  plotImageRepa (folderPath </> "SourcePower.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-    sourceR2
-  source1R2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numR2Freq
-      numPointsRecon
-      numLogPolarFreq
-      periodR2
-      deltaRecon
-      numBatchR2
-      sourceMat1
-  plotImageRepa (folderPath </> "SourcePower1.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-    source1R2
-  source2R2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numR2Freq
-      numPointsRecon
-      numLogPolarFreq
-      periodR2
-      deltaRecon
-      numBatchR2
-      sourceMat2
-  plotImageRepa (folderPath </> "SourcePower2.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-    source2R2
+      -- sourceMat = A.transpose . toMatrixAcc $ source
+      -- sourceMat1 = A.transpose . toMatrixAcc $ source1
+      -- sourceMat2 =
+      --   A.transpose . toMatrixAcc $
+      --   parZipWithFPArray (VS.zipWith (-)) source source1
+  -- sourceR2 <-
+  --   computeFourierSeriesR2StreamAcc
+  --     ptxs
+  --     numR2Freq
+  --     numPointsRecon
+  --     numLogPolarFreq
+  --     periodR2
+  --     deltaRecon
+  --     numBatchR2
+  --     sourceMat
+  -- plotImageRepa (folderPath </> "SourcePower.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+  --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+  --   sourceR2
+  sourceR2 <- plotFPArray plan (folderPath </> "SourcePower.png") source
+  -- source1R2 <-
+  --   computeFourierSeriesR2StreamAcc
+  --     ptxs
+  --     numR2Freq
+  --     numPointsRecon
+  --     numLogPolarFreq
+  --     periodR2
+  --     deltaRecon
+  --     numBatchR2
+  --     sourceMat1
+  -- plotImageRepa (folderPath </> "SourcePower1.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+  --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+  --   source1R2
+  -- source2R2 <-
+  --   computeFourierSeriesR2StreamAcc
+  --     ptxs
+  --     numR2Freq
+  --     numPointsRecon
+  --     numLogPolarFreq
+  --     periodR2
+  --     deltaRecon
+  --     numBatchR2
+  --     sourceMat2
+  -- plotImageRepa (folderPath </> "SourcePower2.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+  --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+  --   source2R2
   sink <- convolve harmonicsArray initialSinkDistribution
   let sinkMat = A.transpose . toMatrixAcc $ sink
   -- completion <- completionField' plan source (timeReversal' sink)
   -- let completionMat = createCuMat . getDFTArrayVector $ completion
   -- print completionMat
-  sinkR2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numR2Freq
-      numPointsRecon
-      numLogPolarFreq
-      periodR2
-      deltaRecon
-      numBatchR2
-      sinkMat
-  plotImageRepa (folderPath </> "SinkPower.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-    sinkR2
+  sinkR2 <- plotFPArray plan (folderPath </> "SinkPower.png") sink
+  -- sinkR2 <-
+  --   computeFourierSeriesR2StreamAcc
+  --     ptxs
+  --     numR2Freq
+  --     numPointsRecon
+  --     numLogPolarFreq
+  --     periodR2
+  --     deltaRecon
+  --     numBatchR2
+  --     sinkMat
+  -- plotImageRepa (folderPath </> "SinkPower.png") .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPointsRecon :. numPointsRecon) .
+  --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+  --   sinkR2
   -- completionR2 <-
   --   computeFourierSeriesR2Stream
   --     deviceIDs

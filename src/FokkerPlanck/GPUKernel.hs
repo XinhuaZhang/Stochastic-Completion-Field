@@ -260,11 +260,12 @@ coefficient'' ::
 coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r, v) =
         unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
-  in (lift $ (v * (A.exp $ (sigma - 1) * (rho + r))) A.:+ 0) *
-     (A.cis $
-      (-1) *
-      (2 * A.pi / period * (rhoFreq * rho + rFreq * (r - rho)) + phiFreq * phi +
-       thetaFreq * (theta - phi))) 
+   in lift
+        ((v * A.exp ((sigma - 1) * rho) *
+          A.cos (phiFreq * phi + thetaFreq * (theta - phi))) :+
+         0) *
+      A.cis ((-1) * (2 * A.pi / period * (rhoFreq * rho + rFreq * (r - rho)))) 
+
 
 gpuKernel'' ::
      forall a.
@@ -286,7 +287,8 @@ gpuKernel'' sigma period freqArr xs =
     (\(unlift -> (rFreq, thetaFreq, rhoFreq, phiFreq)) ->
        A.sfoldl
          (\s particle ->
-            s + (coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle))
+            s +
+            coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle)
          0
          (constant Z)
          xs)

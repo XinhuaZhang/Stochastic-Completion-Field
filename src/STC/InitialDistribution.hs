@@ -19,6 +19,7 @@ import           STC.Utils
 import           Utils.Distribution
 import           Utils.List
 import           Utils.Parallel
+import Filter.Utils
 
 {-# INLINE computeInitialDistribution #-}
 computeInitialDistribution ::
@@ -275,19 +276,19 @@ computeInitialDistributionFourierPinwheel numR2Freqs period periodEnv phiFreq rh
            parMap
              rdeepseq
              (\angularFreq ->
-                VG.fromList
-                  [ L.foldl'
-                    (\b (Point x y theta scale) ->
-                       b +
-                       cis
-                         (-(angularFreq * theta * pi / 180 +
-                            (freqX * x + freqY * y) * 2 * pi / period +
-                            2 * pi / (log periodEnv) * log scale * radialFreq)))
-                    0
-                    points
-                  | freqY <- r2Freqs
-                  , freqX <- r2Freqs
-                  ]) $
+                VG.convert . toUnboxed . computeS . makeFilter2D . fromListUnboxed (Z :. numR2Freqs :. numR2Freqs) $
+                   [ L.foldl'
+                     (\b (Point x y theta scale) ->
+                        b +
+                        cis
+                          (-(angularFreq * theta * pi / 180 +
+                             (freqX * x + freqY * y) * 2 * pi / period +
+                             2 * pi / (log periodEnv) * log scale * radialFreq)))
+                     0
+                     points
+                   | freqY <- r2Freqs
+                   , freqX <- r2Freqs
+                   ]) $
            thetaFreqs) $
       rFreqs
 

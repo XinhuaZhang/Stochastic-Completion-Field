@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Strict           #-}
 {-# LANGUAGE StrictData       #-}
@@ -10,14 +11,15 @@ import           Data.List
 import           Data.List           as L
 import           Data.Vector.Generic as VG
 import           Data.Vector.Unboxed as VU
+import           Filter.Utils
 import           Math.Gamma
 import           Utils.Parallel
 
 data FPData vector = FPData
-  { getFPDataHarmonics           :: [vector]
-  , getFPDataHarmonicsOffset     :: [vector]
-  , getFPDataCoef                :: [vector]
-  , getFPDataCoefHollow          :: [vector]
+  { getFPDataHarmonics       :: [vector]
+  , getFPDataHarmonicsOffset :: [vector]
+  , getFPDataCoef            :: [vector]
+  , getFPDataCoefHollow      :: [vector]
   }
 
 createHarmonics ::
@@ -37,8 +39,8 @@ createHarmonics ::
   -> e
   -> e
   -> R.Array U DIM4 (Complex e)
-  -> FPData (vector (Complex e))
-createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 periodEnv coefficients =
+  -> IO (FPData (vector (Complex e)))
+createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 periodEnv coefficients = do
   let harmonicVecs =
         parMap
           rdeepseq
@@ -47,7 +49,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 period
                numR2Freqs
                (2 * phiFreq + 1)
                1
-               (pinwheel periodR2 radialConst alpha radialFreq))
+               (pinwheel periodR2 radialConst alpha radialFreq)) 
           [-rhoFreq .. rhoFreq]
       harmonicVecsOffset =
         parMap
@@ -57,33 +59,36 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 period
                numR2Freqs
                (2 * thetaFreq + 1)
                (-1)
-               (logpolarHarmonics periodR2 radialConst radialFreq))
-          [rFreq,(rFreq - 1) .. -rFreq]
-      phaseShiftedCoefArr =
-        computeUnboxedS .
-        R.zipWith (*) coefficients . fromFunction (extent coefficients) $ \(Z :. r :. theta :. rho :. phi) ->
-          phaseShift
-            (phi - phiFreq - (theta - thetaFreq))
-            (rho - rhoFreq - (r - rFreq))
-            radialConst
-            alpha
-      phaseShiftedCoefVecs =
-        L.map
+               (logpolarHarmonics periodR2 radialConst radialFreq)) .
+        L.reverse $
+        [-rFreq .. rFreq]
+  phaseShiftedCoefArr <-
+    computeUnboxedP .
+    R.zipWith (*) coefficients . fromFunction (extent coefficients) $ \(Z :. r :. theta :. rho :. phi) ->
+      phaseShift
+        (phi - phiFreq - (theta - thetaFreq))
+        (rho - rhoFreq - (r - rFreq))
+        radialConst
+        alpha
+  let phaseShiftedCoefVecs =
+        parMap
+          rdeepseq
           (\r ->
              VU.convert . toUnboxed . computeS . R.slice phaseShiftedCoefArr $
              (Z :. r :. All :. All :. All))
           [0 .. 2 * rFreq]
-      coefHollowArr = computeUnboxedS $ sumArr *^ coefficients
-      coefHollowVecs =
+  coefHollowArr <- computeUnboxedP $ sumArr *^ coefficients
+  let coefHollowVecs =
         L.map
           (\r ->
              VU.convert . toUnboxed . computeS . R.slice coefHollowArr $
              (Z :. r :. All :. All :. All))
           [0 .. 2 * rFreq]
-   in FPData harmonicVecs harmonicVecsOffset phaseShiftedCoefVecs coefHollowVecs
+  return $
+    FPData harmonicVecs harmonicVecsOffset phaseShiftedCoefVecs coefHollowVecs
   where
     radialConst = 2 * pi / log periodEnv
-    sumArr1 =
+    !sumArr1 =
       computePinwheelArray
         numR2Freqs
         phiFreq
@@ -95,8 +100,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 period
         periodEnv
     sumArr =
       fromListUnboxed (extent coefficients) .
-      parMap
-        rdeepseq
+      L.map
         (\(r, theta, rho, phi) ->
            let angularFreq = phi - theta
                radialFreq = rho - r
@@ -121,7 +125,7 @@ createVector numR2Freqs numAngularFreqs sign f =
       centerAngular = div numAngularFreqs 2
    in VG.convert .
       toUnboxed .
-      computeS . fromFunction (Z :. numAngularFreqs :. numR2Freqs :. numR2Freqs) $ \(Z :. k :. i :. j) ->
+      computeS . makeFilter2D . fromFunction (Z :. numAngularFreqs :. numR2Freqs :. numR2Freqs) $ \(Z :. k :. i :. j) ->
         let x = fromIntegral (i - centerR2)
             y = fromIntegral (j - centerR2)
             rho = sqrt $ x ^ 2 + y ^ 2
@@ -141,7 +145,7 @@ pinwheel periodR2 radialConst alpha radialFreq angularFreq phi rho =
 logpolarHarmonics ::
      (RealFloat e) => e -> e -> Int -> Int -> e -> e -> Complex e
 logpolarHarmonics periodR2 radialConst radialFreq angularFreq phi rho =
-  (cis (fromIntegral angularFreq * phi)) *
+  cis (fromIntegral angularFreq * phi) *
   ((periodR2 / (pi * rho) :+ 0) **
    (0 :+ (radialConst * fromIntegral radialFreq)))
 
@@ -158,7 +162,7 @@ phaseShift angularFreq radialFreq radialConst alpha =
    ((fromIntegral (abs angularFreq) - alpha) :+
     (radialConst * fromIntegral (-radialFreq))) /
    2)
-   
+
 {-# INLINE computeIndicesFromRadius #-}
 computeIndicesFromRadius :: Double -> [(Int,Int)]
 computeIndicesFromRadius radius =
@@ -169,7 +173,7 @@ computeIndicesFromRadius radius =
            let r = fromIntegral $ x ^ 2 + y ^ 2
             in r < r2)
         [(x, y) | x <- [-rho .. rho], y <- [-rho .. rho]]
-        
+
 {-# INLINE computePinwheelArray #-}
 computePinwheelArray ::
      ( Num e

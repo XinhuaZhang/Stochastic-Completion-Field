@@ -98,9 +98,9 @@ completionFieldRepa plan source sink = do
         source
       dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
   dftSource <- dftExecute plan dftID sourceFilter
+  sinkU <- computeUnboxedP . delay $ sink
   dftSink <-
-    dftExecute plan dftID . VS.convert . toUnboxed . computeUnboxedS . delay $
-    sink
+    dftExecute plan dftID . VS.convert . toUnboxed $ sinkU
   fmap (fromUnboxed (extent source) . VS.convert) .
     dftExecute
       plan

@@ -490,7 +490,7 @@ fourierSeriesConduitAcc' ptxs numFreqs period delta x =
           L.map
             (\r2Positions ->
                inverseHarmonicAcc2' numFreqs period delta .
-               A.fromList (A.Z A.:. (L.length r2Positions)) $
+               A.fromList (A.Z A.:. L.length r2Positions) $
                r2Positions) $
           idxs
     liftIO $ printCurrentTime "fourierSeriesConduit"
