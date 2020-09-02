@@ -89,7 +89,7 @@ multiplyRFunction plan periodEnv (FPArray numXFreq numYFreq numRFreq numThetaFre
       filterVec =
         computeUnboxedS . makeFilter1D . fromFunction (Z :. numRFreq) $ \(Z :. i') ->
           let i = fromIntegral (i' - div numRFreq 2)
-           in gaussian1D i 10 :+ 0 --1 / (1 :+ (freqConst * fromIntegral i)^2)
+           in 1 / (1 :+ freqConst * fromIntegral i) -- gaussian1D i 10 :+ 0 --1 / (1 :+ (freqConst * fromIntegral i)^2)
       vec = VS.convert . VS.concat $ vecs
   filterF <-
     dftExecute plan (DFTPlanID DFT1DG [numRFreq] [0]) . VS.convert . toUnboxed $

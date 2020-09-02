@@ -169,20 +169,20 @@ computeFourierCoefficientsGPU' ::
   -> [(Double, Double, Double, Double, Double)]
   -> Histogram (Complex Double)
 computeFourierCoefficientsGPU' !sigma !period !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
-  let !freqArr =
-        A.use $
-        computeFrequencyArray
-          (L.map double2Float phiFreqs)
-          (L.map double2Float rhoFreqs)
-          (L.map double2Float thetaFreqs)
-          (L.map double2Float rFreqs)
-      -- !freqArr =
+  let -- !freqArr =
       --   A.use $
       --   computeFrequencyArray
-      --     ( phiFreqs)
-      --     ( rhoFreqs)
-      --     ( thetaFreqs)
-      --     ( rFreqs)
+      --     (L.map double2Float phiFreqs)
+      --     (L.map double2Float rhoFreqs)
+      --     (L.map double2Float thetaFreqs)
+      --     (L.map double2Float rFreqs)
+      !freqArr =
+        A.use $
+        computeFrequencyArray
+          ( phiFreqs)
+          ( rhoFreqs)
+          ( thetaFreqs)
+          ( rFreqs)
    in Histogram
         [ L.length phiFreqs
         , L.length rhoFreqs
@@ -191,22 +191,22 @@ computeFourierCoefficientsGPU' !sigma !period !phiFreqs !rhoFreqs !thetaFreqs !r
         ]
         1 .
       VU.fromList .
-      L.map (\(a :+ b) -> (float2Double a) :+ (float2Double b)) .
+      -- L.map (\(a :+ b) -> (float2Double a) :+ (float2Double b)) .
       A.toList .
       runNWith
         ptx
         (gpuKernel''
-           (A.constant (double2Float sigma))
-           (A.constant (double2Float (log period)))
+           (A.constant ( sigma))
+           (A.constant ( (log period)))
            freqArr) .
-      A.fromList (A.Z A.:. (L.length xs)) .
-      L.map
-        (\(a, b, c, d, e) ->
-           ( double2Float a
-           , double2Float b
-           , double2Float c
-           , double2Float d
-           , double2Float e)) 
+      A.fromList (A.Z A.:. (L.length xs)) -- .
+      -- L.map
+      --   (\(a, b, c, d, e) ->
+      --      ( double2Float a
+      --      , double2Float b
+      --      , double2Float c
+      --      , double2Float d
+      --      , double2Float e)) 
         $
       xs
 

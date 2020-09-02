@@ -60,7 +60,6 @@ main = do
       initSink = [L.last initPoints]
       numThread = read numThreadStr :: Int
       folderPath = "output/test/IllusoryContourShapePinwheelBasis"
-      halfLogPeriod = log maxScale
       stdR2 = read stdR2Str :: Double
       stdTheta = read stdThetaStr :: Double
       stdR = read stdRStr :: Double
@@ -74,7 +73,6 @@ main = do
       shape2D@(Points _ minDist shape) = read shape2DStr :: Points Shape2D
       radius = read radiusStr :: Double
       periodEnv = periodR2 * sqrt 2 -- ^ 2 * 2
-      maxScale =  sqrt periodEnv -- periodR2 / 2 * sqrt 2
   -- removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
@@ -89,44 +87,44 @@ main = do
         devs <- M.mapM device deviceIDs
         ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
         ptxs <- M.mapM createTargetFromContext ctxs
-        runMonteCarloFourierCoefficientsGPU
-          deviceIDs
-          numThread
-          numTrails
-          batchSize
-          thetaSigma
-          scaleSigma
-          0
-          s
-          tau
-          deltaT
-          phiFreqs
-          rhoFreqs
-          thetaFreqs
-          scaleFreqs          
-          periodEnv
-          histFilePath
-        -- sampleCartesian
-        --   histFilePath
-        --   folderPath
-        --   ptxs
-        --   numPoints
-        --   periodEnv
-        --   delta
-        --   numOrientation
-        --   initScale
+        -- runMonteCarloFourierCoefficientsGPU
+        --   deviceIDs
+        --   numThread
+        --   numTrails
+        --   batchSize
         --   thetaSigma
-        --   tau
-        --   threshold
+        --   scaleSigma
+        --   0
         --   s
-        --   phiFreq
-        --   rhoFreq
-        --   thetaFreq
-        --   scaleFreq
+        --   tau
+        --   deltaT
+        --   phiFreqs
+        --   rhoFreqs
+        --   thetaFreqs
+        --   scaleFreqs          
+        --   periodEnv
+        --   histFilePath
+        sampleCartesian
+          histFilePath
+          folderPath
+          ptxs
+          numPoints
+          periodEnv
+          delta
+          numOrientation
+          initScale
+          thetaSigma
+          tau
+          threshold
+          s
+          phiFreq
+          rhoFreq
+          thetaFreq
+          scaleFreq
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
   plan <-
-    makePlan
+    makePlanDiscrete
       folderPath
       emptyPlan
       numPointsRecon
@@ -156,9 +154,9 @@ main = do
   let points =
         L.map (\(x, y) -> Point x y 0 1) . getShape2DIndexList' . makeShape2D $
         shape2D
-  (bias, dftBias) <- --Full
-  -- (dftBias, bias) <- -- Discrete
-    computeBiasFourierPinwheelFull
+  -- (bias, dftBias) <- --Full
+  (dftBias, bias) <- -- Discrete
+    computeBiasFourierPinwheelDiscrete
       plan
       numR2Freq
       thetaFreq
@@ -172,7 +170,7 @@ main = do
       stdR2
       points
   let initDist =
-        computeInitialDistributionPowerMethodFourierPinwheelFull
+        computeInitialDistributionPowerMethodFourierPinwheel
           numR2Freq
           phiFreq
           rhoFreq
@@ -180,7 +178,7 @@ main = do
           scaleFreq
           bias -- dftBias
   -- initDist <- multiplyRFunction plan periodEnv initDist'
-  computeContourFourierPinwheel
+  computeContourFourierPinwheelDiscrete
     plan
     folderPath
     writeFlag

@@ -261,10 +261,11 @@ coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r, v) =
         unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
    in lift
-        ((v * A.exp ((sigma - 1) * rho) *
-          A.cos (phiFreq * phi + thetaFreq * (theta - phi))) :+
+        ((v * A.exp ((sigma - 1) * rho) -- *
+          -- A.cos (phiFreq * phi + thetaFreq * (theta - phi))
+         ) :+
          0) *
-      A.cis ((-1) * (2 * A.pi / period * (rhoFreq * rho + rFreq * (r - rho)))) 
+      A.cis ((-1) * (phiFreq * phi + thetaFreq * (theta - phi) + 2 * A.pi / period * (rhoFreq * rho + rFreq * (r - rho)))) 
 
 
 gpuKernel'' ::
