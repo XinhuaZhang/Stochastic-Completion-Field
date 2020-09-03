@@ -1376,11 +1376,12 @@ powerMethodFourierPinwheelDiscrete ::
   -> Double
   -> Double
   -> Int
+  -> (Int, Int)
   -> Int
   -> FPArray (VS.Vector (Complex Double))
   -> IO (FPArray (VS.Vector (Complex Double)))
-powerMethodFourierPinwheelDiscrete  _ _ _ _ _ _ _ _ _ 0 arr = return arr
-powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftBias numPoints delta periodR2 numBatch numStep input' = do
+powerMethodFourierPinwheelDiscrete  _ _ _ _ _ _ _ _ _ idx 0 arr = return arr
+powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftBias numPoints delta periodR2 numBatch idx numStep input' = do
   printCurrentTime (show numStep)
   -- input <- multiplyRFunction plan (periodR2^2 / 2) input'
   convolvedArr <- FP.convolve harmonicsArray input'
@@ -1392,12 +1393,22 @@ powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftB
       normalizedBiasedConvolvedArr =
         parMapFPArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
   when
-    (writeFlag && mod numStep 2 == 0)
-    (do _ <-
+    (writeFlag -- && mod numStep 4 == 0
+    )
+    (do arrR2 <-
           plotFPArray
             plan
             (folderPath </> (printf "Source_%03d.png" numStep))
             convolvedArr
+        plotRThetaDist
+          (folderPath </> (printf "ThetaDist_%03d.png" numStep))
+          (folderPath </> (printf "RDist_%03d.png" numStep))
+          (getFPArrayNumXFreq convolvedArr)
+          72
+          100
+          periodR2
+          idx
+          arrR2
         -- _ <- plotFPArray
         --        plan
         --        (folderPath </> (printf "Bias_%03d.png" numStep))
@@ -1432,6 +1443,7 @@ powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftB
     delta
     periodR2
     numBatch
+    idx
     (numStep - 1)
     normalizedBiasedConvolvedArr
 
@@ -1449,8 +1461,9 @@ computeContourFourierPinwheelDiscrete ::
   -> Double
   -> FPArray (VS.Vector (Complex Double))
   -> String
+  -> (Int, Int)
   -> IO (R.Array U DIM4 (Complex Double))
-computeContourFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 input suffix = do
+computeContourFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 input suffix idx = do
   eigenSource' <-
     powerMethodFourierPinwheelDiscrete
       plan
@@ -1462,6 +1475,7 @@ computeContourFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray d
       delta
       periodR2
       numBatch
+      idx
       numStep
       input
   eigenSource <- FP.convolve harmonicsArray eigenSource'

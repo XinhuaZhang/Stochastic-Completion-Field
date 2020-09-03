@@ -134,7 +134,7 @@ brownianMotion randomGen thetaDist scaleDist poissonDist deltaT maxRho maxR tao 
       -- theta1 = -theta
       -- r1 = 1 / r
       ys =
-        if r <= maxR && r > 1 / maxR  && rho <= maxRho && rho > 1
+        if r <= maxR && r > 1 / maxR   && rho <= maxRho && rho >= 1
           then DL.cons newParticle xs
           else xs
       -- ys =
@@ -178,7 +178,7 @@ generatePath thetaDist scaleDist poissonDist maxRho maxR tao deltaT randomGen =
     maxRho
     maxR
     tao
-    (Particle 0 0 0 1 1)
+    (Particle 0 1 0 1 1)
     DL.empty
 
 {-# INLINE moveParticle' #-}

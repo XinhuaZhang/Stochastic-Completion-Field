@@ -72,7 +72,7 @@ main = do
       numIteration = read numIterationStr :: Int
       shape2D@(Points _ minDist shape) = read shape2DStr :: Points Shape2D
       radius = read radiusStr :: Double
-      periodEnv = periodR2 * sqrt 2 -- ^ 2 * 2
+      periodEnv = periodR2 ^ 2 * 2
   -- removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
@@ -87,40 +87,40 @@ main = do
         devs <- M.mapM device deviceIDs
         ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
         ptxs <- M.mapM createTargetFromContext ctxs
-        -- runMonteCarloFourierCoefficientsGPU
-        --   deviceIDs
-        --   numThread
-        --   numTrails
-        --   batchSize
-        --   thetaSigma
-        --   scaleSigma
-        --   0
-        --   s
-        --   tau
-        --   deltaT
-        --   phiFreqs
-        --   rhoFreqs
-        --   thetaFreqs
-        --   scaleFreqs          
-        --   periodEnv
-        --   histFilePath
-        sampleCartesian
-          histFilePath
-          folderPath
-          ptxs
-          numPoints
-          periodEnv
-          delta
-          numOrientation
-          initScale
+        runMonteCarloFourierCoefficientsGPU
+          deviceIDs
+          numThread
+          numTrails
+          batchSize
           thetaSigma
-          tau
-          threshold
+          scaleSigma
+          0
           s
-          phiFreq
-          rhoFreq
-          thetaFreq
-          scaleFreq
+          tau
+          deltaT
+          phiFreqs
+          rhoFreqs
+          thetaFreqs
+          scaleFreqs
+          periodEnv
+          histFilePath
+        -- sampleCartesian
+        --   histFilePath
+        --   folderPath
+        --   ptxs
+        --   numPoints
+        --   periodEnv
+        --   delta
+        --   numOrientation
+        --   initScale
+        --   thetaSigma
+        --   tau
+        --   threshold
+        --   s
+        --   phiFreq
+        --   rhoFreq
+        --   thetaFreq
+        --   scaleFreq
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
   plan <-
@@ -155,7 +155,8 @@ main = do
         L.map (\(x, y) -> Point x y 0 1) . getShape2DIndexList' . makeShape2D $
         shape2D
   -- (bias, dftBias) <- --Full
-  (dftBias, bias) <- -- Discrete
+  (dftBias, bias) -- Discrete
+     <-
     computeBiasFourierPinwheelDiscrete
       plan
       numR2Freq
@@ -188,9 +189,12 @@ main = do
     numBatchR2
     numPointsRecon
     deltaRecon
-    periodR2
+    periodEnv -- periodR2
     initDist
     (show . circleRadius $ shape)
+    (L.head .
+     L.map (\(x, y) -> (round x, round y)) . getShape2DIndexList' . makeShape2D $
+     shape2D)
   -- let initMat = A.transpose . toMatrixAcc $ initDist
   -- initR2 <-
   --   computeFourierSeriesR2StreamAcc

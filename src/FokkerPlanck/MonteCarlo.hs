@@ -352,7 +352,7 @@ runMonteCarloFourierCoefficientsGPU !deviceIDs !numGens !numTrails !batchSize !t
           (L.map double2Float rhoFreqs)
           (L.map double2Float thetaFreqs)
           (L.map double2Float rFreqs)
-      !maxRho = periodEnv / 2
+      !maxRho = sqrt periodEnv
       !maxR = sqrt periodEnv
       pointsGenerator =
         generatePath
