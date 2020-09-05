@@ -1393,7 +1393,7 @@ powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftB
       normalizedBiasedConvolvedArr =
         parMapFPArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
   when
-    (writeFlag -- && mod numStep 4 == 0
+    (writeFlag && mod numStep 4 == 0
     )
     (do arrR2 <-
           plotFPArray

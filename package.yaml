@@ -1338,3 +1338,26 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
+  PlotGabor-test:
+    main:                PlotGabor.hs
+    source-dirs:         test/PlotGabor
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is PlotGabor
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field

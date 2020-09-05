@@ -72,7 +72,7 @@ main = do
       numIteration = read numIterationStr :: Int
       shape2D@(Points _ minDist shape) = read shape2DStr :: Points Shape2D
       radius = read radiusStr :: Double
-      periodEnv = periodR2 ^ 2 * 2
+      periodEnv = periodR2^2 / 4 --  * sqrt 2 --  ^ 2 * 2
   -- removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath

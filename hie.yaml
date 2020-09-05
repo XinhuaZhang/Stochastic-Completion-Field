@@ -10,6 +10,8 @@ cradle:
       component: "Stochastic-Completion-Field:test:HollowPinwheel-test"
     - path: ./test/IllusoryContourShapePinwheelBasis
       component: "Stochastic-Completion-Field:test:IllusoryContourShapePinwheelBasis-test"
+    - path: ./test/PlotGabor/
+      component: "Stochastic-Completion-Field:test:PlotGabor-test"
     - path: ./test/STCPinwheel/
       component: "Stochastic-Completion-Field:test:STCPinwheel-test"
     - path: ./src
