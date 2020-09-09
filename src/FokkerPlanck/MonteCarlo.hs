@@ -227,6 +227,7 @@ runMonteCarloFourierCoefficientsSingleGPU !deviceID !numGens !numTrails !batchSi
           maxScale
           tao
           initScale
+          1
       histFuncSingleGPU =
         computeFourierCoefficientsGPU
           phiFreqs
@@ -322,9 +323,10 @@ runMonteCarloFourierCoefficientsGPU ::
   -> [Double]
   -> [Double]
   -> Double
+  -> Double
   -> FilePath
   -> IO (Histogram (Complex Double))
-runMonteCarloFourierCoefficientsGPU !deviceIDs !numGens !numTrails !batchSize !thetaSigma !scaleLambda !poissonLambda !sigma !tao !deltaT !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !periodEnv !filePath = do
+runMonteCarloFourierCoefficientsGPU !deviceIDs !numGens !numTrails !batchSize !thetaSigma !scaleLambda !poissonLambda !sigma !tao !deltaT !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !periodEnv !stdR2 !filePath = do
   when
     (periodEnv <= 1)
     (error $
@@ -352,8 +354,8 @@ runMonteCarloFourierCoefficientsGPU !deviceIDs !numGens !numTrails !batchSize !t
           (L.map double2Float rhoFreqs)
           (L.map double2Float thetaFreqs)
           (L.map double2Float rFreqs)
-      !maxRho =  sqrt periodEnv / 2 / sqrt 2
-      !maxR = sqrt periodEnv / 2 / sqrt 2
+      !maxRho =  sqrt periodEnv / 1 / sqrt 2
+      !maxR = sqrt periodEnv / 1 / sqrt 2
       pointsGenerator =
         generatePath
           thetaDist
@@ -363,6 +365,17 @@ runMonteCarloFourierCoefficientsGPU !deviceIDs !numGens !numTrails !batchSize !t
           maxR
           (tao / deltaT)
           deltaT
+          stdR2
+      -- pointsGenerator =
+      --   generatePath'
+      --     thetaSigma
+      --     scaleDist
+      --     poissonLambda
+      --     maxRho
+      --     maxR
+      --     tao
+      --     deltaT
+      --     stdR2
       -- pointsGenerator =
       --   generatePath' thetaSigma scaleDist poissonLambda periodEnv (tao / deltaT) deltaT
       histFuncSingleGPU =
@@ -490,6 +503,7 @@ solveMonteCarloR2S1 numGens numTrails batchSize xLen yLen numOrientations thetaS
           r -- (sqrt . fromIntegral $ xLen ^ 2 + yLen ^ 2)
           tao
           initSpeed
+          1
       histFunc = countR2S1 gen thetaSigma xRange' yRange' numOrientations
       monterCarloHistFunc =
         computeHistogramFromMonteCarloParallel

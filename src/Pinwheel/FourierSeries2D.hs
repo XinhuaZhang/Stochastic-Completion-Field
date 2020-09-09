@@ -286,7 +286,7 @@ analyticalFourierSeries1 numPoints delta angularFreq radialFreq sigma periodR2 p
            y = fromIntegral $ j - center
            rho = sqrt $ x ^ 2 + y ^ 2
            phi = atan2 y x
-       in if rho <= 0
+       in if rho == 0
             then 0
             else analyticalFourierSeriesFunc1
                    angularFreq

@@ -19,6 +19,7 @@ import           System.FilePath
 import           Text.Printf
 import           Utils.BLAS
 import           Utils.List
+import Utils.Distribution
 
 main = do
   args@(numR2FreqStr:numThetaFreqStr:numRFreqStr:numPointStr:numThetaStr:numRStr:xStr:yStr:periodStr:std1Str:std2Str:stdR2Str:_) <-
@@ -38,7 +39,7 @@ main = do
       folderPath = "output/test/AsteriskGaussian"
   let centerR2Freq = div numR2Freq 2
       centerThetaFreq = div numThetaFreq 2
-      periodEnv = period ^2 /  2
+      periodEnv = period ^ 2 / 4
       a = std1
       b = std2
       asteriskGaussianFreqTheta =
@@ -48,14 +49,11 @@ main = do
           (\tFreq' ->
              let tFreq = tFreq' - centerThetaFreq
                  arr =
-                   R.map
-                     (* ((sqrt $ pi / b) *
-                         (exp (fromIntegral tFreq ^ 2 / 4 / (-b))) :+
-                         0)) $
+                   R.map (* (gaussian1DFreq (fromIntegral tFreq) b :+ 0)) $
                    analyticalFourierCoefficients1
                      numR2Freq
                      1
-                     (tFreq)
+                     tFreq
                      0
                      a
                      period
@@ -63,7 +61,7 @@ main = do
               in VS.convert . toUnboxed . computeS $
                  centerHollowArray numR2Freq arr) $
         [0 .. numThetaFreq - 1]
-      deltaTheta = 2 * pi / (Prelude.fromIntegral numTheta)
+      deltaTheta = 2 * pi / Prelude.fromIntegral numTheta
       harmonicsThetaD =
         fromFunction (Z :. numTheta :. numThetaFreq :. numR2Freq :. numR2Freq) $ \(Z :. theta' :. tFreq' :. xFreq' :. yFreq') ->
           let tFreq = fromIntegral $ tFreq' - centerThetaFreq
@@ -110,11 +108,10 @@ main = do
              let rFreq = rFreq' - centerRFreq
                  arr =
                    R.map
-                     (* ((sqrt $ pi / b) *
-                         (exp
-                            (fromIntegral rFreq ^ 2 * pi ^ 2 /
-                             (log periodEnv) ^ 2 /
-                             (-b))) :+
+                     (* (gaussian1DFourierCoefficients
+                           (fromIntegral rFreq)
+                           (log periodEnv)
+                           b :+
                          0)) $
                    analyticalFourierCoefficients1
                      numR2Freq
@@ -126,7 +123,7 @@ main = do
                      periodEnv
               in VS.convert . toUnboxed . computeS . centerHollowArray numR2Freq $
                  arr -- *^ gaussian2D
-          ) $
+           ) $
         [0 .. numRFreq - 1]
       deltaR = log periodEnv / Prelude.fromIntegral numR
       harmonicsRD =
@@ -149,8 +146,7 @@ main = do
       (VS.convert . toUnboxed $ harmonicsR)
       asteriskGaussianFreqR
   toFile def (folderPath </> "R.png") $ do
-    layout_title .=
-      printf "(%.3f , %.3f)" x y
+    layout_title .= printf "(%.3f , %.3f)" x y
     plot
       (line
          ""

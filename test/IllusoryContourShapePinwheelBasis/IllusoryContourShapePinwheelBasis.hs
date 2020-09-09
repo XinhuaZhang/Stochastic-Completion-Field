@@ -103,6 +103,7 @@ main = do
           thetaFreqs
           scaleFreqs
           periodEnv
+          stdR2
           histFilePath
         -- sampleCartesian
         --   histFilePath
@@ -124,7 +125,7 @@ main = do
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
   plan <-
-    makePlanDiscrete
+    makePlan
       folderPath
       emptyPlan
       numPointsRecon
@@ -154,10 +155,9 @@ main = do
   let points =
         L.map (\(x, y) -> Point x y 0 1) . getShape2DIndexList' . makeShape2D $
         shape2D
-  -- (bias, dftBias) <- --Full
-  (dftBias, bias) -- Discrete
-     <-
-    computeBiasFourierPinwheelDiscrete
+  (bias, dftBias) <- --Full
+  -- (dftBias, bias) <- -- Discrete     
+    computeBiasFourierPinwheelFull
       plan
       numR2Freq
       thetaFreq
@@ -171,7 +171,7 @@ main = do
       stdR2
       points
   let initDist =
-        computeInitialDistributionPowerMethodFourierPinwheel
+        computeInitialDistributionPowerMethodFourierPinwheelFull
           numR2Freq
           phiFreq
           rhoFreq
@@ -179,7 +179,7 @@ main = do
           scaleFreq
           bias -- dftBias
   -- initDist <- multiplyRFunction plan periodEnv initDist'
-  computeContourFourierPinwheelDiscrete
+  computeContourFourierPinwheel
     plan
     folderPath
     writeFlag
@@ -192,9 +192,9 @@ main = do
     periodEnv -- periodR2
     initDist
     (show . circleRadius $ shape)
-    (L.head .
-     L.map (\(x, y) -> (round x, round y)) . getShape2DIndexList' . makeShape2D $
-     shape2D)
+    -- (L.head .
+    --  L.map (\(x, y) -> (round x, round y)) . getShape2DIndexList' . makeShape2D $
+    --  shape2D)
   -- let initMat = A.transpose . toMatrixAcc $ initDist
   -- initR2 <-
   --   computeFourierSeriesR2StreamAcc

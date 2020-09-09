@@ -1,5 +1,5 @@
+{-# LANGUAGE BangPatterns  #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE BangPatterns #-}
 module FokkerPlanck.BrownianMotion
   ( Particle(..)
   , generatePath
@@ -11,6 +11,7 @@ module FokkerPlanck.BrownianMotion
   ) where
 
 import           Control.DeepSeq
+import           Control.Monad
 import           Data.DList                          as DL
 import           Data.Ix
 import           Data.List                           as L
@@ -21,7 +22,7 @@ import           Statistics.Distribution.Normal
 import           Statistics.Distribution.Uniform
 import           System.Random.MWC
 import           Text.Printf
-import Control.Monad
+import           Utils.Distribution
 
 data Particle =
   Particle {-# UNPACK #-}!Double -- \phi
@@ -62,11 +63,11 @@ thetaPlus :: Double -> Double -> Double
 thetaPlus !x !y =
   let z = x + y
    in thetaCheck z
-         
+
 {-# INLINE scalePlus #-}
-scalePlus :: Double -> Double -> Double  
-scalePlus x delta = x * exp delta 
-          
+scalePlus :: Double -> Double -> Double
+scalePlus x delta = x * exp delta
+
 {-# INLINE scalePlusPeriodic #-}
 scalePlusPeriodic :: Double -> Double -> Double -> Double
 scalePlusPeriodic !logMaxScale !delta !x
@@ -76,7 +77,7 @@ scalePlusPeriodic !logMaxScale !delta !x
   where
     !m = logMaxScale
     !z = log x + delta
-         
+
 {-# INLINE rhoCutoff #-}
 rhoCutoff :: Double -> Double
 rhoCutoff !rho =
@@ -90,7 +91,7 @@ generateRandomNumber ::
 generateRandomNumber !gen dist =
   case dist of
     Nothing -> return 0
-    Just d -> genContVar d gen
+    Just d  -> genContVar d gen
 
 {-# INLINE moveParticle #-}
 moveParticle :: Double -> Particle -> Particle
@@ -122,25 +123,20 @@ brownianMotion ::
   -> Double
   -> Double
   -> Double
+  -> Double
   -> Particle
   -> DList Particle
   -> IO (DList Particle)
-brownianMotion randomGen thetaDist scaleDist poissonDist deltaT maxRho maxR tao particle xs = do
+brownianMotion randomGen thetaDist scaleDist poissonDist deltaT maxRho maxR tao stdR2 particle xs = do
   deltaTheta <- generateRandomNumber randomGen thetaDist
   deltaScale <- generateRandomNumber randomGen scaleDist
   let newParticle@(Particle phi rho theta r v) = moveParticle deltaT particle
-      -- phi1 = phi `thetaPlus` (-theta)
-      -- rho1 = rho / r
-      -- theta1 = -theta
-      -- r1 = 1 / r
       ys =
-        if r <= maxR && r >= 1    && rho <= maxRho && rho >= 1
-          then DL.cons newParticle xs
+        if r <= maxR && r > 1 / maxR && rho <= maxRho && rho > 1 / maxRho
+          then DL.cons
+                 (Particle phi rho theta r (1 - gaussian2DPolar rho stdR2))
+                 xs
           else xs
-      -- ys =
-      --   if rho1 <= maxR && rho1 > 1
-      --     then DL.cons (Particle phi1 rho1 theta1 r1 v) ys'
-      --     else ys'
   t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
   if t > exp (1 / (-tao))
     then return ys
@@ -153,9 +149,10 @@ brownianMotion randomGen thetaDist scaleDist poissonDist deltaT maxRho maxR tao 
            maxRho
            maxR
            tao
+           stdR2
            (diffuseParticle deltaTheta deltaScale maxR newParticle)
            ys
-           
+
 {-# INLINE generatePath #-}
 generatePath ::
      (Distribution d1, ContGen d1, Distribution d2, ContGen d2, Distribution d3)
@@ -166,9 +163,10 @@ generatePath ::
   -> Double
   -> Double
   -> Double
+  -> Double
   -> GenIO
   -> IO (DList Particle)
-generatePath thetaDist scaleDist poissonDist maxRho maxR tao deltaT randomGen =
+generatePath thetaDist scaleDist poissonDist maxRho maxR tao deltaT stdR2 randomGen =
   brownianMotion
     randomGen
     thetaDist
@@ -178,6 +176,7 @@ generatePath thetaDist scaleDist poissonDist maxRho maxR tao deltaT randomGen =
     maxRho
     maxR
     tao
+    stdR2
     (Particle 0 1 0 1 1)
     DL.empty
 
@@ -192,14 +191,13 @@ moveParticle' (Particle phi rho theta r v) =
 
 {-# INLINE diffuseParticle' #-}
 diffuseParticle' :: (Distribution d, ContGen d)
-  => GenIO ->  Double -> Maybe d -> Particle -> IO Particle
-diffuseParticle' randomGen thetaSigma scaleDist (Particle phi rho theta r v) = do
+  => GenIO ->  Double -> Maybe d -> Double -> Particle -> IO Particle
+diffuseParticle' randomGen thetaSigma scaleDist deltaT (Particle phi rho theta r v) = do
   deltaScale <- generateRandomNumber randomGen scaleDist
   let r1 = r `scalePlus` deltaScale
-      thetaDist = normalDistrE 0 (thetaSigma * sqrt r1)
-  deltaTheta <- generateRandomNumber randomGen thetaDist
-  return $
-    Particle phi rho (theta `thetaPlus` deltaTheta) r1 v
+  deltaTheta <-
+    genContVar (normalDistr 0 (thetaSigma * sqrt (r1 * deltaT))) randomGen
+  return $ Particle phi rho (theta `thetaPlus` deltaTheta) r1 v
 
 brownianMotion' ::
      (Distribution d, ContGen d)
@@ -209,28 +207,34 @@ brownianMotion' ::
   -> Double
   -> Double
   -> Double
+  -> Double
+  -> Double
+  -> Double
   -> Particle
   -> DList Particle
   -> IO (DList Particle)
-brownianMotion' randomGen thetaSigma scaleDist poissonLambda maxScale tao particle@(Particle _ _ _ r0 _) xs = do
-  let newParticle@(Particle phi rho theta r v) = moveParticle' particle
+brownianMotion' randomGen thetaSigma scaleDist poissonLambda deltaT maxRho maxR tao stdR2 particle xs = do
+  let newParticle@(Particle phi rho theta r v) = moveParticle deltaT particle
       ys =
-        if r <= maxScale && r > 1 / maxScale && rho <= maxScale && rho > 1
-          then DL.cons newParticle xs
+        if r <= maxR && r > 1 / maxR && rho <= maxRho && rho >= 1 / maxRho
+          then DL.cons (Particle phi rho theta r (1 - gaussian2DPolar rho stdR2)) xs
           else xs
   t <- genContVar (uniformDistr 0 1) randomGen :: IO Double
-  if t > exp (1 / (-tao / r0))
+  if t > exp (1 / (-tao / (r * deltaT)))
     then return ys
     else do
       diffusedParticle <-
-        diffuseParticle' randomGen thetaSigma scaleDist newParticle
+        diffuseParticle' randomGen thetaSigma scaleDist deltaT newParticle
       brownianMotion'
         randomGen
         thetaSigma
         scaleDist
         poissonLambda
-        maxScale
+        deltaT
+        maxRho
+        maxR
         tao
+        stdR2
         diffusedParticle
         ys
 
@@ -244,15 +248,20 @@ generatePath' ::
   -> Double
   -> Double
   -> Double
+  -> Double
+  -> Double
   -> GenIO
   -> IO (DList Particle)
-generatePath' thetaSigma scaleDist poissonLambda tao deltaT maxScale randomGen = do
+generatePath' thetaSigma scaleDist poissonLambda maxRho maxR tao deltaT stdR2 randomGen = do
   brownianMotion'
     randomGen
     thetaSigma
     scaleDist
     poissonLambda
-    maxScale
+    deltaT
+    maxRho
+    maxR
     tao
-    (Particle 0 0 0 deltaT 1)
+    stdR2
+    (Particle 0 1 0 1 1)
     DL.empty

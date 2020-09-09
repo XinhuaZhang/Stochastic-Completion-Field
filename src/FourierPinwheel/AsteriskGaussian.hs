@@ -12,6 +12,7 @@ import           Filter.Utils
 import           FourierPinwheel.Array
 import           Math.Gamma
 import           Pinwheel.FourierSeries2D
+import           Utils.Distribution
 import           Utils.Parallel
 
 
@@ -157,19 +158,7 @@ asteriskGaussianFull numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv stdThet
   parMap
     rdeepseq
     (\(radialFreq, angularFreq) ->
-       let arr =
-             R.map
-               (* (sqrt (pi / stdTheta * pi / stdR
-                        ) *
-                   exp
-                     ((fromIntegral angularFreq ^ 2 / stdTheta) / (-4) +
-                      (fromIntegral radialFreq ^ 2 * pi ^ 2 /
-                       (log periodEnv) ^ 2 /
-                       (-stdR))
-                     )  -- / (1 + (2 * pi * fromIntegral radialFreq / log periodEnv)^2)
-                    :+
-                   0)) .
-             centerHollowArray numR2Freqs $
+       let pinwheel =
              analyticalFourierCoefficients1
                numR2Freqs
                1
@@ -178,12 +167,23 @@ asteriskGaussianFull numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv stdThet
                alpha
                periodR2
                periodEnv
+           arr =
+             R.map
+               (* (gaussian1DFreq (fromIntegral angularFreq) stdTheta *
+                   gaussian1DFourierCoefficients
+                     (fromIntegral radialFreq)
+                     (log periodEnv)
+                     stdR :+
+                   0)) $
+             if radialFreq == 0 && angularFreq == 0
+               then pinwheel
+               else centerHollowArray numR2Freqs pinwheel
         in VG.convert . toUnboxed . computeS $ arr)
     [ (radialFreq, angularFreq)
     | radialFreq <- [-rFreq .. rFreq]
     , angularFreq <- [-thetaFreq .. thetaFreq]
     ]
-    
+
 {-# INLINE asteriskGaussianFullEnvelope #-}
 asteriskGaussianFullEnvelope ::
      (R.Source s (Complex Double))
@@ -219,7 +219,8 @@ asteriskGaussianFullEnvelope plan numR2Freqs thetaFreq rFreq alpha periodR2 peri
     dftExecuteBatchP plan inversePlanID .
     parMap rdeepseq (VS.zipWith (*) filterF) $
     asteriskGaussianF
-
+  -- return . VS.concat $ vecs
+  
 
 -- The envelope is r^alpha X LowPass
 asteriskGaussianFullLowPass ::
@@ -249,7 +250,7 @@ asteriskGaussianFullLowPass plan numR2Freqs thetaFreq rFreq alpha periodR2 perio
     stdTheta
     stdR
     lpf
-    
+
 
 -- The envelope is r^alpha X LowPass
 asteriskGaussian2Full ::
@@ -268,13 +269,9 @@ asteriskGaussian2Full plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv s
   let centerFreq = div numR2Freqs 2
       gaussian2D =
         fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i' :. j') ->
-          let i = i' - centerFreq
-              j = j' - centerFreq
-           in exp
-                (pi * fromIntegral (i ^ 2 + j ^ 2) /
-                 ((-1) * periodR2 ^ 2 * stdR2 ^ 2)) /
-              (2 * pi * stdR2 ^ 2) :+
-              0
+          let i = fromIntegral $ i' - centerFreq
+              j = fromIntegral $ j' - centerFreq
+           in gaussian2DFourierCoefficients i j periodR2 stdR2 :+ 0
   asteriskGaussianFullEnvelope
     plan
     numR2Freqs
@@ -286,7 +283,7 @@ asteriskGaussian2Full plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv s
     stdTheta
     stdR
     gaussian2D
-    
+
 
 asteriskGaussianRFull ::
      DFTPlan
@@ -337,7 +334,7 @@ asteriskGaussianRFull plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv s
     dftExecuteBatchP plan inversePlanID .
     parMap rdeepseq (VS.zipWith (*) filterF) $
     asteriskGaussianF
-  
+
 
 
 -- {-# INLINE asteriskGaussianRFull #-}

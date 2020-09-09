@@ -1348,19 +1348,19 @@ computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias n
   plotImageRepa (folderPath </> printf "Source_%s.png" suffix) .
     ImageRepa 8 .
     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    VU.map sqrt .
+    VU.map (\x -> x^2) .
     toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
     eigenSourceR2
   plotImageRepa (folderPath </> printf "Sink_%s.png" suffix) .
     ImageRepa 8 .
     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    VU.map sqrt .
+    VU.map (\x -> x^2) .
     toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
     eigenSinkR2
   plotImageRepa (folderPath </> printf "Completion_%s.png" suffix) .
     ImageRepa 8 .
     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    VU.map sqrt .
+    VU.map (\x -> x^2) .
     toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
     completionR2
   return completionR2
