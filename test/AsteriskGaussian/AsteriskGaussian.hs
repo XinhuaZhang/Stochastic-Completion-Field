@@ -68,8 +68,8 @@ main = do
               xFreq = fromIntegral $ xFreq' - centerR2Freq
               yFreq = fromIntegral $ yFreq' - centerR2Freq
               theta = fromIntegral theta' * deltaTheta
-           in (1 / ((2 * pi)) :+ 0) *
-              (cis ((2 * pi) / period * (x * xFreq + y * yFreq) + tFreq * theta))
+           in (1 / (2 * pi) :+ 0) *
+              cis (2 * pi / period * (x * xFreq + y * yFreq) + tFreq * theta)
   harmonicsTheta <- computeUnboxedP harmonicsThetaD
   xs <-
     VS.toList . VS.map magnitude <$>
@@ -108,16 +108,20 @@ main = do
              let rFreq = rFreq' - centerRFreq
                  arr =
                    R.map
-                     (* (gaussian1DFourierCoefficients
-                           (fromIntegral rFreq)
-                           (log periodEnv)
-                           b :+
-                         0)) $
+                     (* ((gaussian1DFourierCoefficients
+                            (fromIntegral rFreq)
+                            (log periodEnv)
+                            b :+
+                          0) -- *
+                         -- cis
+                         --   ((-2) * pi / log periodEnv * fromIntegral rFreq *
+                         --    log 0.25)
+                        )) . centerHollowArray numR2Freq $
                    analyticalFourierCoefficients1
                      numR2Freq
                      1
                      0
-                     (rFreq)
+                     rFreq
                      a
                      period
                      periodEnv

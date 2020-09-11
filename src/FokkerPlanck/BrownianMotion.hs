@@ -132,7 +132,7 @@ brownianMotion randomGen thetaDist scaleDist poissonDist deltaT maxRho maxR tao 
   deltaScale <- generateRandomNumber randomGen scaleDist
   let newParticle@(Particle phi rho theta r v) = moveParticle deltaT particle
       ys =
-        if r <= maxR && r > 1 / maxR && rho <= maxRho && rho > 1 / maxRho
+        if r <= maxR && r > 1 / maxR && rho <= maxRho && rho >= 1 / maxRho
           then DL.cons
                  (Particle phi rho theta r (1 - gaussian2DPolar rho stdR2))
                  xs

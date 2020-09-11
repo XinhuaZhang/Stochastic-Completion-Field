@@ -249,8 +249,8 @@ computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 pe
   --     stdTheta
   --     stdR
   --     stdR2
-      -- asteriskGaussianVec = VS.concat $ asteriskGaussianFull numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv stdTheta stdR
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+  let -- asteriskGaussianVec = VS.concat $ gaussianFull numR2Freqs thetaFreq rFreq periodR2 stdR2
+      r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
       numThetaFreq = 2 * thetaFreq + 1
       numRFreq = 2 * rFreq + 1
       shiftArr =

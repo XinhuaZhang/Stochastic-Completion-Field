@@ -72,7 +72,7 @@ main = do
       numIteration = read numIterationStr :: Int
       shape2D@(Points _ minDist shape) = read shape2DStr :: Points Shape2D
       radius = read radiusStr :: Double
-      periodEnv = periodR2^2 / 4 --  * sqrt 2 --  ^ 2 * 2
+      periodEnv = periodR2 ^ 2 / 4 --  * sqrt 2 --  ^ 2 * 2
   -- removePathForcibly folderPath
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
@@ -103,7 +103,7 @@ main = do
           thetaFreqs
           scaleFreqs
           periodEnv
-          stdR2
+          1 -- stdR2
           histFilePath
         -- sampleCartesian
         --   histFilePath
@@ -155,8 +155,9 @@ main = do
   let points =
         L.map (\(x, y) -> Point x y 0 1) . getShape2DIndexList' . makeShape2D $
         shape2D
-  (bias, dftBias) <- --Full
-  -- (dftBias, bias) <- -- Discrete     
+  (bias, dftBias) --Full
+  -- (dftBias, bias) <- -- Discrete
+     <-
     computeBiasFourierPinwheelFull
       plan
       numR2Freq
@@ -179,6 +180,7 @@ main = do
           scaleFreq
           bias -- dftBias
   -- initDist <- multiplyRFunction plan periodEnv initDist'
+  plotFPArray plan (folderPath </> "Bias.png") initDist
   computeContourFourierPinwheel
     plan
     folderPath
