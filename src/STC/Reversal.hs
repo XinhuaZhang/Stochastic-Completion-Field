@@ -66,8 +66,5 @@ timeReversalRepa ::
   -> R.Array s DIM4 (Complex e)
   -> R.Array D DIM4 (Complex e)
 timeReversalRepa thetaFreqs arr =
-  R.traverse2
-    arr
-    (fromListUnboxed (Z :. (L.length thetaFreqs)) thetaFreqs)
-    const $ \fArr fFreq idx@(Z :. _ :. theta :. _ :. _) ->
-    fArr idx * (cis $ (fFreq (Z :. theta)) * pi) 
+  R.traverse2 arr (fromListUnboxed (Z :. L.length thetaFreqs) thetaFreqs) const $ \fArr fFreq idx@(Z :. _ :. theta :. _ :. _) ->
+    fArr idx * cis (fFreq (Z :. theta) * pi)

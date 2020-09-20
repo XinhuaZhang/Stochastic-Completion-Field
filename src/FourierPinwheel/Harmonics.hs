@@ -49,7 +49,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 period
                numR2Freqs
                (2 * phiFreq + 1)
                1
-               (pinwheel periodR2 radialConst alpha radialFreq)) 
+               (pinwheel periodR2 radialConst alpha radialFreq))
           [-rhoFreq .. rhoFreq]
       harmonicVecsOffset =
         parMap
@@ -79,7 +79,8 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 period
           [0 .. 2 * rFreq]
   coefHollowArr <- computeUnboxedP $ sumArr *^ coefficients
   let coefHollowVecs =
-        L.map
+        parMap
+          rdeepseq
           (\r ->
              VU.convert . toUnboxed . computeS . R.slice coefHollowArr $
              (Z :. r :. All :. All :. All))
@@ -100,7 +101,8 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 period
         periodEnv
     sumArr =
       fromListUnboxed (extent coefficients) .
-      L.map
+      parMap
+        rdeepseq
         (\(r, theta, rho, phi) ->
            let angularFreq = phi - theta
                radialFreq = rho - r
@@ -125,7 +127,9 @@ createVector numR2Freqs numAngularFreqs sign f =
       centerAngular = div numAngularFreqs 2
    in VG.convert .
       toUnboxed .
-      computeS . makeFilter2D . fromFunction (Z :. numAngularFreqs :. numR2Freqs :. numR2Freqs) $ \(Z :. k :. i :. j) ->
+      computeS . 
+      makeFilter2D . 
+      fromFunction (Z :. numAngularFreqs :. numR2Freqs :. numR2Freqs) $ \(Z :. k :. i :. j) ->
         let x = fromIntegral (i - centerR2)
             y = fromIntegral (j - centerR2)
             rho = sqrt $ x ^ 2 + y ^ 2

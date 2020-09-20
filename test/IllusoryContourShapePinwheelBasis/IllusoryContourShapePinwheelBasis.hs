@@ -26,6 +26,9 @@ import           Utils.Time
 import           Utils.List
 import Data.Array.IArray as IA
 import FourierPinwheel
+import Utils.Distribution
+import FourierPinwheel.GaussianEnvelopePinwheel
+import Filter.Utils
 
 main = do
   args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:tauStr:numTrailsStr:deltaTStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:stdR2Str:stdThetaStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
@@ -87,41 +90,42 @@ main = do
         devs <- M.mapM device deviceIDs
         ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
         ptxs <- M.mapM createTargetFromContext ctxs
-        runMonteCarloFourierCoefficientsGPU
-          deviceIDs
-          numThread
-          numTrails
-          batchSize
-          thetaSigma
-          scaleSigma
-          0
-          s
-          tau
-          deltaT
-          phiFreqs
-          rhoFreqs
-          thetaFreqs
-          scaleFreqs
-          periodEnv
-          1 -- stdR2
-          histFilePath
-        -- sampleCartesian
-        --   histFilePath
-        --   folderPath
-        --   ptxs
-        --   numPoints
-        --   periodEnv
-        --   delta
-        --   numOrientation
-        --   initScale
+        -- runMonteCarloFourierCoefficientsGPU
+        --   deviceIDs
+        --   numThread
+        --   numTrails
+        --   batchSize
         --   thetaSigma
-        --   tau
-        --   threshold
+        --   scaleSigma
+        --   0
         --   s
-        --   phiFreq
-        --   rhoFreq
-        --   thetaFreq
-        --   scaleFreq
+        --   tau
+        --   deltaT
+        --   phiFreqs
+        --   rhoFreqs
+        --   thetaFreqs
+        --   scaleFreqs
+        --   periodEnv
+        --   stdR2
+        --   histFilePath
+        sampleCartesian
+          histFilePath
+          folderPath
+          ptxs
+          numPoints
+          periodEnv
+          delta
+          numOrientation
+          initScale
+          thetaSigma
+          tau
+          threshold
+          s
+          phiFreq
+          rhoFreq
+          thetaFreq
+          scaleFreq
+          stdR2
   printCurrentTime "Done"
   printCurrentTime "Start Convloution.."
   plan <-
@@ -155,9 +159,9 @@ main = do
   let points =
         L.map (\(x, y) -> Point x y 0 1) . getShape2DIndexList' . makeShape2D $
         shape2D
-  (bias, dftBias) --Full
+  (bias, dftBias) <- --Full
   -- (dftBias, bias) <- -- Discrete
-     <-
+     
     computeBiasFourierPinwheelFull
       plan
       numR2Freq
@@ -179,8 +183,31 @@ main = do
           thetaFreq
           scaleFreq
           bias -- dftBias
+      centerR2Freq = div numR2Freq 2
+      -- gaussianEnvelope =
+      --   VU.convert .
+      --   VU.concat .
+      --   L.replicate (2 * thetaFreq + 1) .
+      --   toUnboxed . computeS . makeFilter2D . centerHollowArray numR2Freq $
+      --   createFrequencyArray
+      --     numR2Freq
+      --     (gaussianPinwheelFourierCoefficients
+      --        numR2Freq
+      --        periodR2
+      --        (1 / (stdR2 * sqrt 2))
+      --        1
+      --        0
+      --        0
+      --        periodEnv)
+      gaussianEnvelope =
+        VU.convert .
+        toUnboxed .
+        computeS . makeFilter2D .
+        fromFunction (Z :. (thetaFreq * 2 + 1) :. numR2Freq :. numR2Freq) $ \(Z :. _ :. i :. j) ->
+          gaussian2DFourierCoefficients (fromIntegral (i - centerR2Freq)) (fromIntegral (j - centerR2Freq)) periodR2 (stdR2 / sqrt 2) :+ 0
   -- initDist <- multiplyRFunction plan periodEnv initDist'
-  plotFPArray plan (folderPath </> "Bias.png") initDist
+  -- plotFPArray plan (folderPath </> "Bias.png") initDist
+  -- plotFPArrayFreqency (folderPath </> "BiasFreq.png") initDist
   computeContourFourierPinwheel
     plan
     folderPath
@@ -191,9 +218,12 @@ main = do
     numBatchR2
     numPointsRecon
     deltaRecon
-    periodEnv -- periodR2
+    periodR2
+    periodEnv 
     initDist
     (show . circleRadius $ shape)
+    deviceIDs
+    gaussianEnvelope
     -- (L.head .
     --  L.map (\(x, y) -> (round x, round y)) . getShape2DIndexList' . makeShape2D $
     --  shape2D)

@@ -2,15 +2,16 @@
 {-# LANGUAGE Strict           #-}
 module FourierPinwheel.AsteriskGaussian where
 
-import           Data.Array.Repa          as R
+import           Data.Array.Repa             as R
 import           Data.Complex
-import           Data.List                as L
-import           Data.Vector.Generic      as VG
-import           Data.Vector.Storable     as VS
-import           Data.Vector.Unboxed      as VU
+import           Data.List                   as L
+import           Data.Vector.Generic         as VG
+import           Data.Vector.Storable        as VS
+import           Data.Vector.Unboxed         as VU
 import           DFT.Plan
 import           Filter.Utils
 import           FourierPinwheel.Array
+import           FourierPinwheel.Hypergeo1F1
 import           Math.Gamma
 import           Pinwheel.FourierSeries2D
 import           Utils.Distribution
@@ -138,7 +139,7 @@ asteriskGaussianLowPass plan numR2Freqs thetaFreq alpha periodR2 periodEnv stdTh
     lpf
 
 
-{-# INLINE asteriskGaussianFull #-} 
+{-# INLINE asteriskGaussianFull #-}
 asteriskGaussianFull ::
      ( VG.Vector vector (Complex e)
      , RealFloat e
@@ -169,31 +170,36 @@ asteriskGaussianFull numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv stdThet
                    alpha
                    periodR2
                    periodEnv
+               -- arr =
+               --   R.map
+               --     (* ((-- gaussian1DFreq (fromIntegral angularFreq) stdTheta *
+               --          gaussian1DFourierCoefficients
+               --            (fromIntegral radialFreq)
+               --            (log periodEnv)
+               --            stdR
+               --          :+
+               --          0) -- *
+               --         -- cis
+               --         --   (2 * pi / log periodEnv * fromIntegral radialFreq *
+               --         --    log 0.5)
+               --        )) $
+               --   -- if radialFreq == 0 && angularFreq == 0
+               --   --   then pinwheel
+               --   --   else
+                   -- centerHollowArray numR2Freqs pinwheel
                arr =
                  R.map
-                   (* ((-- gaussian1DFreq (fromIntegral angularFreq) stdTheta *
-                        gaussian1DFourierCoefficients
-                          (fromIntegral radialFreq)
-                          (log periodEnv)
-                          stdR 
-                        :+
-                        0) -- *
-                       -- cis
-                       --   (2 * pi / log periodEnv * fromIntegral radialFreq *
-                       --    log 0.5)
-                      )) $
-                 -- if radialFreq == 0 && angularFreq == 0
-                 --   then pinwheel
-                 --   else
+                   (* ((1 / (1 + (2 * pi / log periodEnv * fromIntegral radialFreq )^2)) :+ 0)
+                      ) $
                    centerHollowArray numR2Freqs pinwheel
             in if angularFreq == 0
                  then VG.convert . toUnboxed . computeS $ arr
                  else zeroVec)
         [ (radialFreq, angularFreq)
-        | radialFreq <- [-rFreq .. rFreq]
+        | radialFreq <-  [-rFreq .. rFreq]
         , angularFreq <- [-thetaFreq .. thetaFreq]
         ]
-  
+
 
 {-# INLINE gaussianFull #-}
 gaussianFull ::
@@ -386,50 +392,3 @@ asteriskGaussianRFull plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv s
     dftExecuteBatchP plan inversePlanID .
     parMap rdeepseq (VS.zipWith (*) filterF) $
     asteriskGaussianF
-
-
-
--- {-# INLINE asteriskGaussianRFull #-}
--- asteriskGaussianRFull ::
---      ( VG.Vector vector (Complex e)
---      , RealFloat e
---      , NFData (vector (Complex e))
---      , Gamma (Complex e)
---      , Unbox e
---      )
---   => Int
---   -> Int
---   -> Int
---   -> e
---   -> e
---   -> e
---   -> e
---   -> e
---   -> [vector (Complex e)]
--- asteriskGaussianRFull numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv stdTheta stdR =
---   parMap
---     rdeepseq
---     (\(radialFreq, angularFreq) ->
---        let arr =
---              R.map
---                (* (sqrt (pi / stdTheta * pi / stdR) *
---                    exp
---                      ((fromIntegral angularFreq ^ 2 / stdTheta) / (-4) +
---                       (fromIntegral radialFreq ^ 2 * pi ^ 2 /
---                        (log periodEnv) ^ 2 /
---                        (-stdR))) :+
---                    0)) .
---              centerHollowArray numR2Freqs $
---              analyticalFourierCoefficients3
---                numR2Freqs
---                1
---                (angularFreq)
---                (radialFreq)
---                alpha
---                periodR2
---                periodEnv
---         in VG.convert . toUnboxed . computeS $ arr)
---     [ (radialFreq, angularFreq)
---     | radialFreq <- [-rFreq .. rFreq]
---     , angularFreq <- [-thetaFreq .. thetaFreq]
---     ]

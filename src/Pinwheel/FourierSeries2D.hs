@@ -1031,3 +1031,28 @@ printEnvelopIntegral a b delta s period radialFreq =
           let x = a + fromIntegral i * delta  
           in analyticalFourierSeriesFunc2 0 radialFreq s period period 0 x
   in print $ VU.zipWith (*) weights vec
+
+
+{-# INLINE createFrequencyArray #-}
+createFrequencyArray ::
+     (RealFloat e) => Int -> (e -> e -> Complex e) -> R.Array D DIM2 (Complex e)
+createFrequencyArray numR2Freqs f =
+  fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
+    let x = fromIntegral $ i - div numR2Freqs 2
+        y = fromIntegral $ j - div numR2Freqs 2
+        rho = sqrt $ x ^ 2 + y ^ 2
+        phi = atan2 y x
+     in f phi rho
+          
+{-# INLINE createFrequencyArrayZeroCenter #-}
+createFrequencyArrayZeroCenter ::
+     (RealFloat e) => Int -> (e -> e -> Complex e) -> R.Array D DIM2 (Complex e)
+createFrequencyArrayZeroCenter numR2Freqs f =
+  fromFunction (Z :. numR2Freqs :. numR2Freqs) $ \(Z :. i :. j) ->
+    let x = fromIntegral $ i - div numR2Freqs 2
+        y = fromIntegral $ j - div numR2Freqs 2
+        rho = sqrt $ x ^ 2 + y ^ 2
+        phi = atan2 y x
+     in if rho == 0
+          then 0
+          else f phi rho

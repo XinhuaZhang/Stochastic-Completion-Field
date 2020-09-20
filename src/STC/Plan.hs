@@ -23,8 +23,6 @@ generateRadomVector ::
 generateRadomVector len =
   newStdGen >>= return . VS.map (:+ 0) . VS.fromList . L.take len . randoms
 
-
-
 makePlanDiscrete :: FilePath -> DFTPlan -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> IO DFTPlan
 makePlanDiscrete folderPath initPlan nx ny numR2Freq numThetaFreq numRFreq numPhiFreq numRhoFreq = do
   importFFTWWisdom (folderPath </> "fftwwisdom.dat")

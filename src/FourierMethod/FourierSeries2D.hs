@@ -424,7 +424,7 @@ fourierSeriesConduitAcc ptxs numFreqs period delta x =
           L.map
             (\r2Positions ->
                inverseHarmonicAcc2 numFreqs period delta .
-               A.fromList (A.Z A.:. (L.length r2Positions)) $
+               A.fromList (A.Z A.:. L.length r2Positions) $
                r2Positions) $
           idxs
     liftIO $ printCurrentTime "fourierSeriesConduit"
@@ -435,14 +435,13 @@ fourierSeriesSinkAcc ::
      (Unbox e)
   => Int
   -> Int
-  -> ConduitT (VU.Vector (Complex e)) Void (ResourceT IO) ((R.Array U DIM3 (Complex e)))
+  -> ConduitT (VU.Vector (Complex e)) Void (ResourceT IO) (R.Array U DIM3 (Complex e))
 fourierSeriesSinkAcc numPoints cols = do
   xs <- CL.consume
-  return .
-    computeS .
+  computeP .
     R.backpermute
       (Z :. cols :. numPoints :. numPoints)
-      (\(Z :. a :. b :. c) -> (Z :. b :. c :. a)) .
+      (\(Z :. a :. b :. c) -> Z :. b :. c :. a) .
     fromUnboxed (Z :. numPoints :. numPoints :. cols) . VU.concat $
     xs
 

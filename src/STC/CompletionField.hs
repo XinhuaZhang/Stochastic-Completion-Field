@@ -84,23 +84,20 @@ completionFieldRepa ::
 completionFieldRepa plan source sink = do
   print . extent $ source
   let (Z :. numRFreq :. numThetaFreq :. cols :. rows) = extent source
-      sourceFilter =
-        VS.convert .
-        toUnboxed .
-        computeUnboxedS .
-        R.backpermute
-          (extent source)
-          (\(Z :. a :. b :. c :. d) ->
-             (Z :. (makeFilterHelper numRFreq a) :.
-              (makeFilterHelper numThetaFreq b) :.
-              c :.
-              d)) $
-        source
       dftID = DFTPlanID DFT1DG [numRFreq, numThetaFreq, cols, rows] [0, 1]
+  sourceFilter <-
+    fmap (VS.convert . toUnboxed) .
+    computeUnboxedP .
+    R.backpermute
+      (extent source)
+      (\(Z :. a :. b :. c :. d) ->
+         Z :. makeFilterHelper numRFreq a :. makeFilterHelper numThetaFreq b :.
+          c :.
+          d) $
+    source
   dftSource <- dftExecute plan dftID sourceFilter
   sinkU <- computeUnboxedP . delay $ sink
-  dftSink <-
-    dftExecute plan dftID . VS.convert . toUnboxed $ sinkU
+  dftSink <- dftExecute plan dftID . VS.convert . toUnboxed $ sinkU
   fmap (fromUnboxed (extent source) . VS.convert) .
     dftExecute
       plan

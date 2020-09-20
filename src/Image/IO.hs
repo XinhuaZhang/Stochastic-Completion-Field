@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Image.IO
   ( ImageRepa(..)
   , readImagePathList
@@ -10,7 +11,7 @@ module Image.IO
   , plotImageRepaComplexGray
   ) where
 
-import           Codec.Picture                
+import           Codec.Picture
 import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Resource
 import           Data.Array.Repa              as R
@@ -21,6 +22,7 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Data.Word
 import           GHC.Float
+import           Utils.Parallel
 
 -- x = cols = width
 -- y = rows = height
@@ -205,25 +207,43 @@ func bound x
 normalizeImageRepa :: (RealFrac e, Eq e, Unbox e, Ord e) => ImageRepa e -> ImageRepa e
 normalizeImageRepa i@(ImageRepa depth img)
   | maxV == minV =
-    ImageRepa depth . computeS . R.map (\x -> (fromIntegral $ 2 ^ depth - 1)) $
+    ImageRepa depth . computeS . R.map (\x -> fromIntegral (2 ^ depth - 1)) $
     img
   | otherwise =
     ImageRepa depth .
     computeS .
-    R.map (\x -> (x - minV) / (maxV - minV) * (fromIntegral $ 2 ^ depth - 1)) $
+    R.map (\x -> (x - minV) / (maxV - minV) * fromIntegral (2 ^ depth - 1)) $
     img
   where
-    maxV = VU.maximum . toUnboxed $ img
-    minV = VU.minimum . toUnboxed $ img
+    !maxV = VU.maximum . toUnboxed $ img
+    !minV = VU.minimum . toUnboxed $ img
+    
+{-# INLINE normalizeImageRepaPar #-}
+normalizeImageRepaPar :: (RealFrac e, Eq e, Unbox e, Ord e) => ImageRepa e -> IO (ImageRepa e)
+normalizeImageRepaPar i@(ImageRepa depth img) = do
+  if maxV == minV
+    then do
+      arr <- computeP . R.map (\x -> fromIntegral (2 ^ depth - 1)) $img
+      return . ImageRepa depth $ arr
+    else do
+      arr <-
+        computeP .
+        R.map (\x -> (x - minV) / (maxV - minV) * fromIntegral (2 ^ depth - 1)) $
+        img
+      return . ImageRepa depth $ arr
+  where
+    !maxV = VU.maximum . toUnboxed $ img
+    !minV = VU.minimum . toUnboxed $ img
 
 {-# INLINE plotImageRepa #-}
 plotImageRepa :: (Unbox e, Ord e, RealFrac e) => FilePath -> ImageRepa e -> IO ()
 plotImageRepa filePath img@(ImageRepa depth x) = do
+  normalizedImg <- imageContent <$> normalizeImageRepaPar img
   let Z :. nfp' :. nxp' :. nyp' = extent x
-      normalizedImg = imageContent . normalizeImageRepa $ img
+      -- normalizedImg = imageContent . normalizeImageRepa $ img
       w =
         case nfp' of
-          1 ->
+          1
             -- ImageY8 $
             -- generateImage
             --   (\x y ->
@@ -233,6 +253,7 @@ plotImageRepa filePath img@(ImageRepa depth x) = do
             --       in v)
             --   nxp'
             --   nyp'
+           ->
             ImageRGB8 $
             generateImage
               (\x y ->
@@ -310,7 +331,7 @@ complexImageToColorImage img@(ImageRepa depth arr) =
         arr
    in ImageRepa 8 . fromUnboxed (Z :. (3 :: Int) :. cols :. rows) . VU.concat $
       [r, g, b]
-      
+
 {-# INLINE normalizeComplexImage #-}
 normalizeComplexImage ::
      ImageRepa (Complex Double) -> ImageRepa (Complex Double)
@@ -328,7 +349,7 @@ normalizeComplexImage (ImageRepa depth img) =
              VU.map
                (\x -> (x - minV) / (maxV - minV) * (maxVal - minVal) + minVal) $
              magVec
-             
+
 
 {-# INLINE plotImageRepaComplex #-}
 plotImageRepaComplex ::
@@ -340,7 +361,7 @@ plotImageRepaComplex filePath img =
   plotImageRepa filePath . complexImageToColorImage -- . normalizeComplexImage
   $
   img
-  
+
 {-# INLINE plotImageRepaComplexGray #-}
 plotImageRepaComplexGray :: FilePath -> ImageRepa (Complex Double) -> IO ()
 plotImageRepaComplexGray filePath img =

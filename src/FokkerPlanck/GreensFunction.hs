@@ -29,6 +29,7 @@ import           Utils.Parallel
 import           Utils.SimpsonRule
 import           Utils.Time
 import Text.Printf
+import           Utils.Distribution
 
 sampleCartesian ::
      FilePath
@@ -46,15 +47,15 @@ sampleCartesian ::
   -> Int
   -> Int
   -> Int
-  -> Int
+  -> Int -> Double
   -> IO (Histogram (Complex Double))
-sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs = do
+sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs stdR2 = do
   let center = div numPoints 2
       deltaTheta = 2 * pi / fromIntegral oris
       origin = R2S1RP 0 0 0 gamma
       idx =
         L.filter
-          (\(R2S1RP c r _ g) -> (sqrt (c ^ 2 + r ^ 2) >= 1) && g > 0)
+          (\(R2S1RP c r _ g) -> (sqrt (c ^ 2 + r ^ 2) > 0) && g > 0)
           [ R2S1RP
             ((fromIntegral $ c - center) * delta)
             ((fromIntegral $ r - center) * delta)
@@ -86,7 +87,7 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
                           , log rho
                           , ori
                           , logGamma
-                          , v -- * (1 - rho ** (-r2Sigma))
+                          , v * (1 - gaussian2DPolar rho stdR2)
                           )) $
                  idx)
           [0 .. oris - 1]

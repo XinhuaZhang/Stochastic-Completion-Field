@@ -1,23 +1,26 @@
+{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Strict           #-}
 {-# LANGUAGE StrictData       #-}
 module FourierPinwheel.Array where
 
-import qualified Data.Array.Accelerate as A
-import Data.Array.Repa       as R
+import qualified Data.Array.Accelerate                  as A
+import qualified Data.Array.Accelerate.LLVM.PTX as A
+import           Data.Array.Repa                        as R
 import           Data.Complex
-import           Data.List             as L
-import           Data.Vector.Generic   as VG
-import           Data.Vector.Storable  as VS
+import           Data.List                              as L
+import           Data.Vector.Generic                    as VG
+import           Data.Vector.Storable                   as VS
 import           DFT.Plan
 import           Filter.Utils
-import           Image.IO
-import           Utils.Array
-import           Utils.Parallel
 import           Graphics.Rendering.Chart.Backend.Cairo
 import           Graphics.Rendering.Chart.Easy
+import           Image.IO
+import           Text.Printf
+import           Utils.Array
 import           Utils.BLAS
-import Text.Printf
+import           Utils.Parallel
+import FourierMethod.FourierSeries2D
 
 data FPArray vector = FPArray
   { getFPArrayNumXFreq     :: Int
@@ -55,14 +58,14 @@ parZipWithFPArray ::
   -> FPArray vector
 parZipWithFPArray f (FPArray numXFreq numYFreq numRFreq numThetaFreq numRhoFreq numPhiFreq vecs1) =
   FPArray numXFreq numYFreq numRFreq numThetaFreq numRhoFreq numPhiFreq .
-  parZipWith rdeepseq f vecs1 . getFPArray 
+  parZipWith rdeepseq f vecs1 . getFPArray
 
 
 plotFPArray ::
      DFTPlan
   -> FilePath
   -> FPArray (VS.Vector (Complex Double))
-  -> IO (R.Array R.U R.DIM4 (Complex Double)) 
+  -> IO (R.Array R.U R.DIM4 (Complex Double))
 plotFPArray plan filePath arr = do
   let planIDBackward =
         DFTPlanID
@@ -89,9 +92,76 @@ plotFPArray plan filePath arr = do
     R.fromUnboxed
       (R.Z R.:. (1 :: Int) R.:. getFPArrayNumXFreq arr R.:.
        getFPArrayNumYFreq arr) .
-    -- VG.map (\x -> x^2) . 
+    -- VG.map (\x -> x^2) .
     R.toUnboxed $ arr1
   return arrR2
+
+  
+plotFPArrayAcc ::
+     (A.Elt (Complex Double))
+  => [A.PTX]
+  -> FilePath
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> FPArray (VS.Vector (Complex Double))
+  -> IO (R.Array R.U R.DIM4 (Complex Double))
+plotFPArrayAcc ptxs filePath numPoints delta periodR2 numBatch arr@(FPArray numXFreq numYFreq numRFreq numThetaFreq _ _ vecs) = do
+  let rows = numRFreq * numThetaFreq
+      cols = numXFreq * numYFreq
+      arrMat =
+        A.transpose .
+        A.use .
+        A.fromList (A.Z A.:. rows A.:. cols) .
+        R.toList .
+        makeFilter2DInverse .
+        fromUnboxed (Z :. rows :. numXFreq :. numXFreq) . VG.convert . VG.concat $
+        vecs
+  arrR2 <-
+    computeFourierSeriesR2StreamAcc
+      ptxs
+      numXFreq
+      numPoints
+      rows
+      periodR2
+      delta
+      numBatch
+      arrMat
+  (sumP . R.map (\x -> magnitude x ** 2) . rotate3D $ arrR2) >>=
+    plotImageRepa filePath .
+    ImageRepa 8 .
+    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) . toUnboxed
+  return .
+    computeS .
+    R.reshape (Z :. numRFreq :. numThetaFreq :. numPoints :. numPoints) $
+    arrR2
+
+plotFPArrayFreqency ::
+     FilePath
+  -> FPArray (VS.Vector (Complex Double))
+  -> IO ()
+plotFPArrayFreqency filePath arr = do
+  arr1 <-
+    R.sumP .
+    R.sumS .
+    R.map (\x -> magnitude x Prelude.^ 2) .
+    rotate4D2 .
+    makeFilter2DInverse .
+    R.fromUnboxed
+      (R.Z R.:. getFPArrayNumRFreq arr R.:. getFPArrayNumThetaFreq arr R.:.
+       getFPArrayNumXFreq arr R.:.
+       getFPArrayNumYFreq arr) .
+    VS.convert . VS.concat . getFPArray $
+    arr
+  plotImageRepa filePath .
+    ImageRepa 8 .
+    R.fromUnboxed
+      (R.Z R.:. (1 :: Int) R.:. getFPArrayNumXFreq arr R.:.
+       getFPArrayNumYFreq arr) .
+    -- VG.map (\x -> x^2) .
+    R.toUnboxed $
+    arr1
 
 
 plotRThetaDist ::
@@ -144,7 +214,9 @@ plotRThetaDist filePathTheta filePathR numPoints numTheta numR periodEnv (x, y) 
       (line
          ""
          [ L.zip
-             [fromIntegral (i - centerTheta) * deltaTheta | i <- [0 .. numTheta - 1]]
+             [ fromIntegral (i - centerTheta) * deltaTheta
+             | i <- [0 .. numTheta - 1]
+             ]
              outputTheta
          ])
   toFile def filePathR $ do

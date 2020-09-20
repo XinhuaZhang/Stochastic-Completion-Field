@@ -32,6 +32,7 @@ import           Utils.List
 import           Utils.Parallel
 import           Utils.Time
 import FourierPinwheel as FP
+import           Foreign.CUDA.Driver            as CUDA
 
 powerMethod ::
      DFTPlan
@@ -761,7 +762,7 @@ computeContourSparseG' !plan !folderPath !coefficients !harmonicsArray !thetaRHa
   return completion
 
 
--- {-# INLINE computeContourSparse''' #-}
+-- # INLINE computeContourSparse''' #
 computeContourSparse''' ::
      DFTPlan
   -> FilePath
@@ -1267,12 +1268,12 @@ powerMethodFourierPinwheel ::
   -> Int
   -> Double
   -> Double
-  -> Int
-  -> Int
+  -> Int -> VS.Vector (Complex Double)
+  -> Int 
   -> FPArray (VS.Vector (Complex Double))
   -> IO (FPArray (VS.Vector (Complex Double)))
-powerMethodFourierPinwheel _ _ _ _ _ _ _ _ _  0 arr = return arr
-powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numPoints delta periodR2 numBatch numStep input = do
+powerMethodFourierPinwheel _ _ _ _ _ _ _ _ _ _ 0 arr = return arr
+powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numPoints delta periodR2 numBatch gaussianEnvelope numStep input = do
   printCurrentTime (show numStep)
   convolvedArr <- FP.convolve harmonicsArray input
   biasedConvolvedArr <- multiplyBias4D plan dftBias convolvedArr
@@ -1282,6 +1283,7 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
         biasedConvolvedArr
       normalizedBiasedConvolvedArr =
         parMapFPArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
+      -- normalizedBiasedConvolvedArr = parMapFPArray (VS.zipWith (*) gaussianEnvelope) normalizedBiasedConvolvedArr'
   when
     (writeFlag && mod numStep 2 == 0)
     (do _ <-
@@ -1293,6 +1295,15 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
         --        plan
         --        (folderPath </> (printf "Bias_%03d.png" numStep))
         --        normalizedBiasedConvolvedArr
+        -- plotFPArrayFreqency
+        --   (folderPath </> (printf "SourceFreq_%03d.png" numStep))
+        --   convolvedArr
+        -- plotFPArrayFreqency
+        --   (folderPath </> (printf "BiasFreq1_%03d.png" numStep))
+        --   normalizedBiasedConvolvedArr' 
+        -- plotFPArrayFreqency
+        --   (folderPath </> (printf "BiasFreq2_%03d.png" numStep))
+        --   normalizedBiasedConvolvedArr 
         return ())
   powerMethodFourierPinwheel
     plan
@@ -1304,6 +1315,7 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
     delta
     periodR2
     numBatch
+    gaussianEnvelope
     (numStep - 1)
     normalizedBiasedConvolvedArr
 
@@ -1318,11 +1330,13 @@ computeContourFourierPinwheel ::
   -> Int
   -> Int
   -> Double
-  -> Double
+  -> Double -> Double
   -> FPArray (VS.Vector (Complex Double))
   -> String
+  -> [Int]
+  -> VS.Vector (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
-computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 input suffix = do
+computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 periodEnv input suffix deviceIDs gaussianEnvelope = do
   eigenSource' <-
     powerMethodFourierPinwheel
       plan
@@ -1334,35 +1348,50 @@ computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias n
       delta
       periodR2
       numBatch
+      gaussianEnvelope
       numStep
       input
   eigenSource <- FP.convolve harmonicsArray eigenSource'
-  eigenSourceR2 <- plotFPArray plan (folderPath </> printf "Source_%s.png" suffix)  eigenSource
+  initialise []
+  devs <- M.mapM device deviceIDs
+  ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
+  ptxs <- M.mapM createTargetFromContext ctxs
+  -- eigenSourceR2 <-
+  --   plotFPArray plan (folderPath </> printf "Source_%s.png" suffix) eigenSource
+  eigenSourceR2 <-
+    plotFPArrayAcc
+      ptxs
+      (folderPath </> printf "Source_%s.png" suffix)
+      numPoints
+      delta
+      periodR2
+      numBatch
+      eigenSource
   let numRFreq = getFPArrayNumRFreq eigenSource
       numThetaFreq = getFPArrayNumThetaFreq eigenSource
-      eigenSinkR2 =
-        timeReversalRepa
-          (L.map fromIntegral . getListFromNumber $ numThetaFreq)
-          eigenSourceR2
+  eigenSinkR2 <-
+    computeUnboxedP $
+    timeReversalRepa
+      (L.map fromIntegral . getListFromNumber $ numThetaFreq)
+      eigenSourceR2
   completionR2 <- completionFieldRepa plan eigenSourceR2 eigenSinkR2
-  plotImageRepa (folderPath </> printf "Source_%s.png" suffix) .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    -- VU.map (\x -> x^2) .
-    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
-    eigenSourceR2
-  plotImageRepa (folderPath </> printf "Sink_%s.png" suffix) .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    -- VU.map (\x -> x^2) .
-    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
-    eigenSinkR2
+  -- plotImageRepa (folderPath </> printf "Source_%s.png" suffix) .
+  --   ImageRepa 8 .
+  --   fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+  --   -- VU.map (\x -> x^2) .
+  --   toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
+  --   eigenSourceR2
+  (sumP . R.map (\x -> magnitude x ** 2) . rotate4D2 $ eigenSinkR2) >>= sumP >>=
+    plotImageRepa (folderPath </> printf "Sink_%s.png" suffix) .
+    ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All)
+  completionR2' <-
+    (sumP . R.map (\x -> magnitude x ** 2) . rotate4D2 $ completionR2) >>= sumP
   plotImageRepa (folderPath </> printf "Completion_%s.png" suffix) .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    -- VU.map (\x -> x^2) .
-    toUnboxed . sumS . sumS . R.map (\x -> (magnitude x) ** 2) . rotate4D2 $
-    completionR2
+    ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) $
+    completionR2'
+  plotImageRepa (folderPath </> printf "Completion1_%s.png" suffix) .
+    ImageRepa 8 . computeS . extend (Z :. (1 :: Int) :. All :. All) . R.map sqrt $
+    completionR2'
   return completionR2
 
 
@@ -1393,7 +1422,7 @@ powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftB
       normalizedBiasedConvolvedArr =
         parMapFPArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
   when
-    (writeFlag && mod numStep 4 == 0
+    (writeFlag && mod numStep 2 == 0
     )
     (do arrR2 <-
           plotFPArray
@@ -1409,10 +1438,10 @@ powerMethodFourierPinwheelDiscrete plan folderPath writeFlag harmonicsArray dftB
           periodR2
           idx
           arrR2
-        -- _ <- plotFPArray
-        --        plan
-        --        (folderPath </> (printf "Bias_%03d.png" numStep))
-        --        normalizedBiasedConvolvedArr
+        _ <- plotFPArray
+               plan
+               (folderPath </> (printf "Bias_%03d.png" numStep))
+               normalizedBiasedConvolvedArr
         return ()
         -- let biasMat = A.transpose . toMatrixAcc $ normalizedBiasedConvolvedArr
         -- biasR2 <-
