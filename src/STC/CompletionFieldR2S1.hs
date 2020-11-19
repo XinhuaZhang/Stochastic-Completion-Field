@@ -137,8 +137,8 @@ shareWeightST dftPlan arr arrG = do
 
 {-# INLINE computeInitialDistribution #-}
 computeInitialDistribution ::
-     Int -> Int -> Int -> [R2S1RPPoint] -> R.Array U DIM3 Double
-computeInitialDistribution xLen yLen numOrientation xs =
+     Int -> Int -> Int -> Double -> [R2S1RPPoint] -> R.Array U DIM3 Double
+computeInitialDistribution xLen yLen numOrientation delta xs =
   let deltaTheat = 2 * pi / fromIntegral numOrientation
       xShift = div xLen 2
       (xMin, xMax) =
@@ -155,7 +155,7 @@ computeInitialDistribution xLen yLen numOrientation xs =
         AU.accum (+) 0 ((0, xMin, yMin), (numOrientation - 1, xMax, yMax)) .
         L.map
           (\(R2S1RPPoint (x, y, theta, _)) ->
-             ( ((floor $ theta * pi / 180 / deltaTheat), x, y)
+             ( ((floor $ theta * pi / 180 / deltaTheat), round (fromIntegral x / delta), round (fromIntegral y / delta))
              , (1 / (fromIntegral . L.length $ xs)))) $
         xs
    in fromUnboxed (Z :. numOrientation :. xLen :. yLen) vec

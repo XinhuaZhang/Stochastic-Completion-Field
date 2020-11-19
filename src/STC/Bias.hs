@@ -223,46 +223,21 @@ computeBiasFourierPinwheelFull ::
   -> Double
   -> Double
   -> Double
+  -> (VU.Vector (Complex Double))
   -> [Point]
   -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
-computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 points
-  -- asteriskGaussianVec <-
-  --   asteriskGaussian2Full
-  --     plan
-  --     numR2Freqs
-  --     thetaFreq
-  --     rFreq
-  --     alpha
-  --     periodR2
-  --     periodEnv
-  --     stdTheta
-  --     stdR
-  --     stdR2
-  -- asteriskGaussianVec <-
-  --   asteriskGaussianRFull
-  --     plan
-  --     numR2Freqs
-  --     thetaFreq
-  --     rFreq
-  --     alpha
-  --     periodR2
-  --     periodEnv
-  --     stdTheta
-  --     stdR
-  --     stdR2
-      -- asteriskGaussianVec = VS.concat $ gaussianFull numR2Freqs thetaFreq rFreq periodR2 stdR2
- = do
-  let asteriskGaussianVec =
-        gaussianPinwheel
-          numR2Freqs
-          periodR2
-          stdR2
-          10
-          thetaFreq
-          rFreq
-          periodEnv
-          stdTheta
-          stdR
+computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 asteriskGaussianVec points = do
+  let -- asteriskGaussianVec =
+      --   gaussianPinwheel
+      --     numR2Freqs
+      --     periodR2
+      --     stdR2
+      --     10
+      --     thetaFreq
+      --     rFreq
+      --     periodEnv
+      --     stdTheta
+      --     stdR
       r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
       numThetaFreq = 2 * thetaFreq + 1
       numRFreq = 2 * rFreq + 1
@@ -296,17 +271,104 @@ computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 pe
   return
     ( VU.convert . toUnboxed . computeUnboxedS . makeFilter2D $ biasArr
     , biasVecF)
-  -- let zeroVec = VU.replicate (numR2Freqs ^ 2) 0
-  --     vec =
-  --       VU.convert . VU.concat $
-  --       [ if rf == 0 && af == 0
-  --         then toUnboxed . computeS . makeFilter2D $ shiftArr
-  --         else zeroVec
-  --       | rf <- [-rFreq .. rFreq]
-  --       , af <- [-thetaFreq .. thetaFreq]
-  --       ]
-  -- return (vec, biasVecF)
-  
+    
+computeBiasFourierPinwheelKoffkaCorss ::
+     DFTPlan
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> (VU.Vector (Complex Double))
+  -> [Point]
+  -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
+computeBiasFourierPinwheelKoffkaCorss plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 asteriskGaussianVec points
+      -- asteriskGaussianVec =
+      --   gaussianPinwheel1
+      --     numR2Freqs
+      --     periodR2
+      --     stdR2
+      --     10
+      --     thetaFreq
+      --     rFreq
+      --     periodEnv
+      --     stdTheta
+      --     stdR
+ = do
+  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+      thetaFreqs = [fromIntegral (-thetaFreq) .. fromIntegral thetaFreq]
+      numThetaFreq = 2 * thetaFreq + 1
+      numRFreq = 2 * rFreq + 1
+      halfPI = 0.5 * pi
+      centerFreqR2 = div numR2Freqs 2
+      shiftArr =
+        fromFunction (Z :. numThetaFreq :. numR2Freqs :. numR2Freqs) $ \(Z :. tf :. yf :. xf) ->
+          let freqTheta = fromIntegral (tf - thetaFreq)
+              freqY = fromIntegral (yf - centerFreqR2)
+              freqX = fromIntegral (xf - centerFreqR2)
+           in L.foldl'
+                (\b (Point x y theta scale) ->
+                   let phi =
+                         if abs x < abs y
+                           then atan2 0 x
+                           else if abs x > abs y
+                                  then atan2 y 0
+                                  else error
+                                         "computeBiasFourierPinwheelKoffkaCorss: x == y"
+                    in b +
+                       cis (-(freqX * x + freqY * y) * 2 * pi / periodR2) *
+                       (cis (-freqTheta * (phi + halfPI)) +
+                        cis (-freqTheta * (phi - halfPI))))
+                0
+                points
+      -- shiftArr =
+      --   fromListUnboxed (Z :. numThetaFreq :. numR2Freqs :. numR2Freqs) .
+      --   parMap
+      --     rdeepseq
+      --     (\(thetaFreq, freqY, freqX) ->
+      --        L.foldl'
+      --          (\b (Point x y theta scale) ->
+      --             let phi =
+      --                   if abs x < abs y
+      --                     then atan2 0 x
+      --                     else if abs x > abs y
+      --                            then atan2 y 0
+      --                            else error
+      --                                   "computeBiasFourierPinwheelKoffkaCorss: x == y"
+      --              in b +
+      --                 cis (-(freqX * x + freqY * y) * 2 * pi / periodR2) *
+      --                 (cis (-thetaFreq * (phi + halfPI)) +
+      --                  cis (-thetaFreq * (phi - halfPI))))
+      --          0
+      --          points) $
+      --   [ (thetaFreq, freqY, freqX)
+      --   | thetaFreq <- thetaFreqs
+      --   , freqY <- r2Freqs
+      --   , freqX <- r2Freqs
+      --   ]
+      asteriskGaussianArr =
+        fromUnboxed
+          (Z :. numRFreq :. numThetaFreq :. numR2Freqs :. numR2Freqs)
+          asteriskGaussianVec
+  biasArr <-
+    computeUnboxedP . R.traverse2 asteriskGaussianArr shiftArr const $ \fA fS idx@(Z :. _ :. k :. i :. j) ->
+      fA idx * fS (Z :. k :. i :. j)
+  biasVecF <-
+    (computeUnboxedP . makeFilter4D $ biasArr) >>=
+    dftExecute
+      plan
+      (DFTPlanID
+         DFT1DG
+         [numRFreq, numThetaFreq, numR2Freqs, numR2Freqs]
+         [0, 1, 2, 3]) .
+    VU.convert . toUnboxed
+  biasVec <- VU.convert . toUnboxed <$> computeUnboxedP (makeFilter2D biasArr)
+  return (biasVec, biasVecF)
 
 computeBiasFourierPinwheelDiscrete ::
      DFTPlan

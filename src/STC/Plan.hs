@@ -98,7 +98,7 @@ makePlan :: FilePath -> DFTPlan -> Int -> Int -> Int -> Int -> Int -> Int -> Int
 makePlan folderPath initPlan nx ny numR2Freq numThetaFreq numRFreq numPhiFreq numRhoFreq = do
   importFFTWWisdom (folderPath </> "fftwwisdom.dat")
   let lens =
-        [ numRhoFreq * numThetaFreq * numR2Freq ^ 2
+        [ numRFreq * numThetaFreq * numR2Freq ^ 2
         , nx * ny * numThetaFreq * numRFreq
         , numR2Freq ^ 2
         , numThetaFreq * numRFreq * numPhiFreq * numRhoFreq

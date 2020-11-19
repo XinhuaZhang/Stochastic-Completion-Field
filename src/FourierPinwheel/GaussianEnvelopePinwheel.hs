@@ -29,12 +29,12 @@ gaussianPinwheelFourierCoefficients ::
 gaussianPinwheelFourierCoefficients numR2Freqs periodR2 a sigma angularFreq radialFreq periodEnv phi rho =
   let periodConst = (-2) * pi / log periodEnv
       piRhoPConst = pi * rho / periodR2
-      real = pi / periodR2 ^ 2 * (piRhoPConst ^ (abs angularFreq))
+      real = pi / periodR2 ^ 2 * piRhoPConst ^ abs angularFreq
       mu =
         (2 + sigma + fromIntegral (abs angularFreq)) :+
         (periodConst * fromIntegral radialFreq)
       alpha = mu / 2
-      beta = (fromIntegral (1 + abs angularFreq)) :+ 0
+      beta = fromIntegral (1 + abs angularFreq) :+ 0
       z = ((-1) * (piRhoPConst / a) ^ 2) :+ 0
       img =
         (0 :+ (-1)) ^ abs angularFreq * cis (fromIntegral (-angularFreq) * phi) *
@@ -98,7 +98,8 @@ gaussianPinwheel numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq periodEnv stdTh
       ]
       
 
-gaussianPinwheel' ::
+-- This one has a orientation preference at 0 degree. It is used for Koffka cross problem.
+gaussianPinwheel1 ::
      ( RealFloat a
      , Gamma (Complex a)
      , Enum a
@@ -116,7 +117,7 @@ gaussianPinwheel' ::
   -> a
   -> a
   -> vector (Complex a)
-gaussianPinwheel' numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq periodEnv stdTheta stdR =
+gaussianPinwheel1 numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq periodEnv stdTheta stdR =
   let a = 1 / (stdR2 * sqrt 2)
    in VG.concat .
       parMap
@@ -131,7 +132,7 @@ gaussianPinwheel' numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq periodEnv stdT
                       periodR2
                       a
                       sigma
-                      angularFreq
+                      0
                       radialFreq
                       periodEnv)
                arr =

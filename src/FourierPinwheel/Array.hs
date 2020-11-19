@@ -92,7 +92,7 @@ plotFPArray plan filePath arr = do
     R.fromUnboxed
       (R.Z R.:. (1 :: Int) R.:. getFPArrayNumXFreq arr R.:.
        getFPArrayNumYFreq arr) .
-    -- VG.map (\x -> x^2) .
+    -- VG.map (\x -> log (x + 1)) .
     R.toUnboxed $ arr1
   return arrR2
 

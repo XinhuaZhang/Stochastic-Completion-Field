@@ -1268,12 +1268,12 @@ powerMethodFourierPinwheel ::
   -> Int
   -> Double
   -> Double
-  -> Int -> VS.Vector (Complex Double)
+  -> Int 
   -> Int 
   -> FPArray (VS.Vector (Complex Double))
   -> IO (FPArray (VS.Vector (Complex Double)))
-powerMethodFourierPinwheel _ _ _ _ _ _ _ _ _ _ 0 arr = return arr
-powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numPoints delta periodR2 numBatch gaussianEnvelope numStep input = do
+powerMethodFourierPinwheel _ _ _ _ _ _ _ _ _ 0 arr = return arr
+powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numPoints delta periodR2 numBatch numStep input = do
   printCurrentTime (show numStep)
   convolvedArr <- FP.convolve harmonicsArray input
   biasedConvolvedArr <- multiplyBias4D plan dftBias convolvedArr
@@ -1283,9 +1283,8 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
         biasedConvolvedArr
       normalizedBiasedConvolvedArr =
         parMapFPArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
-      -- normalizedBiasedConvolvedArr = parMapFPArray (VS.zipWith (*) gaussianEnvelope) normalizedBiasedConvolvedArr'
   when
-    (writeFlag && mod numStep 2 == 0)
+    (writeFlag && mod numStep 4 == 0)
     (do _ <-
           plotFPArray
             plan
@@ -1300,10 +1299,10 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
         --   convolvedArr
         -- plotFPArrayFreqency
         --   (folderPath </> (printf "BiasFreq1_%03d.png" numStep))
-        --   normalizedBiasedConvolvedArr' 
+        --   normalizedBiasedConvolvedArr'
         -- plotFPArrayFreqency
         --   (folderPath </> (printf "BiasFreq2_%03d.png" numStep))
-        --   normalizedBiasedConvolvedArr 
+        --   normalizedBiasedConvolvedArr
         return ())
   powerMethodFourierPinwheel
     plan
@@ -1315,7 +1314,6 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
     delta
     periodR2
     numBatch
-    gaussianEnvelope
     (numStep - 1)
     normalizedBiasedConvolvedArr
 
@@ -1334,9 +1332,8 @@ computeContourFourierPinwheel ::
   -> FPArray (VS.Vector (Complex Double))
   -> String
   -> [Int]
-  -> VS.Vector (Complex Double)
   -> IO (R.Array U DIM4 (Complex Double))
-computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 periodEnv input suffix deviceIDs gaussianEnvelope = do
+computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 periodEnv input suffix deviceIDs = do
   eigenSource' <-
     powerMethodFourierPinwheel
       plan
@@ -1348,7 +1345,6 @@ computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias n
       delta
       periodR2
       numBatch
-      gaussianEnvelope
       numStep
       input
   eigenSource <- FP.convolve harmonicsArray eigenSource'

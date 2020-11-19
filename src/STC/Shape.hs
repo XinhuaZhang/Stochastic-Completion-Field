@@ -5,7 +5,7 @@ import           Data.Array.Unboxed as AU
 import           Data.Ix
 import           Data.List          as L
 -- import           Debug.Trace
--- import           Text.Printf
+import           Text.Printf
 import           Utils.Coordinates
 
 data Points a =
@@ -52,14 +52,23 @@ data Shape2D
            , circleRadius :: Int }
   | KoffkaCross { koffkaCrossW :: Double
                 , koffkaCrossD :: Double }
-  deriving (Show, Read)
+  deriving (Read)
+  
+instance Show Shape2D where
+  show (Circle numPoint radius) = printf "Circle_%d_%.1f" numPoint radius
+  show (KoffkaCross w d) = printf "KoffkaCross_%.2f_%.2f" w d
 
+{-# INLINE isDuplicate #-}
 isDuplicate :: Int -> (Double,Double) -> [(Double,Double)] -> Bool
 isDuplicate len (x1, y1) =
   L.any
     (\(x2, y2) ->
        let r = sqrt $ (x1 - x2) ^ 2 + (y1 - y2) ^ 2
         in r < (fromIntegral len - 1))
+
+{-# INLINE getShape #-}
+getShape :: Points Shape2D -> Shape2D
+getShape (Points _ _ shape) = shape
 
 {-# INLINE removeDuplicate #-}
 removeDuplicate :: Int -> [(Double, Double)] -> [(Double, Double)]

@@ -1178,6 +1178,29 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
+  STCPinwheelCorner-test:
+    main:                STCPinwheelCorner.hs
+    source-dirs:         test/STCPinwheelCorner
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is STCPinwheelCorner
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
   DFTPinwheel-test:
     main:                DFTPinwheel.hs
     source-dirs:         test/DFTPinwheel
@@ -1215,6 +1238,7 @@ tests:
     - -funfolding-keeness-factor1000
     - -fllvm
     - -optlo-O3
+    - -feager-blackholing
     extra-libraries:
     - stdc++
     - lapack

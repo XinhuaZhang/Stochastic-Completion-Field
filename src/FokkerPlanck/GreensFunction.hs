@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE Strict #-}
+{-# LANGUAGE Strict #-} 
 module FokkerPlanck.GreensFunction where
 
 import           Control.DeepSeq
@@ -146,6 +146,104 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
         xs
   encodeFile filePath hist
   return hist
+  
+
+sampleCartesianCorner ::
+     FilePath
+  -> FilePath
+  -> [PTX]
+  -> Int
+  -> Double
+  -> Double
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> IO (Histogram (Complex Double))
+sampleCartesianCorner filePath folderPath ptxs numPoints period delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs stdR2 weight = do
+  let center = div numPoints 2
+      deltaTheta = 2 * pi / fromIntegral oris
+  --     origin = R2S1RP 0 0 0 gamma
+      logGamma = 0
+      idxFunc c r o =
+        ( fromIntegral o * deltaTheta
+        , fromIntegral (c - center) * delta
+        , fromIntegral (r - center) * delta)
+  --     arr1 =
+  --       fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. c :. r) ->
+  --         if c == center && r == center
+  --           then 0
+  --           else let (ori, x, y) = idxFunc c r o
+  --                 in computePji thetaSigma tau origin (R2S1RP x y ori gamma)
+  --     orientations = [fromIntegral i * deltaTheta | i <- [0 .. oris - 1]]
+  --     arr2 =
+  --       fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. c :. r) ->
+  --         if c == center && r == center
+  --           then 0
+  --           else let (ori, x, y) = idxFunc c r o
+  --                 in computePjiCorner'
+  --                      thetaSigma
+  --                      tau
+  --                      threshold
+  --                      orientations
+  --                      (R2S1RP x y ori gamma)
+  -- arr <- computeUnboxedP $ arr1 +^ (R.map (* weight) arr2)
+  arr <- sampleR2S1Corner numPoints numPoints delta deltaTheta gamma thetaSigma tau threshold [0 .. oris - 1] weight
+  let idx =
+        [ idxFunc c r o
+        | o <- [0 .. oris - 1]
+        , c <- [0 .. numPoints - 1]
+        , r <- [0 .. numPoints - 1]
+        ]
+      xs =
+        L.map
+          (\((ori, x, y), v) ->
+             let phi = atan2 y x
+                 rho = sqrt (x ^ 2 + y ^ 2)
+              in ( phi
+                 , log rho
+                 , ori
+                 , logGamma
+                 , v * (1 - gaussian2DPolar rho stdR2))) .
+        L.filter (\((_, x, y), v) -> v > threshold && (x /= 0 || y /= 0)) .
+        L.zip idx . R.toList $
+        arr
+  printCurrentTime $
+    printf
+      "Sparsity: %f%%\n"
+      (100 * (fromIntegral . L.length $ xs) /
+       (fromIntegral $ oris * numPoints ^ 2) :: Double)
+  let phiFreqs = L.map fromIntegral [-maxPhiFreqs .. maxPhiFreqs]
+      rhoFreqs = L.map fromIntegral [-maxRhoFreqs .. maxRhoFreqs]
+      thetaFreqs = L.map fromIntegral [-maxThetaFreqs .. maxThetaFreqs]
+      rFreqs = L.map fromIntegral [-maxRFreqs .. maxRFreqs]
+      hist =
+        L.foldl1' (addHistogram) .
+        parZipWith
+          rdeepseq
+          (\ptx ys ->
+             computeFourierCoefficientsGPU'
+               r2Sigma
+               period
+               phiFreqs
+               rhoFreqs
+               thetaFreqs
+               rFreqs
+               ptx
+               ys)
+          ptxs .
+        divideListN (L.length ptxs) $
+        xs
+  encodeFile filePath hist
+  return hist
 
 
 -- sampleLogpolar ::
@@ -247,7 +345,7 @@ sampleR2S1 rows cols delta deltaTheta gamma sigma tau oris = do
   computeUnboxedP .
     R.traverse
       (fromListUnboxed (Z :. (L.length oris)) oris)
-      (\(Z :. o) -> (Z :. cols :. rows :. o)) $ \f (Z :. c :. r :. o) ->
+      (\(Z :. o) -> (Z :. o :. cols :. rows)) $ \f (Z :. o :. c :. r) ->
     if (c == centerCol) && (r == centerRow)
       then 0
       else computePji
@@ -289,6 +387,108 @@ sampleR2S1' rows cols delta gamma sigma tau ori =
                         (delta * fromIntegral (r - centerRow))
                         ori
                         gamma))
+                        
+
+{-# INLINE sampleR2S1Corner #-}
+sampleR2S1Corner ::
+     Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Int]
+  -> Double
+  -> IO (R.Array U DIM3 Double)
+sampleR2S1Corner rows cols delta deltaTheta gamma sigma tau threshold oris weight = do
+  let centerRow = div rows 2
+      centerCol = div cols 2
+      origin = R2S1RP 0 0 0 gamma
+      orientations = L.map (\o -> deltaTheta * fromIntegral o) oris
+  arr1 <-
+    computeUnboxedP .
+    R.traverse
+      (fromListUnboxed (Z :. (L.length oris)) oris)
+      (\(Z :. o) -> (Z :. o :. cols :. rows)) $ \f (Z :. o :. c :. r) ->
+      if (c == centerCol) && (r == centerRow)
+        then 0
+        else computePji
+               sigma
+               tau
+               origin
+               (R2S1RP
+                  (delta * fromIntegral (c - centerCol))
+                  (delta * fromIntegral (r - centerRow))
+                  (fromIntegral (f (Z :. o)) * deltaTheta)
+                  gamma)
+  arr2 <-
+    computeUnboxedP .
+    R.traverse
+      (fromListUnboxed (Z :. (L.length oris)) oris)
+      (\(Z :. o) -> (Z :. o :. cols :. rows)) $ \f (Z :. o :. c :. r) ->
+      if (c == centerCol) && (r == centerRow)
+        then 0
+        else computePjiCorner'
+               delta
+               sigma
+               tau
+               threshold
+               orientations
+               (R2S1RP
+                  (delta * fromIntegral (c - centerCol))
+                  (delta * fromIntegral (r - centerRow))
+                  (fromIntegral (f (Z :. o)) * deltaTheta)
+                  gamma)
+  computeUnboxedP $ (arr1 +^ (R.map (* weight) arr2))
+  
+
+cornerDistribution ::
+     Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Double]
+  -> Double
+  -> (Double, Double)
+  -> [Double]
+cornerDistribution delta gamma sigma tau threshold oris weight (x, y) =
+  let origin = R2S1RP 0 0 0 gamma
+   in L.map
+        (\ori ->
+           computePji sigma tau origin (R2S1RP x y ori gamma) +
+           weight *
+           computePjiCorner'
+             delta
+             sigma
+             tau
+             threshold
+             oris
+             (R2S1RP x y ori gamma))
+        oris
+        
+{-# INLINE cornerDistribution' #-}
+cornerDistribution' ::
+     Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Double]
+  -> Double
+  -> (Double, Double)
+  -> Double
+  -> IO (Double, Double, Double)
+cornerDistribution' delta gamma sigma tau threshold oris weight (x, y) ori = do
+  let origin = R2S1RP 0 0 0 gamma
+      a = computePji sigma tau origin (R2S1RP x y ori gamma)
+      b = computePjiCorner' delta sigma tau threshold oris (R2S1RP x y ori gamma)
+  printf "sigma = %f\ntau = %f\nthreshold = %f\noris = %s\n(R2S1RP %f %f %f %f)\n" sigma tau threshold (show oris) x y ori gamma
+  return (a, b, a + weight * b)
+
+
 
 computeFourierCoefficients ::
      FilePath

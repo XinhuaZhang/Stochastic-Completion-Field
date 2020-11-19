@@ -283,7 +283,7 @@ computeInitialDistributionFourierPinwheel numR2Freqs period periodEnv phiFreq rh
                         cis
                           (-(angularFreq * theta * pi / 180 +
                              (freqX * x + freqY * y) * 2 * pi / period +
-                             2 * pi / (log periodEnv) * log scale * radialFreq)))
+                             2 * pi / log periodEnv * log scale * radialFreq)))
                      0
                      points
                    | freqY <- r2Freqs
