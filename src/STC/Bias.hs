@@ -39,7 +39,7 @@ computeBias rows cols =
 computeBiasPinwheelBasis ::
      DFTPlan -> Int -> Double -> Double -> [Point] -> IO (VS.Vector (Complex Double))
 computeBiasPinwheelBasis plan numR2Freq sigma period points =
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  let r2Freqs = getListFromNumber' numR2Freq
       envelope =
         computeUnboxedS $
         analyticalFourierCoefficients2 numR2Freq 1 0 0 sigma period (period * sqrt 2)
@@ -62,7 +62,7 @@ computeBiasPinwheelBasis plan numR2Freq sigma period points =
 computeBiasPinwheelBasis1 ::
      DFTPlan -> Int -> Double -> Double -> [Point] -> VU.Vector (Complex Double)
 computeBiasPinwheelBasis1 plan numR2Freq sigma period points =
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  let r2Freqs = getListFromNumber' numR2Freq
       envelope =
         toUnboxed . computeS $
         analyticalFourierCoefficients2 numR2Freq 1 0 0 sigma period (period * sqrt 2)
@@ -84,7 +84,7 @@ computeBiasGaussian ::
   -> [Point]
   -> IO (VS.Vector (Complex Double))
 computeBiasGaussian plan numR2Freq sigma period points =
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  let r2Freqs = getListFromNumber' numR2Freq
       freqCenter = div numR2Freq 2
       envelope =
         fromFunction (Z :. numR2Freq :. numR2Freq) $ \(Z :. i :. j) ->
@@ -113,7 +113,7 @@ computeBiasGaussian plan numR2Freq sigma period points =
 computeBiasGaussian1 ::
      DFTPlan -> Int -> Double -> Double -> [Point] -> VU.Vector (Complex Double)
 computeBiasGaussian1 plan numR2Freq sigma period points =
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freq
+  let r2Freqs = getListFromNumber' numR2Freq
       freqCenter = div numR2Freq 2
       envelope =
         toUnboxed . computeS . fromFunction (Z :. numR2Freq :. numR2Freq) $ \(Z :. i :. j) ->
@@ -156,7 +156,7 @@ computeBiasFourierPinwheel plan numR2Freqs thetaFreq alpha periodR2 periodEnv ra
       periodEnv
       stdTheta
       radius
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+  let r2Freqs = getListFromNumber' numR2Freqs
       numThetaFreq = 2 * thetaFreq + 1
       shiftVec =
         VS.concat . L.replicate numThetaFreq . VS.fromList $
@@ -222,25 +222,11 @@ computeBiasFourierPinwheelFull ::
   -> Double
   -> Double
   -> Double
-  -> Double
-  -> (VU.Vector (Complex Double))
+  -> VU.Vector (Complex Double)
   -> [Point]
   -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
-computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 asteriskGaussianVec points = do
-  let -- asteriskGaussianVec =
-      --   gaussianPinwheel
-      --     numR2Freqs
-      --     periodR2
-      --     stdR2
-      --     10
-      --     thetaFreq
-      --     rFreq
-      --     periodEnv
-      --     stdTheta
-      --     stdR
-      r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
-      numThetaFreq = 2 * thetaFreq + 1
-      numRFreq = 2 * rFreq + 1
+computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2  radius stdTheta stdR stdR2 asteriskGaussianVec points = do
+  let r2Freqs = getListFromNumber' numR2Freqs
       shiftArr =
         fromListUnboxed (Z :. numR2Freqs :. numR2Freqs) .
         parMap
@@ -254,7 +240,7 @@ computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 pe
         [(freqY, freqX) | freqY <- r2Freqs, freqX <- r2Freqs]
       asteriskGaussianArr =
         fromUnboxed
-          (Z :. numRFreq :. numThetaFreq :. numR2Freqs :. numR2Freqs)
+          (Z :. rFreq :. thetaFreq :. numR2Freqs :. numR2Freqs)
           asteriskGaussianVec
   biasArr <-
     computeUnboxedP . R.traverse2 asteriskGaussianArr shiftArr const $ \fA fS idx@(Z :. _ :. _ :. i :. j) ->
@@ -264,7 +250,7 @@ computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2 pe
       plan
       (DFTPlanID
          DFT1DG
-         [numRFreq, numThetaFreq, numR2Freqs, numR2Freqs]
+         [rFreq, thetaFreq, numR2Freqs, numR2Freqs]
          [0, 1, 2, 3]) .
     VU.convert . toUnboxed . computeS . makeFilter4D $
     biasArr
@@ -283,32 +269,18 @@ computeBiasFourierPinwheelKoffkaCorss ::
   -> Double
   -> Double
   -> Double
-  -> Double
-  -> (VU.Vector (Complex Double))
+  -> VU.Vector (Complex Double)
   -> [Point]
   -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
-computeBiasFourierPinwheelKoffkaCorss plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 asteriskGaussianVec points
-      -- asteriskGaussianVec =
-      --   gaussianPinwheel1
-      --     numR2Freqs
-      --     periodR2
-      --     stdR2
-      --     10
-      --     thetaFreq
-      --     rFreq
-      --     periodEnv
-      --     stdTheta
-      --     stdR
- = do
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
-      thetaFreqs = [fromIntegral (-thetaFreq) .. fromIntegral thetaFreq]
-      numThetaFreq = 2 * thetaFreq + 1
-      numRFreq = 2 * rFreq + 1
+computeBiasFourierPinwheelKoffkaCorss plan numR2Freqs thetaFreq rFreq alpha periodR2  radius stdTheta stdR stdR2 asteriskGaussianVec points = do
+  let r2Freqs = getListFromNumber' numR2Freqs
+      thetaFreqs = getListFromNumber' thetaFreq
       halfPI = 0.5 * pi
       centerFreqR2 = div numR2Freqs 2
+      centerThetaFreq = div thetaFreq 2
       shiftArr =
-        fromFunction (Z :. numThetaFreq :. numR2Freqs :. numR2Freqs) $ \(Z :. tf :. yf :. xf) ->
-          let freqTheta = fromIntegral (tf - thetaFreq)
+        fromFunction (Z :. thetaFreq :. numR2Freqs :. numR2Freqs) $ \(Z :. tf :. yf :. xf) ->
+          let freqTheta = fromIntegral (tf - centerThetaFreq)
               freqY = fromIntegral (yf - centerFreqR2)
               freqX = fromIntegral (xf - centerFreqR2)
            in L.foldl'
@@ -326,34 +298,9 @@ computeBiasFourierPinwheelKoffkaCorss plan numR2Freqs thetaFreq rFreq alpha peri
                         cis (-freqTheta * (phi - halfPI))))
                 0
                 points
-      -- shiftArr =
-      --   fromListUnboxed (Z :. numThetaFreq :. numR2Freqs :. numR2Freqs) .
-      --   parMap
-      --     rdeepseq
-      --     (\(thetaFreq, freqY, freqX) ->
-      --        L.foldl'
-      --          (\b (Point x y theta scale) ->
-      --             let phi =
-      --                   if abs x < abs y
-      --                     then atan2 0 x
-      --                     else if abs x > abs y
-      --                            then atan2 y 0
-      --                            else error
-      --                                   "computeBiasFourierPinwheelKoffkaCorss: x == y"
-      --              in b +
-      --                 cis (-(freqX * x + freqY * y) * 2 * pi / periodR2) *
-      --                 (cis (-thetaFreq * (phi + halfPI)) +
-      --                  cis (-thetaFreq * (phi - halfPI))))
-      --          0
-      --          points) $
-      --   [ (thetaFreq, freqY, freqX)
-      --   | thetaFreq <- thetaFreqs
-      --   , freqY <- r2Freqs
-      --   , freqX <- r2Freqs
-      --   ]
       asteriskGaussianArr =
         fromUnboxed
-          (Z :. numRFreq :. numThetaFreq :. numR2Freqs :. numR2Freqs)
+          (Z :. rFreq :. thetaFreq :. numR2Freqs :. numR2Freqs)
           asteriskGaussianVec
   biasArr <-
     computeUnboxedP . R.traverse2 asteriskGaussianArr shiftArr const $ \fA fS idx@(Z :. _ :. k :. i :. j) ->
@@ -364,7 +311,7 @@ computeBiasFourierPinwheelKoffkaCorss plan numR2Freqs thetaFreq rFreq alpha peri
       plan
       (DFTPlanID
          DFT1DG
-         [numRFreq, numThetaFreq, numR2Freqs, numR2Freqs]
+         [rFreq, thetaFreq, numR2Freqs, numR2Freqs]
          [0, 1, 2, 3]) .
     VU.convert . toUnboxed
   biasVec <- VU.convert . toUnboxed <$> computeUnboxedP (makeFilter2D biasArr)
@@ -420,7 +367,7 @@ computeBiasFourierPinwheelDiscrete' ::
   -> [Point]
   -> IO (VS.Vector (Complex Double), VS.Vector (Complex Double))
 computeBiasFourierPinwheelDiscrete' plan numR2Freqs thetaFreq rFreq alpha periodR2 periodEnv radius stdTheta stdR stdR2 points = do
-  let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+  let r2Freqs = getListFromNumber' numR2Freqs
       shiftArr =
         fromListUnboxed (Z :. numR2Freqs :. numR2Freqs) .
         parMap
@@ -479,7 +426,7 @@ computeBiasFourierPinwheelDiscrete' plan numR2Freqs thetaFreq rFreq alpha period
 --   -> Int
 --   -> IO (VS.Vector (Complex Double))
 -- computeBiasFourierPinwheel plan numR2Freqs thetaFreq alpha periodR2 periodEnv stdR2 stdTheta points folderPath ptxs numPoints numBatch = do
---   let r2Freqs = L.map fromIntegral . getListFromNumber $ numR2Freqs
+--   let r2Freqs = getListFromNumber' numR2Freqs
 --       numThetaFreq = 2 * thetaFreq + 1
 --       gaussianVec =
 --         asteriskGaussian1 numR2Freqs thetaFreq alpha periodR2 periodEnv stdR2

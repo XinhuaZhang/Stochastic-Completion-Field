@@ -50,13 +50,13 @@ main = do
       numR2Freq = read numR2FreqStr :: Int
       periodR2 = read periodR2Str :: Double
       phiFreq = read phiFreqsStr :: Int
-      phiFreqs = L.map fromIntegral [-phiFreq .. phiFreq]
+      phiFreqs = getListFromNumber phiFreq
       rhoFreq = read rhoFreqsStr :: Int
-      rhoFreqs = L.map fromIntegral [-rhoFreq .. rhoFreq]
+      rhoFreqs = getListFromNumber rhoFreq
       thetaFreq = read thetaFreqsStr :: Int
-      thetaFreqs = L.map fromIntegral [-thetaFreq .. thetaFreq]
+      thetaFreqs = getListFromNumber thetaFreq
       scaleFreq = read scaleFreqsStr :: Int
-      scaleFreqs = L.map fromIntegral [-scaleFreq .. scaleFreq]
+      scaleFreqs = getListFromNumber scaleFreq
       initScale = read initScaleStr :: Double
       initDist = read initDistStr :: [(Double, Double, Double, Double)]
       initPoints = L.map (\(x, y, t, s) -> Point x y t s) initDist
@@ -76,7 +76,6 @@ main = do
       numIteration = read numIterationStr :: Int
       shape2Ds = read shape2DStr :: [Points Shape2D]
       radius = read radiusStr :: Double
-      periodEnv = periodR2 ^ 2 / 4 --  * sqrt 2 --  ^ 2 * 2
   createDirectoryIfMissing True folderPath
   flag <- doesFileExist histFilePath
   flagCorner <- doesFileExist histFilePathCorner
@@ -98,7 +97,6 @@ main = do
               folderPath
               ptxs
               numPoints
-              periodEnv
               delta
               numOrientation
               initScale
@@ -127,7 +125,6 @@ main = do
               folderPath
               ptxs
               numPoints
-              periodEnv
               delta
               numOrientation
               initScale
@@ -150,10 +147,10 @@ main = do
       numPointsRecon
       numPointsRecon
       numR2Freq
-      (2 * thetaFreq + 1)
-      (2 * scaleFreq + 1)
-      (2 * phiFreq + 1)
-      (2 * rhoFreq + 1)
+      thetaFreq
+      scaleFreq
+      phiFreq
+      rhoFreq
   printCurrentTime "Compute DFT Plan done."
   let coefficients = getNormalizedHistogramArr hist
       asteriskGaussianVec =
@@ -166,18 +163,16 @@ main = do
               10
               thetaFreq
               scaleFreq
-              periodEnv
               stdTheta
               stdR
           KoffkaCross _ _ ->
-            gaussianPinwheel1
+            gaussianPinwheelDiscontinuity
               numR2Freq
               periodR2
               stdR2
               10
               thetaFreq
               scaleFreq
-              periodEnv
               stdTheta
               stdR
   harmonicsArray <-
@@ -189,7 +184,6 @@ main = do
       scaleFreq
       (-s)
       periodR2
-      periodEnv
       coefficients
   M.mapM_
     (\shape2D -> do
@@ -198,9 +192,7 @@ main = do
              getShape2DIndexList' . makeShape2D $
              shape2D
        printCurrentTime (show points)
-       (bias, dftBias) --Full
-                          -- (dftBias, bias) <- -- Discrete
-          <-
+       (bias, dftBias) <-
          case getShape shape2D of
            Circle _ _ ->
              computeBiasFourierPinwheelFull
@@ -210,7 +202,6 @@ main = do
                scaleFreq
                (-s)
                periodR2
-               periodEnv
                radius
                stdTheta
                stdR
@@ -225,7 +216,6 @@ main = do
                scaleFreq
                (-s)
                periodR2
-               periodEnv
                radius
                stdTheta
                stdR
@@ -239,19 +229,18 @@ main = do
                rhoFreq
                thetaFreq
                scaleFreq
-               bias -- dftBias
+               bias
        computeContourFourierPinwheel
          plan
          folderPath
          writeFlag
          harmonicsArray
-         dftBias -- bias
+         dftBias
          numIteration
          numBatchR2
          numPointsRecon
          deltaRecon
          periodR2
-         periodEnv
          initDist
          (show . getShape $ shape2D)
          deviceIDs)

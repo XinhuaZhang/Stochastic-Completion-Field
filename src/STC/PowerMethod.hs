@@ -1284,7 +1284,7 @@ powerMethodFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numP
       normalizedBiasedConvolvedArr =
         parMapFPArray (VS.map (/ (s :+ 0))) biasedConvolvedArr
   when
-    (writeFlag && mod numStep 4 == 0)
+    (writeFlag && mod numStep 2 == 0)
     (do _ <-
           plotFPArray
             plan
@@ -1328,12 +1328,12 @@ computeContourFourierPinwheel ::
   -> Int
   -> Int
   -> Double
-  -> Double -> Double
+  -> Double
   -> FPArray (VS.Vector (Complex Double))
   -> String
   -> [Int]
   -> IO (R.Array U DIM4 (Complex Double))
-computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 periodEnv input suffix deviceIDs = do
+computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias numStep numBatch numPoints delta periodR2 input suffix deviceIDs = do
   eigenSource' <-
     powerMethodFourierPinwheel
       plan
@@ -1354,6 +1354,11 @@ computeContourFourierPinwheel plan folderPath writeFlag harmonicsArray dftBias n
   ptxs <- M.mapM createTargetFromContext ctxs
   -- eigenSourceR2 <-
   --   plotFPArray plan (folderPath </> printf "Source_%s.png" suffix) eigenSource
+  _ <-
+    plotFPArray
+      plan
+      (folderPath </> printf "Source1_%s.png" suffix)
+      eigenSource
   eigenSourceR2 <-
     plotFPArrayAcc
       ptxs

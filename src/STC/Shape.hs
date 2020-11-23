@@ -55,7 +55,7 @@ data Shape2D
   deriving (Read)
   
 instance Show Shape2D where
-  show (Circle numPoint radius) = printf "Circle_%d_%.1f" numPoint radius
+  show (Circle numPoint radius) = printf "Circle_%d_%d" numPoint radius
   show (KoffkaCross w d) = printf "KoffkaCross_%.2f_%.2f" w d
 
 {-# INLINE isDuplicate #-}

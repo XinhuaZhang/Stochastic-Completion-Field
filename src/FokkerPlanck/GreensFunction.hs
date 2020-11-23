@@ -37,7 +37,6 @@ sampleCartesian ::
   -> [PTX]
   -> Int
   -> Double
-  -> Double
   -> Int
   -> Double
   -> Double
@@ -49,7 +48,7 @@ sampleCartesian ::
   -> Int
   -> Int -> Double
   -> IO (Histogram (Complex Double))
-sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs stdR2 = do
+sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreq rhoFreq thetaFreq rFreq stdR2 = do
   let center = div numPoints 2
       deltaTheta = 2 * pi / fromIntegral oris
       origin = R2S1RP 0 0 0 gamma
@@ -64,14 +63,9 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
           | c <- [0 .. numPoints - 1]
           , r <- [0 .. numPoints - 1]
           ]
-      logGamma = 0 -- log gamma
-      -- simpsonWeights = weightsSimpsonRule oris
+      logGamma = 0
       xs =
-        L.concat -- .
-        -- L.zipWith
-        --   (\w -> L.map (\(a, b, c, d, v) -> (a, b, c, d, v * w)))
-        --   simpsonWeights
-         $
+        L.concat $
         parMap
           rdeepseq
           (\o ->
@@ -87,46 +81,19 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
                           , log rho
                           , ori
                           , logGamma
-                          , v * (1 - gaussian2DPolar rho stdR2)
-                          )) $
+                          , v * (1 - gaussian2DPolar rho stdR2))) $
                  idx)
           [0 .. oris - 1]
-  -- arr <-
-  --   computeUnboxedP . fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. i :. j) ->
-  --     let x = (fromIntegral $ i - center) * delta
-  --         y = (fromIntegral $ j - center) * delta
-  --         phi = atan2 y x
-  --         rho = sqrt $ (x ^ 2 + y ^ 2)
-  --         theta = fromIntegral o * deltaTheta
-  --         v = computePji thetaSigma tau origin (R2S1RP x y theta gamma)
-  --     in if rho <= 1.5
-  --          then (1, 1, 1, 1, 0)
-  --          else (phi, log rho, theta, logGamma, v)
-  -- plotImageRepa (folderPath </> "GreensFunction.png") .
-  --   ImageRepa 8 .
-  --   computeS .
-  --   -- reduceContrast 20 .
-  --   extend (Z :. (1 :: Int) :. All :. All) .
-  --   sumS . rotate3D . R.map (\(_, _, _, _, v) -> v) $
-  --   arr
-      -- simpsonWeights =
-      --   computeWeightArrFromListOfShape [numPoints, numPoints, oris]
-      -- xs =
-      --   L.filter (\(_, _, _, _, v) -> v > threshold) .
-      --   R.toList -- .
-      --   -- R.zipWith (\w (a, b, c, d, v) -> (a, b, c, d, w * v)) simpsonWeights
-      --   $
-      --   arr
   let
   printCurrentTime $
     printf
       "Sparsity: %f%%\n"
       (100 * (fromIntegral . L.length $ xs) /
        (fromIntegral $ oris * numPoints ^ 2) :: Double)
-  let phiFreqs = L.map fromIntegral [-maxPhiFreqs .. maxPhiFreqs]
-      rhoFreqs = L.map fromIntegral [-maxRhoFreqs .. maxRhoFreqs]
-      thetaFreqs = L.map fromIntegral [-maxThetaFreqs .. maxThetaFreqs]
-      rFreqs = L.map fromIntegral [-maxRFreqs .. maxRFreqs]
+  let phiFreqs = getListFromNumber' phiFreq
+      rhoFreqs = getListFromNumber' rhoFreq
+      thetaFreqs = getListFromNumber' thetaFreq
+      rFreqs = getListFromNumber' rFreq
       hist =
         L.foldl1' (addHistogram) .
         parZipWith
@@ -134,7 +101,6 @@ sampleCartesian filePath folderPath ptxs numPoints period delta oris gamma theta
           (\ptx ys ->
              computeFourierCoefficientsGPU'
                r2Sigma
-               period
                phiFreqs
                rhoFreqs
                thetaFreqs
@@ -154,7 +120,6 @@ sampleCartesianCorner ::
   -> [PTX]
   -> Int
   -> Double
-  -> Double
   -> Int
   -> Double
   -> Double
@@ -168,35 +133,26 @@ sampleCartesianCorner ::
   -> Double
   -> Double
   -> IO (Histogram (Complex Double))
-sampleCartesianCorner filePath folderPath ptxs numPoints period delta oris gamma thetaSigma tau threshold r2Sigma maxPhiFreqs maxRhoFreqs maxThetaFreqs maxRFreqs stdR2 weight = do
+sampleCartesianCorner filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreq rhoFreq thetaFreq rFreq stdR2 weight = do
   let center = div numPoints 2
       deltaTheta = 2 * pi / fromIntegral oris
-  --     origin = R2S1RP 0 0 0 gamma
       logGamma = 0
       idxFunc c r o =
         ( fromIntegral o * deltaTheta
         , fromIntegral (c - center) * delta
         , fromIntegral (r - center) * delta)
-  --     arr1 =
-  --       fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. c :. r) ->
-  --         if c == center && r == center
-  --           then 0
-  --           else let (ori, x, y) = idxFunc c r o
-  --                 in computePji thetaSigma tau origin (R2S1RP x y ori gamma)
-  --     orientations = [fromIntegral i * deltaTheta | i <- [0 .. oris - 1]]
-  --     arr2 =
-  --       fromFunction (Z :. oris :. numPoints :. numPoints) $ \(Z :. o :. c :. r) ->
-  --         if c == center && r == center
-  --           then 0
-  --           else let (ori, x, y) = idxFunc c r o
-  --                 in computePjiCorner'
-  --                      thetaSigma
-  --                      tau
-  --                      threshold
-  --                      orientations
-  --                      (R2S1RP x y ori gamma)
-  -- arr <- computeUnboxedP $ arr1 +^ (R.map (* weight) arr2)
-  arr <- sampleR2S1Corner numPoints numPoints delta deltaTheta gamma thetaSigma tau threshold [0 .. oris - 1] weight
+  arr <-
+    sampleR2S1Corner
+      numPoints
+      numPoints
+      delta
+      deltaTheta
+      gamma
+      thetaSigma
+      tau
+      threshold
+      [0 .. oris - 1]
+      weight
   let idx =
         [ idxFunc c r o
         | o <- [0 .. oris - 1]
@@ -221,10 +177,10 @@ sampleCartesianCorner filePath folderPath ptxs numPoints period delta oris gamma
       "Sparsity: %f%%\n"
       (100 * (fromIntegral . L.length $ xs) /
        (fromIntegral $ oris * numPoints ^ 2) :: Double)
-  let phiFreqs = L.map fromIntegral [-maxPhiFreqs .. maxPhiFreqs]
-      rhoFreqs = L.map fromIntegral [-maxRhoFreqs .. maxRhoFreqs]
-      thetaFreqs = L.map fromIntegral [-maxThetaFreqs .. maxThetaFreqs]
-      rFreqs = L.map fromIntegral [-maxRFreqs .. maxRFreqs]
+  let phiFreqs = getListFromNumber' phiFreq
+      rhoFreqs = getListFromNumber' rhoFreq
+      thetaFreqs = getListFromNumber' thetaFreq
+      rFreqs = getListFromNumber' rFreq
       hist =
         L.foldl1' (addHistogram) .
         parZipWith
@@ -232,7 +188,6 @@ sampleCartesianCorner filePath folderPath ptxs numPoints period delta oris gamma
           (\ptx ys ->
              computeFourierCoefficientsGPU'
                r2Sigma
-               period
                phiFreqs
                rhoFreqs
                thetaFreqs

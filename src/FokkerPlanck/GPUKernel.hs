@@ -254,10 +254,9 @@ coefficient'' ::
   -> Exp a
   -> Exp a
   -> Exp a
-  -> Exp a
   -> Exp (a, a, a, a, a)
   -> Exp (A.Complex a)
-coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle =
+coefficient'' sigma  rFreq thetaFreq rhoFreq phiFreq particle =
   let (phi, rho, theta, r, v) =
         unlift particle :: (Exp a, Exp a, Exp a, Exp a, Exp a)
    in lift
@@ -265,7 +264,7 @@ coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle =
           A.cos (phiFreq * phi + thetaFreq * (theta - phi))
          ) :+
          0) *
-      A.cis ((-1) * (2 * A.pi / period * (rhoFreq * rho + rFreq * (r - rho)))) 
+      A.cis ((-1) * ((rhoFreq * rho + rFreq * (r - rho)))) 
 
 
 gpuKernel'' ::
@@ -279,17 +278,16 @@ gpuKernel'' ::
      , Prelude.Fractional a
      )
   => Exp a
-  -> Exp a
   -> Acc (A.Vector (a, a, a, a))
   -> Acc (A.Vector (a, a, a, a, a))
   -> Acc (A.Vector (A.Complex a))
-gpuKernel'' sigma period freqArr xs =
+gpuKernel'' sigma freqArr xs =
   A.map
     (\(unlift -> (rFreq, thetaFreq, rhoFreq, phiFreq)) ->
        A.sfoldl
          (\s particle ->
             s +
-            coefficient'' sigma period rFreq thetaFreq rhoFreq phiFreq particle)
+            coefficient'' sigma rFreq thetaFreq rhoFreq phiFreq particle)
          0
          (constant Z)
          xs)

@@ -330,25 +330,16 @@ computeInitialDistributionPowerMethodFourierPinwheelFull ::
   -> VS.Vector (Complex Double)
   -> FPArray (VS.Vector (Complex Double))
 computeInitialDistributionPowerMethodFourierPinwheelFull numR2Freqs phiFreq rhoFreq thetaFreq rFreq bias =
-  let numThetaFreq = 2 * thetaFreq + 1
-      numRFreq = 2 * rFreq + 1
-   in FPArray
-        numR2Freqs
-        numR2Freqs
-        (2 * rFreq + 1)
-        numThetaFreq
-        (2 * rhoFreq + 1)
-        (2 * phiFreq + 1) .
-      parMap
-        rdeepseq
-        (\radialFreq ->
-           VG.convert .
-           toUnboxed .
-           computeS .
-           R.slice
-             (fromUnboxed
-                (Z :. numRFreq :. numThetaFreq :. numR2Freqs :. numR2Freqs) .
-              VG.convert $
-              bias) $
-           (Z :. radialFreq :. All :. All :. All)) $
-      [0 .. 2 * rFreq]
+  FPArray numR2Freqs numR2Freqs rFreq thetaFreq rhoFreq phiFreq .
+  parMap
+    rdeepseq
+    (\radialFreq ->
+       VG.convert .
+       toUnboxed .
+       computeS .
+       R.slice
+         (fromUnboxed (Z :. rFreq :. thetaFreq :. numR2Freqs :. numR2Freqs) .
+          VG.convert $
+          bias) $
+       (Z :. radialFreq :. All :. All :. All)) $
+  [0 .. rFreq - 1]
