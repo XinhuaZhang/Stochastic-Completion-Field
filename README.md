@@ -5,7 +5,7 @@
 	<img src="https://img.shields.io/badge/language-haskell | stack-blueviolet?style=for-the-badge"
 			 alt="language">
 </p>
- Implementation of paper "Stochastic Completion Field: A Neural Model of Illusory Contour Shapes and Salience". Williams LR, Jacobs DW. 1997. <a href="https://www.cs.unm.edu/~williams/williams95stochastic.pdf">Link to paper</a>.
+ Implementation of papers <a href="https://www.cs.unm.edu/~williams/williams95stochastic.pdf">Stochastic Completion Field: A Neural Model of Illusory Contour Shapes and Salience</a>,  Williams and Jacobs, 1997. and <a href="https://arxiv.org/abs/2203.06786">Similarity Equivariant Linear Transformation of Joint Orientation-Scale Space Representations</a>, Zhang & Williams, 2022
 
 ## Further Description
 To be written
