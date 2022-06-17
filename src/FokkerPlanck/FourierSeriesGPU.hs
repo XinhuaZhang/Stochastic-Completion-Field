@@ -8,7 +8,8 @@ import           Control.Monad                      as M
 import           Control.Monad.Parallel             as MP
 import qualified Data.Array.Accelerate              as A
 import qualified Data.Array.Accelerate.Data.Complex as A
-import           Data.Array.Accelerate.LLVM.PTX
+import           Data.Array.Accelerate.LLVM.Native       as A
+-- import           Data.Array.Accelerate.LLVM.PTX
 import           Data.Complex                       as C
 import           Data.DList                         as DL
 import           Data.List                          as L
@@ -29,42 +30,42 @@ import           Utils.Parallel
 import Debug.Trace
 import Utils.List
 
-{-# INLINE computeFourierCoefficientsGPU #-}
-computeFourierCoefficientsGPU ::
-     [Double]
-  -> [Double]
-  -> [Double]
-  -> [Double]
-  -> Acc (A.Vector (Float, Float, Float, Float))
-  -> A.Exp Float
-  -> A.Exp Float
-  -> PTX
-  -> [DList Particle]
-  -> Histogram (C.Complex Double)
-computeFourierCoefficientsGPU !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !freqArr !sigmaExp !logPeriodExp !ptx !xs =
-  let particles =
-        L.map
-          (\(Particle phi rho theta r w) ->
-             ( double2Float phi
-             , double2Float (log rho)
-             , double2Float theta
-             , double2Float (log r)
-             , double2Float w)) .
-        DL.toList . DL.concat $
-        xs
-      !len = L.length particles
-   in Histogram
-        [ L.length phiFreqs
-        , L.length rhoFreqs
-        , L.length thetaFreqs
-        , L.length rFreqs
-        ]
-        len .
-      VU.map (\(a :+ b) -> float2Double a :+ float2Double b) .
-      VU.fromList .
-      A.toList .
-      runNWith ptx (gpuKernel'' sigmaExp freqArr) . A.fromList (A.Z A.:. len) $
-      particles
+-- {-# INLINE computeFourierCoefficientsGPU #-}
+-- computeFourierCoefficientsGPU ::
+--      [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> Acc (A.Vector (Float, Float, Float, Float))
+--   -> A.Exp Float
+--   -> A.Exp Float
+--   -> PTX
+--   -> [DList Particle]
+--   -> Histogram (C.Complex Double)
+-- computeFourierCoefficientsGPU !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !freqArr !sigmaExp !logPeriodExp !ptx !xs =
+--   let particles =
+--         L.map
+--           (\(Particle phi rho theta r w) ->
+--              ( double2Float phi
+--              , double2Float (log rho)
+--              , double2Float theta
+--              , double2Float (log r)
+--              , double2Float w)) .
+--         DL.toList . DL.concat $
+--         xs
+--       !len = L.length particles
+--    in Histogram
+--         [ L.length phiFreqs
+--         , L.length rhoFreqs
+--         , L.length thetaFreqs
+--         , L.length rFreqs
+--         ]
+--         len .
+--       VU.map (\(a :+ b) -> float2Double a :+ float2Double b) .
+--       VU.fromList .
+--       A.toList .
+--       runNWith ptx (gpuKernel'' sigmaExp freqArr) . A.fromList (A.Z A.:. len) $
+--       particles
 
 
 {-# INLINE computeFrequencyArray #-}
@@ -157,16 +158,16 @@ computeFrequencyArray !phiFreqs !rhoFreqs !thetaFreqs !rFreqs =
 --      freqArr
 
 
-computeFourierCoefficientsGPU' ::
+computeFourierCoefficients' ::
      Double
   -> [Double]
   -> [Double]
   -> [Double]
   -> [Double]
-  -> PTX
+  -> Native
   -> [(Double, Double, Double, Double, Double)]
   -> Histogram (Complex Double)
-computeFourierCoefficientsGPU' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
+computeFourierCoefficients' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !native !xs =
   let !freqArr =
         A.use $
         computeFrequencyArray (phiFreqs) (rhoFreqs) (thetaFreqs) (rFreqs)
@@ -179,36 +180,63 @@ computeFourierCoefficientsGPU' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !p
         1 .
       VU.fromList .
       A.toList .
-      runNWith ptx (gpuKernel'' (A.constant (sigma)) freqArr) .
+      runNWith native (gpuKernel'' (A.constant (sigma)) freqArr) .
       A.fromList (A.Z A.:. (L.length xs)) $
       xs
+        
+-- computeFourierCoefficientsGPU' ::
+--      Double
+--   -> [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> [Double]
+--   -> PTX
+--   -> [(Double, Double, Double, Double, Double)]
+--   -> Histogram (Complex Double)
+-- computeFourierCoefficientsGPU' !sigma !phiFreqs !rhoFreqs !thetaFreqs !rFreqs !ptx !xs =
+--   let !freqArr =
+--         A.use $
+--         computeFrequencyArray (phiFreqs) (rhoFreqs) (thetaFreqs) (rFreqs)
+--    in Histogram
+--         [ L.length phiFreqs
+--         , L.length rhoFreqs
+--         , L.length thetaFreqs
+--         , L.length rFreqs
+--         ]
+--         1 .
+--       VU.fromList .
+--       A.toList .
+--       runNWith ptx (gpuKernel'' (A.constant (sigma)) freqArr) .
+--       A.fromList (A.Z A.:. (L.length xs)) $
+--       xs 
+        
 
-{-# INLINE computePinwheelCoefficients #-}
-computePinwheelCoefficients ::
-     Int
-  -> Int
-  -> Int
-  -> Int
-  -> PTX
-  -> [(Double, Double, Double, Double, Complex Double)]
-  -> Histogram (Complex Double)
-computePinwheelCoefficients !maxPhiFreq !maxRhoFreq !maxThetaFreq !maxRFreq !ptx !xs =
-  let freqFunc maxFreq = [-(fromIntegral maxFreq) .. (fromIntegral maxFreq)]
-      phiFreqs = freqFunc maxPhiFreq
-      rhoFreqs = freqFunc maxRhoFreq
-      thetaFreqs = freqFunc maxThetaFreq
-      rFreqs = freqFunc maxRFreq
-      !freqArr =
-        A.use $ computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
-  in Histogram
-       [ L.length phiFreqs
-       , L.length rhoFreqs
-       , L.length thetaFreqs
-       , L.length rFreqs
-       ]
-       1 .
-     VU.fromList .
-     A.toList .
-     runNWith ptx (pinwheelCoefficientsAcc freqArr) .
-     A.fromList (A.Z A.:. (L.length xs)) $
-     xs
+-- {-# INLINE computePinwheelCoefficients #-}
+-- computePinwheelCoefficients ::
+--      Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> PTX
+--   -> [(Double, Double, Double, Double, Complex Double)]
+--   -> Histogram (Complex Double)
+-- computePinwheelCoefficients !maxPhiFreq !maxRhoFreq !maxThetaFreq !maxRFreq !ptx !xs =
+--   let freqFunc maxFreq = [-(fromIntegral maxFreq) .. (fromIntegral maxFreq)]
+--       phiFreqs = freqFunc maxPhiFreq
+--       rhoFreqs = freqFunc maxRhoFreq
+--       thetaFreqs = freqFunc maxThetaFreq
+--       rFreqs = freqFunc maxRFreq
+--       !freqArr =
+--         A.use $ computeFrequencyArray phiFreqs rhoFreqs thetaFreqs rFreqs
+--   in Histogram
+--        [ L.length phiFreqs
+--        , L.length rhoFreqs
+--        , L.length thetaFreqs
+--        , L.length rFreqs
+--        ]
+--        1 .
+--      VU.fromList .
+--      A.toList .
+--      runNWith ptx (pinwheelCoefficientsAcc freqArr) .
+--      A.fromList (A.Z A.:. (L.length xs)) $
+--      xs

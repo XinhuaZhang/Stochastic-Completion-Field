@@ -22,7 +22,7 @@ import           Utils.List
 import Utils.Distribution
 
 main = do
-  args@(numR2FreqStr:numThetaFreqStr:numRFreqStr:numPointStr:numThetaStr:numRStr:xStr:yStr:periodStr:std1Str:std2Str:stdR2Str:_) <-
+  args@(numR2FreqStr:numThetaFreqStr:numRFreqStr:numPointStr:numThetaStr:numRStr:xStr:yStr:periodStr:std1Str:std2Str:stdR2Str:deltaRFreqStr:_) <-
     getArgs
   let numR2Freq = read numR2FreqStr :: Int
       numThetaFreq = read numThetaFreqStr :: Int
@@ -36,10 +36,11 @@ main = do
       std1 = read std1Str :: Double
       std2 = read std2Str :: Double
       stdR2 = read stdR2Str :: Double
+      deltaRFreq = read deltaRFreqStr :: Double 
       folderPath = "output/test/AsteriskGaussian"
   let centerR2Freq = div numR2Freq 2
       centerThetaFreq = div numThetaFreq 2
-      periodEnv = period ^ 2 / 4
+      periodEnv = exp (2 * pi) -- period ^ 2 / 4
       a = std1
       b = std2
       asteriskGaussianFreqTheta =
@@ -81,7 +82,7 @@ main = do
       asteriskGaussianFreqTheta
   toFile def (folderPath </> "theta.png") $ do
     layout_title .=
-      printf "(%d , %d)" (Prelude.round x :: Int) (Prelude.round y :: Int)
+      printf "(%.3f , %.3f)" ( x ) ( y)
     plot
       (line
          ""
@@ -109,8 +110,8 @@ main = do
                  arr =
                    R.map
                      (* ((gaussian1DFourierCoefficients
-                            (fromIntegral rFreq)
-                            (log periodEnv)
+                            (deltaRFreq * (fromIntegral rFreq))
+                            -- (log periodEnv)
                             b :+
                           0) -- *
                          -- cis
@@ -124,22 +125,23 @@ main = do
                      rFreq
                      a
                      period
-                     periodEnv
+                     (exp (2 * pi / deltaRFreq))
+                     -- periodEnv
               in VS.convert . toUnboxed . computeS . centerHollowArray numR2Freq $
                  arr -- *^ gaussian2D
            ) $
         [0 .. numRFreq - 1]
-      deltaR = log periodEnv / Prelude.fromIntegral numR
+      deltaR = 12 / Prelude.fromIntegral numR --log periodEnv / Prelude.fromIntegral numR
       harmonicsRD =
         fromFunction (Z :. numR :. numRFreq :. numR2Freq :. numR2Freq) $ \(Z :. r' :. rFreq' :. xFreq' :. yFreq') ->
-          let rFreq = fromIntegral $ rFreq' - centerRFreq
+          let rFreq = deltaRFreq *  (fromIntegral $ rFreq' - centerRFreq)
               xFreq = fromIntegral $ xFreq' - centerR2Freq
               yFreq = fromIntegral $ yFreq' - centerR2Freq
-              r = fromIntegral r' * deltaR - log periodEnv / 2
+              r = fromIntegral r' * deltaR - (12/2) --log periodEnv / 2
            in (1 / log periodEnv :+ 0) *
               cis
                 (2 * pi / period * (x * xFreq + y * yFreq) +
-                 2 * pi / log periodEnv * rFreq * r)
+                 rFreq * r)
   harmonicsR <- computeUnboxedP harmonicsRD
   ys <-
     VS.toList . VS.map magnitude <$>
@@ -149,13 +151,13 @@ main = do
       (numRFreq * numR2Freq ^ 2)
       (VS.convert . toUnboxed $ harmonicsR)
       asteriskGaussianFreqR
-  toFile def (folderPath </> "R.png") $ do
+  toFile def (folderPath </> printf "R_%.2f_%.2f.png" b deltaRFreq) $ do
     layout_title .= printf "(%.3f , %.3f)" x y
     plot
       (line
          ""
          [ L.zip
-             [ fromIntegral i * deltaR - log periodEnv / 2
+             [ fromIntegral i * deltaR - 12/ 2 -- log periodEnv / 2
              | i <- [0 .. numR - 1]
              ]
              ys

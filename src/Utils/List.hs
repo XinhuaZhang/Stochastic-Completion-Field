@@ -29,7 +29,7 @@ getListFromNumber n =
        else [-m .. (m - 1)]
        
 {-# INLINE getListFromNumber' #-}
-getListFromNumber' :: (Floating a ) => Int -> [a]
+getListFromNumber' :: (RealFloat a) => Int -> [a]
 getListFromNumber' n =
   let m = div n 2
    in if odd n

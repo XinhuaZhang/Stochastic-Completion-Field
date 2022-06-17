@@ -38,9 +38,10 @@ createHarmonics ::
   -> Int
   -> e
   -> e
+  -> e
   -> R.Array U DIM4 (Complex e)
   -> IO (FPData (vector (Complex e)))
-createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 coefficients = do
+createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq deltaFreq alpha periodR2 coefficients = do
   let harmonicVecs =
         parMap
           rdeepseq
@@ -50,7 +51,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 coeffi
                phiFreq
                1
                (pinwheel periodR2 alpha radialFreq)) .
-        getListFromNumber $
+        L.map (* deltaFreq) . getListFromNumber' $
         rhoFreq
       harmonicVecsOffset =
         parMap
@@ -61,7 +62,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 coeffi
                thetaFreq
                (-1)
                (logpolarHarmonics periodR2 radialFreq)) .
-        L.map (\x -> -x) . getListFromNumber $
+        L.map (\x -> -(x * deltaFreq)) . getListFromNumber' $
         rFreq
       centerPhiFreq = div phiFreq 2
       centerRhoFreq = div rhoFreq 2
@@ -72,7 +73,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 coeffi
     R.zipWith (*) coefficients . fromFunction (extent coefficients) $ \(Z :. r :. theta :. rho :. phi) ->
       phaseShift
         (phi - centerPhiFreq - (theta - centerThetaFreq))
-        (rho - centerRhoFreq - (r - centerRFreq))
+        (deltaFreq * fromIntegral (rho - centerRhoFreq - (r - centerRFreq)))
         alpha
   let phaseShiftedCoefVecs =
         parMap
@@ -99,6 +100,7 @@ createHarmonics numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 coeffi
         rhoFreq
         thetaFreq
         rFreq
+        deltaFreq
         alpha
         periodR2
     sumArr =
@@ -141,28 +143,23 @@ createVector numR2Freqs numAngularFreqs sign f =
               else f (sign * (k - centerAngular)) phi rho
 
 {-# INLINE pinwheel #-}
-pinwheel :: (RealFloat e) =>  e -> e -> Int -> Int -> e -> e -> Complex e
+pinwheel :: (RealFloat e) =>  e -> e -> e -> Int -> e -> e -> Complex e
 pinwheel periodR2 alpha radialFreq angularFreq phi rho =
   pi * cis (fromIntegral angularFreq * phi) *
-  ((periodR2 / (pi * rho) :+ 0) ** ((2 + alpha) :+ fromIntegral radialFreq))
+  ((periodR2 / (pi * rho) :+ 0) ** ((2 + alpha) :+ radialFreq))
 
 {-# INLINE logpolarHarmonics #-}
-logpolarHarmonics :: (RealFloat e) => e -> Int -> Int -> e -> e -> Complex e
+logpolarHarmonics :: (RealFloat e) => e -> e -> Int -> e -> e -> Complex e
 logpolarHarmonics periodR2 radialFreq angularFreq phi rho =
-  cis (fromIntegral angularFreq * phi) *
-  ((periodR2 / (pi * rho) :+ 0) ** (0 :+ fromIntegral radialFreq))
+  cis (fromIntegral angularFreq * phi) * ((periodR2 / (pi * rho) :+ 0) ** (0 :+ radialFreq))
 
 {-# INLINE phaseShift #-}
 phaseShift ::
-     (RealFloat e, Gamma (Complex e)) => Int -> Int -> e -> Complex e
+     (RealFloat e, Gamma (Complex e)) => Int -> e -> e -> Complex e
 phaseShift angularFreq radialFreq alpha =
   ((0 :+ (-1)) ^ abs angularFreq) *
-  gamma
-    (((2 + fromIntegral (abs angularFreq) + alpha) :+ fromIntegral radialFreq) /
-     2) /
-  gamma
-    (((fromIntegral (abs angularFreq) - alpha) :+ fromIntegral (-radialFreq)) /
-     2)
+  gamma (((2 + fromIntegral (abs angularFreq) + alpha) :+ radialFreq) / 2) /
+  gamma (((fromIntegral (abs angularFreq) - alpha) :+ (-radialFreq)) / 2)
 
 {-# INLINE computeIndicesFromRadius #-}
 computeIndicesFromRadius :: Double -> [(Int,Int)]
@@ -177,12 +174,7 @@ computeIndicesFromRadius radius =
 
 {-# INLINE computePinwheelArray #-}
 computePinwheelArray ::
-     ( Num e
-     , RealFloat e
-     , Gamma (Complex e)
-     , Unbox e
-     , NFData e
-     )
+     (Num e, RealFloat e, Gamma (Complex e), Unbox e, NFData e)
   => Int
   -> Int
   -> Int
@@ -190,14 +182,17 @@ computePinwheelArray ::
   -> Int
   -> e
   -> e
+  -> e
   -> IA.Array (Int, Int) (Complex e)
-computePinwheelArray numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 =
+computePinwheelArray numR2Freqs phiFreq rhoFreq thetaFreq rFreq deltaFreq alpha periodR2 =
   let (minPhiFreq, maxPhiFreq) = rangeFunc phiFreq
-      (minRhoFreq, maxRhoFreq) = rangeFunc rhoFreq 
+      (minRhoFreq, maxRhoFreq) = rangeFunc rhoFreq
       (minThetaFreq, maxThetaFreq) = rangeFunc thetaFreq
-      (minRFreq, maxRFreq) = rangeFunc rFreq      
-      maxAngularFreq = max (maxPhiFreq + maxThetaFreq) (maxPhiFreq - minThetaFreq)
-      minAngularFreq = min (minPhiFreq + minThetaFreq) (minPhiFreq - maxThetaFreq)
+      (minRFreq, maxRFreq) = rangeFunc rFreq
+      maxAngularFreq =
+        max (maxPhiFreq + maxThetaFreq) (maxPhiFreq - minThetaFreq)
+      minAngularFreq =
+        min (minPhiFreq + minThetaFreq) (minPhiFreq - maxThetaFreq)
       maxRadialFreq = max (maxRhoFreq + maxRFreq) (maxRhoFreq - minRFreq)
       minRadialFreq = min (minRhoFreq + minRFreq) (minRhoFreq - maxRFreq)
       centerR2 = div numR2Freqs 2
@@ -221,11 +216,11 @@ computePinwheelArray numR2Freqs phiFreq rhoFreq thetaFreq rFreq alpha periodR2 =
                            else pinwheel
                                   periodR2
                                   alpha
-                                  radialFreq
+                                  (deltaFreq * fromIntegral radialFreq)
                                   angularFreq
                                   phi
                                   rho *
-                                phaseShift angularFreq radialFreq alpha
+                                phaseShift angularFreq (deltaFreq * fromIntegral radialFreq) alpha
               in sumAllS arr / (fromIntegral numR2Freqs ^ 2))
           idxs
    in listArray

@@ -7,7 +7,7 @@ import           Control.Monad                  as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import qualified Data.Array.Accelerate          as A
-import           Data.Array.Accelerate.LLVM.PTX as A
+-- import           Data.Array.Accelerate.LLVM.PTX as A
 import           Data.Array.IArray              as IA
 import           Data.Array.Repa                as R
 import           Data.Complex
@@ -17,8 +17,8 @@ import           Data.List                      as L
 import           Data.Vector.Generic            as VG
 import           Data.Vector.Storable           as VS
 import           Data.Vector.Unboxed            as VU
-import           Foreign.CUDA.Driver            as CUDA
-import           FourierMethod.FourierSeries2D
+-- import           Foreign.CUDA.Driver            as CUDA
+-- import           FourierMethod.FourierSeries2D
 import           Math.Gamma
 import           Pinwheel.Base
 import           Pinwheel.List
@@ -33,90 +33,90 @@ import Filter.Utils
 import Control.Concurrent.Async
 import Numeric.GSL.Special.Bessel
 
-pinwheelFourierSeries ::
-     ( Storable e
-     , CUBLAS (Complex e)
-     , Unbox e
-     , RealFloat e
-     , A.Elt e
-     , A.Elt (Complex e)
-     , Floating (A.Exp e)
-     , A.FromIntegral Int e
-     , VG.Vector vector (Complex e)
-     , NFData (vector (Complex e))
-     )
-  => [Int]
-  -> [PTX]
-  -> Int
-  -> Int
-  -> e
-  -> e
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> e
-  -> Int
-  -> Int
-  -> IO (IA.Array (Int, Int) (vector (Complex e)))
-pinwheelFourierSeries deviceIDs ptxs numR2Freqs numPoints delta periodR2 phiFreq rhoFreq thetaFreq rFreq sigma numBatchR2 numBatchPinwheelFreqs = do
-  let idxs =
-        [ (radialFreq, angularFreq)
-        | radialFreq <- pinwheelFreqs rhoFreq rFreq
-        , angularFreq <- pinwheelFreqs phiFreq thetaFreq
-        ]
-      centerR2Freq = div numR2Freqs 2
-  pinwheels <-
-    computeUnboxedP .
-    R.traverse
-      (fromListUnboxed (Z :. (L.length idxs)) idxs)
-      (\(Z :. freqs) -> (Z :. freqs :. numR2Freqs :. numR2Freqs)) $ \f (Z :. pFreq :. xFreq :. yFreq) ->
-      fourierMellin
-        sigma
-        (snd $ f (Z :. pFreq))
-        (fst $ f (Z :. pFreq))
-        ( delta * fromIntegral (xFreq - centerR2Freq)
-        , delta * fromIntegral (yFreq - centerR2Freq))
-  -- pinwheels <-
-  --   M.mapM
-  --     (\idx ->
-  --        fmap
-  --          (CuMat (numR2Freqs ^ 2) (L.length idx) .
-  --           CuVecHost . VU.convert . toUnboxed) .
-  --        computeP .
-  --        R.traverse
-  --          (fromListUnboxed (Z :. (L.length idx)) idx)
-  --          (\(Z :. freqs) -> (Z :. numR2Freqs :. numR2Freqs :. freqs)) $ \f (Z :. xFreq :. yFreq :. pFreq) ->
-  --          fourierMellin
-  --            sigma
-  --            (snd $ f (Z :. pFreq))
-  --            (fst $ f (Z :. pFreq))
-  --            ( fromIntegral (xFreq - centerR2Freq)
-  --            , fromIntegral (yFreq - centerR2Freq))) .
-  --   divideListN numBatchPinwheelFreqs $
-  --   idxs
-  -- printCurrentTime "Compute Fourier Series... "
-  -- arr <-
-  --   computeFourierSeriesR2Stream
-  --     deviceIDs
-  --     ptxs
-  --     numR2Freqs
-  --     numPoints
-  --     periodR2
-  --     delta
-  --     numBatchR2
-  --     pinwheels
-  -- printCurrentTime "Compute Fourier Series Done"
-  let (radialLB, radialUB) = pinwheelFreqsBound rhoFreq rFreq
-      (angularLB, angularUB) = pinwheelFreqsBound phiFreq thetaFreq
-  return .
-    listArray ((radialLB, angularLB), (radialUB, angularUB)) .
-    parMap
-      rdeepseq
-      (\i ->
-         VG.convert . toUnboxed . computeS . R.slice pinwheels $  -- arr $
-         (Z :. i :. All :. All)) $
-    [0 .. (L.length idxs - 1)]
+-- pinwheelFourierSeries ::
+--      ( Storable e
+--      , CUBLAS (Complex e)
+--      , Unbox e
+--      , RealFloat e
+--      , A.Elt e
+--      , A.Elt (Complex e)
+--      , Floating (A.Exp e)
+--      , A.FromIntegral Int e
+--      , VG.Vector vector (Complex e)
+--      , NFData (vector (Complex e))
+--      )
+--   => [Int]
+--   -> [PTX]
+--   -> Int
+--   -> Int
+--   -> e
+--   -> e
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> e
+--   -> Int
+--   -> Int
+--   -> IO (IA.Array (Int, Int) (vector (Complex e)))
+-- pinwheelFourierSeries deviceIDs ptxs numR2Freqs numPoints delta periodR2 phiFreq rhoFreq thetaFreq rFreq sigma numBatchR2 numBatchPinwheelFreqs = do
+--   let idxs =
+--         [ (radialFreq, angularFreq)
+--         | radialFreq <- pinwheelFreqs rhoFreq rFreq
+--         , angularFreq <- pinwheelFreqs phiFreq thetaFreq
+--         ]
+--       centerR2Freq = div numR2Freqs 2
+--   pinwheels <-
+--     computeUnboxedP .
+--     R.traverse
+--       (fromListUnboxed (Z :. (L.length idxs)) idxs)
+--       (\(Z :. freqs) -> (Z :. freqs :. numR2Freqs :. numR2Freqs)) $ \f (Z :. pFreq :. xFreq :. yFreq) ->
+--       fourierMellin
+--         sigma
+--         (snd $ f (Z :. pFreq))
+--         (fst $ f (Z :. pFreq))
+--         ( delta * fromIntegral (xFreq - centerR2Freq)
+--         , delta * fromIntegral (yFreq - centerR2Freq))
+--   -- pinwheels <-
+--   --   M.mapM
+--   --     (\idx ->
+--   --        fmap
+--   --          (CuMat (numR2Freqs ^ 2) (L.length idx) .
+--   --           CuVecHost . VU.convert . toUnboxed) .
+--   --        computeP .
+--   --        R.traverse
+--   --          (fromListUnboxed (Z :. (L.length idx)) idx)
+--   --          (\(Z :. freqs) -> (Z :. numR2Freqs :. numR2Freqs :. freqs)) $ \f (Z :. xFreq :. yFreq :. pFreq) ->
+--   --          fourierMellin
+--   --            sigma
+--   --            (snd $ f (Z :. pFreq))
+--   --            (fst $ f (Z :. pFreq))
+--   --            ( fromIntegral (xFreq - centerR2Freq)
+--   --            , fromIntegral (yFreq - centerR2Freq))) .
+--   --   divideListN numBatchPinwheelFreqs $
+--   --   idxs
+--   -- printCurrentTime "Compute Fourier Series... "
+--   -- arr <-
+--   --   computeFourierSeriesR2Stream
+--   --     deviceIDs
+--   --     ptxs
+--   --     numR2Freqs
+--   --     numPoints
+--   --     periodR2
+--   --     delta
+--   --     numBatchR2
+--   --     pinwheels
+--   -- printCurrentTime "Compute Fourier Series Done"
+--   let (radialLB, radialUB) = pinwheelFreqsBound rhoFreq rFreq
+--       (angularLB, angularUB) = pinwheelFreqsBound phiFreq thetaFreq
+--   return .
+--     listArray ((radialLB, angularLB), (radialUB, angularUB)) .
+--     parMap
+--       rdeepseq
+--       (\i ->
+--          VG.convert . toUnboxed . computeS . R.slice pinwheels $  -- arr $
+--          (Z :. i :. All :. All)) $
+--     [0 .. (L.length idxs - 1)]
 
 
 -- Stream
@@ -129,111 +129,111 @@ source phiFreq rhoFreq thetaFreq rFreq =
     , angularFreq <- pinwheelFreqs phiFreq thetaFreq
     ]
 
-conduit ::
-     ( Storable e
-     , CUBLAS (Complex e)
-     , Unbox e
-     , RealFloat e
-     , A.Elt e
-     , A.Elt (Complex e)
-     , Floating (A.Exp e)
-     , A.FromIntegral Int e
-     , VG.Vector vector (Complex e)
-     )
-  => [Int]
-  -> Int
-  -> Int
-  -> e
-  -> Int
-  -> e
-  -> [[CuMat (Complex e)]]
-  -> ConduitT (Int, Int) [vector (Complex e)] (ResourceT IO) ()
-conduit deviceIDs numR2Freqs numPoints periodR2 batchSize sigma inverseR2Harmonics = do
-  liftIO $ printCurrentTime "conduit"
-  idx <- CL.take batchSize
-  unless
-    (L.null idx)
-    (do let centerR2Freq = div numR2Freqs 2
-        pinwheels <-
-          fmap
-            (CuMat (L.length idx) (numR2Freqs ^ 2) .
-             CuVecHost . VU.convert . toUnboxed) .
-          liftIO .
-          computeP .
-          R.traverse
-            (fromListUnboxed (Z :. (L.length idx)) idx)
-            (\(Z :. freqs) -> (Z :. freqs :. numR2Freqs :. numR2Freqs)) $ \f (Z :. pFreq :. xFreq :. yFreq) ->
-            fourierMellin
-              sigma
-              (snd $ f (Z :. pFreq))
-              (fst $ f (Z :. pFreq))
-              ( fromIntegral (xFreq - centerR2Freq)
-              , fromIntegral (yFreq - centerR2Freq))
-        arr <-
-          liftIO $
-          computeFourierSeriesR2
-            deviceIDs
-            numR2Freqs
-            numPoints
-            periodR2
-            inverseR2Harmonics
-            [pinwheels]
-        yield .
-          L.map
-            (\i ->
-               VG.convert . toUnboxed . computeS . R.slice arr $
-               (Z :. i :. All :. All)) $
-          [0 .. (L.length idx - 1)])
+-- conduit ::
+--      ( Storable e
+--      , CUBLAS (Complex e)
+--      , Unbox e
+--      , RealFloat e
+--      , A.Elt e
+--      , A.Elt (Complex e)
+--      , Floating (A.Exp e)
+--      , A.FromIntegral Int e
+--      , VG.Vector vector (Complex e)
+--      )
+--   => [Int]
+--   -> Int
+--   -> Int
+--   -> e
+--   -> Int
+--   -> e
+--   -> [[CuMat (Complex e)]]
+--   -> ConduitT (Int, Int) [vector (Complex e)] (ResourceT IO) ()
+-- conduit deviceIDs numR2Freqs numPoints periodR2 batchSize sigma inverseR2Harmonics = do
+--   liftIO $ printCurrentTime "conduit"
+--   idx <- CL.take batchSize
+--   unless
+--     (L.null idx)
+--     (do let centerR2Freq = div numR2Freqs 2
+--         pinwheels <-
+--           fmap
+--             (CuMat (L.length idx) (numR2Freqs ^ 2) .
+--              CuVecHost . VU.convert . toUnboxed) .
+--           liftIO .
+--           computeP .
+--           R.traverse
+--             (fromListUnboxed (Z :. (L.length idx)) idx)
+--             (\(Z :. freqs) -> (Z :. freqs :. numR2Freqs :. numR2Freqs)) $ \f (Z :. pFreq :. xFreq :. yFreq) ->
+--             fourierMellin
+--               sigma
+--               (snd $ f (Z :. pFreq))
+--               (fst $ f (Z :. pFreq))
+--               ( fromIntegral (xFreq - centerR2Freq)
+--               , fromIntegral (yFreq - centerR2Freq))
+--         arr <-
+--           liftIO $
+--           computeFourierSeriesR2
+--             deviceIDs
+--             numR2Freqs
+--             numPoints
+--             periodR2
+--             inverseR2Harmonics
+--             [pinwheels]
+--         yield .
+--           L.map
+--             (\i ->
+--                VG.convert . toUnboxed . computeS . R.slice arr $
+--                (Z :. i :. All :. All)) $
+--           [0 .. (L.length idx - 1)])
 
-pinwheelFourierSeriesStream ::
-     ( Storable e
-     , CUBLAS (Complex e)
-     , Unbox e
-     , RealFloat e
-     , A.Elt e
-     , A.Elt (Complex e)
-     , Floating (A.Exp e)
-     , A.FromIntegral Int e
-     , VG.Vector vector (Complex e)
-     )
-  => [Int]
-  -> [PTX]
-  -> Int
-  -> Int
-  -> e
-  -> e
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> e
-  -> Int
-  -> Int
-  -> Int
-  -> IO (IA.Array (Int, Int) (vector (Complex e)))
-pinwheelFourierSeriesStream deviceIDs ptxs numR2Freqs numPoints delta periodR2 phiFreq rhoFreq thetaFreq rFreq sigma numBatchR2 batchSize numBatchPinwheelFreqs = do
-  inverseR2Harmonics <-
-    createInverseHarmonicMatriesGPU
-      ptxs
-      numBatchR2
-      numPoints
-      numR2Freqs
-      periodR2
-      delta
-  let (radialLB, radialUB) = pinwheelFreqsBound rhoFreq rFreq
-      (angularLB, angularUB) = pinwheelFreqsBound rhoFreq rFreq
-  fmap (listArray ((radialLB, angularLB), (radialUB, radialUB)) . L.concat) .
-    runConduitRes $
-    source phiFreq rhoFreq thetaFreq rFreq .|
-    conduit
-      deviceIDs
-      numR2Freqs
-      numPoints
-      periodR2
-      batchSize
-      sigma
-      inverseR2Harmonics .|
-    CL.consume
+-- pinwheelFourierSeriesStream ::
+--      ( Storable e
+--      , CUBLAS (Complex e)
+--      , Unbox e
+--      , RealFloat e
+--      , A.Elt e
+--      , A.Elt (Complex e)
+--      , Floating (A.Exp e)
+--      , A.FromIntegral Int e
+--      , VG.Vector vector (Complex e)
+--      )
+--   => [Int]
+--   -> [PTX]
+--   -> Int
+--   -> Int
+--   -> e
+--   -> e
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> e
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> IO (IA.Array (Int, Int) (vector (Complex e)))
+-- pinwheelFourierSeriesStream deviceIDs ptxs numR2Freqs numPoints delta periodR2 phiFreq rhoFreq thetaFreq rFreq sigma numBatchR2 batchSize numBatchPinwheelFreqs = do
+--   inverseR2Harmonics <-
+--     createInverseHarmonicMatriesGPU
+--       ptxs
+--       numBatchR2
+--       numPoints
+--       numR2Freqs
+--       periodR2
+--       delta
+--   let (radialLB, radialUB) = pinwheelFreqsBound rhoFreq rFreq
+--       (angularLB, angularUB) = pinwheelFreqsBound rhoFreq rFreq
+--   fmap (listArray ((radialLB, angularLB), (radialUB, radialUB)) . L.concat) .
+--     runConduitRes $
+--     source phiFreq rhoFreq thetaFreq rFreq .|
+--     conduit
+--       deviceIDs
+--       numR2Freqs
+--       numPoints
+--       periodR2
+--       batchSize
+--       sigma
+--       inverseR2Harmonics .|
+--     CL.consume
 
 -- 2D spatial domain to frequency domain:
 -- transform: cis (-freq * x)   
@@ -330,7 +330,7 @@ analyticalFourierSeriesFunc2 ::
   -> Complex e
 analyticalFourierSeriesFunc2 angularFreq radialFreq sigma periodR2 periodEnv phi rho =
   let radialConst = 2 * pi / (log periodEnv)
-  in pi * ((0 :+ 1) ^ (abs angularFreq)) *
+    in (pi) * ((0 :+ 1) ^ (abs angularFreq)) *
      ((cis (fromIntegral angularFreq * phi))) *
      ((periodR2 / (pi * rho) :+ 0) **
       ((2 + sigma) :+ (radialConst * fromIntegral radialFreq))) *
@@ -393,16 +393,16 @@ analyticalFourierCoefficients2 ::
   -> R.Array D DIM2 (Complex e)
 analyticalFourierCoefficients2 numFreqs delta angularFreq radialFreq sigma periodR2 periodEnv =
   let c = ((-1) ^ (abs angularFreq)) / periodR2 :+ 0
-  in R.map (* c) $
-     analyticalFourierSeries2
-       numFreqs
-       delta
-       angularFreq
-       radialFreq
-       sigma
-       periodR2
-       periodEnv
-       
+   in R.map (* c) $
+      analyticalFourierSeries2
+        numFreqs
+        delta
+        angularFreq
+        radialFreq
+        sigma
+        periodR2
+        periodEnv
+
 
 -- Analytical solution type 3
 -- The pinwheel harmonics are cis (-freq * x)   

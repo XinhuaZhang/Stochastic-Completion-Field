@@ -454,3 +454,23 @@ rotate25D theta (centerX, centerY) arr =
   [0 .. nf' - 1]
   where
     (Z :. nf' :. nx' :. ny') = extent arr
+
+
+{-# INLINE scaleShift2D #-}
+scaleShift2D ::
+     (Source s Double)
+  => Double
+  -> (Double, Double)
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array D DIM2 Double
+scaleShift2D scale (dx, dy) bound arr =
+  normalizeValueRange bound $
+  bicubicInterpolation
+    (\(i, j) -> (fromIntegral (i - centerX) / scale - dx + fromIntegral centerX, fromIntegral (j - centerY) / scale - dy + fromIntegral centerY))
+    (nx', ny')
+    arr
+  where
+    (Z :. nx' :. ny') = extent arr
+    centerX = div nx' 2
+    centerY = div ny' 2

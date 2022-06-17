@@ -11,3 +11,10 @@ generateRandomPointSet n rows cols =
     x <- randomRIO (0, cols - 1) :: IO Int
     y <- randomRIO (0, rows - 1) :: IO Int
     return . R2S1RPPoint $ (x, y, 0, 0)
+    
+generateRandomPointSet' :: Int -> (Double,Double) -> IO [(Double,Double)]
+generateRandomPointSet' n range =
+  M.replicateM n $ do
+    x <- randomRIO range :: IO Double
+    y <- randomRIO range :: IO Double
+    return (x, y)

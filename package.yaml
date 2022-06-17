@@ -21,11 +21,11 @@ description:         Please see the README on GitHub at <https://github.com/Xinh
 
 dependencies:
 - accelerate >= 1.2.0.1 && < 2
-- accelerate-blas >= 0.2.0.1 && < 0.3
+# - accelerate-blas >= 0.2.0.1 && < 0.3
 - accelerate-llvm >= 1.2.0.1 && < 2
 - accelerate-io >= 1.2 && < 2
 - accelerate-llvm-native >= 1.2.0.1 && < 2
-- accelerate-llvm-ptx >= 1.2.0.1 && < 2
+# - accelerate-llvm-ptx >= 1.2.0.1 && < 2
 - async >= 2.2.2 && < 3
 - base >= 4.7 && < 5
 - array >= 0.5.2.0 && < 0.6.0.0
@@ -38,8 +38,8 @@ dependencies:
 - conduit-extra >= 1.3.0 && < 1.4.0
 - containers >= 0.5.11.0 && < 0.7.0.0
 - converge >= 0.1.0.1
-- cublas >= 0.5.0.0 && < 0.6
-- cuda >= 0.10.1.0 && < 0.11
+# - cublas >= 0.5.0.0 && < 0.6
+# - cuda >= 0.10.1.0 && < 0.11
 - deepseq >= 1.4.3.0 && < 1.5.0.0
 # - diagrams-postscript >= 1.5 && < 1.6
 # - diagrams >= 1.4 && < 1.5
@@ -62,7 +62,7 @@ dependencies:
 - monad-par >= 0.3.5 && < 0.4
 - monad-parallel >= 0.7.2.3 && < 0.8.0.0
 - mwc-random >= 0.13.6.0 && < 0.15.0.0
-- nvvm >= 0.9.0.0 && < 1.0.0.0
+# - nvvm >= 0.9.0.0 && < 1.0.0.0
 # - opencv >= 0.0.2.1 && < 0.1
 - parallel >= 3.2.2.0 && < 4.0.0.0
 - random >= 1.1 && < 2.0
@@ -79,6 +79,47 @@ library:
   source-dirs: src
 
 executables:
+  # Main-exe:
+  #   main:                Main.hs
+  #   source-dirs:         app
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   - -O2
+  #   - -j4
+  #   # - -main-is PlotGreensFunctionR2S1
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  IllusoryContourEdge-exe:
+    main:                IllusoryContourEdge.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -O2
+    - -j4
+    - -main-is IllusoryContourEdge
+    - -fno-liberate-case
+    - -funfolding-use-threshold1000
+    - -funfolding-keeness-factor1000
+    - -fllvm
+    - -optlo-O3
+    - -feager-blackholing
+    extra-libraries:
+    - stdc++
+    - lapack
+    - fftw3
+    - fftw3f
+    - fftw3l
+    - m
+    dependencies:
+    - Stochastic-Completion-Field
   # PlotGreensFunctionR2S1-exe:
   #   main:                PlotGreensFunctionR2S1.hs
   #   source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1
@@ -96,23 +137,23 @@ executables:
   #   - -optlo-O3
   #   dependencies:
   #   - Stochastic-Completion-Field
-  GreensFunctionFourierCoefficients-exe:
-    main:                GreensFunctionFourierCoefficients.hs
-    source-dirs:         app/FokkerPlanckMonteCarlo/GreensFunctionFourierCoefficients
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -O2
-    - -j4
-    - -main-is GreensFunctionFourierCoefficients
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    dependencies:
-    - Stochastic-Completion-Field
+  # GreensFunctionFourierCoefficients-exe:
+  #   main:                GreensFunctionFourierCoefficients.hs
+  #   source-dirs:         app/FokkerPlanckMonteCarlo/GreensFunctionFourierCoefficients
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   - -O2
+  #   - -j4
+  #   - -main-is GreensFunctionFourierCoefficients
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   dependencies:
+  #   - Stochastic-Completion-Field
   # PlotGreensFunctionR2S1RP-exe:
   #   main:                PlotGreensFunctionR2S1RP.hs
   #   source-dirs:         app/FokkerPlanckMonteCarlo/PlotGreensFunctionR2S1RP
@@ -1023,216 +1064,401 @@ tests:
   #   - -optlo-O3
   #   dependencies:
   #   - Stochastic-Completion-Field
-  STCFourierSeries-test:
-    main:                STCFourierSeries.hs
-    source-dirs:         test/STCFourierSeries
+  # STCFourierSeries-test:
+  #   main:                STCFourierSeries.hs
+  #   source-dirs:         test/STCFourierSeries
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is STCFourierSeries
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   # - gomp
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # IllusoryContourShape-test:
+  #   main:                IllusoryContourShape.hs
+  #   source-dirs:         test/IllusoryContourShape
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is IllusoryContourShape
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # LogFourierSeries-test:
+  #   main:                LogFourierSeries.hs
+  #   source-dirs:         test/LogFourierSeries
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is LogFourierSeries
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # FourierSeriesOfPinwheels-test:
+  #   main:                FourierSeriesOfPinwheels.hs
+  #   source-dirs:         test/FourierSeriesOfPinwheels
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is FourierSeriesOfPinwheels
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # FourierSeries-test:
+  #   main:                FourierSeries.hs
+  #   source-dirs:         test/FourierSeries
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is FourierSeries
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # EigenDFT-test:
+  #   main:                EigenDFT.hs
+  #   source-dirs:         test/EigenDFT
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is EigenDFT
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # STCPinwheel-test:
+  #   main:                STCPinwheel.hs
+  #   source-dirs:         test/STCPinwheel
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is STCPinwheel
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # STCPinwheelCorner-test:
+  #   main:                STCPinwheelCorner.hs
+  #   source-dirs:         test/STCPinwheelCorner
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is STCPinwheelCorner
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # DFTPinwheel-test:
+  #   main:                DFTPinwheel.hs
+  #   source-dirs:         test/DFTPinwheel
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is DFTPinwheel
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # IllusoryContourShapePinwheelBasis-test:
+  #   main:                IllusoryContourShapePinwheelBasis.hs
+  #   source-dirs:         test/IllusoryContourShapePinwheelBasis
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is IllusoryContourShapePinwheelBasis
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   - -feager-blackholing
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # HollowPinwheel-test:
+  #   main:                HollowPinwheel.hs
+  #   source-dirs:         test/HollowPinwheel
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is HollowPinwheel
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # EnvelopeTest-test:
+  #   main:                EnvelopeTest.hs
+  #   source-dirs:         test/EnvelopeTest
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is EnvelopeTest
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # AsteriskGaussian-test:
+  #   main:                AsteriskGaussian.hs
+  #   source-dirs:         test/AsteriskGaussian
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is AsteriskGaussian
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # AsteriskGaussianConvolution-test:
+  #   main:                AsteriskGaussianConvolution.hs
+  #   source-dirs:         test/AsteriskGaussianConvolution
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is AsteriskGaussianConvolution
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # HankelTransform-test:
+  #   main:                HankelTransform.hs
+  #   source-dirs:         test/HankelTransform
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is HankelTransform
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # PlotGabor-test:
+  #   main:                PlotGabor.hs
+  #   source-dirs:         test/PlotGabor
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is PlotGabor
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   - -fllvm
+  #   - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  # GaussianPinwheel-test:
+  #   main:                GaussianPinwheel.hs
+  #   source-dirs:         test/GaussianPinwheel
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -O2
+  #   - -j4
+  #   - -main-is GaussianPinwheel
+  #   - -fno-liberate-case
+  #   - -funfolding-use-threshold1000
+  #   - -funfolding-keeness-factor1000
+  #   # - -fllvm
+  #   # - -optlo-O3
+  #   extra-libraries:
+  #   - stdc++
+  #   - lapack
+  #   - fftw3
+  #   - fftw3f
+  #   - fftw3l
+  #   - m
+  #   dependencies:
+  #   - Stochastic-Completion-Field
+  IllusoryContourEdge-test:
+    main:                IllusoryContourEdge.hs
+    source-dirs:         test/IllusoryContourEdge
     ghc-options:
     - -threaded
     - -rtsopts
     - -O2
     - -j4
-    - -main-is STCFourierSeries
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    # - gomp
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  IllusoryContourShape-test:
-    main:                IllusoryContourShape.hs
-    source-dirs:         test/IllusoryContourShape
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is IllusoryContourShape
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  LogFourierSeries-test:
-    main:                LogFourierSeries.hs
-    source-dirs:         test/LogFourierSeries
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is LogFourierSeries
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    dependencies:
-    - Stochastic-Completion-Field
-  FourierSeriesOfPinwheels-test:
-    main:                FourierSeriesOfPinwheels.hs
-    source-dirs:         test/FourierSeriesOfPinwheels
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is FourierSeriesOfPinwheels
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  FourierSeries-test:
-    main:                FourierSeries.hs
-    source-dirs:         test/FourierSeries
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is FourierSeries
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  EigenDFT-test:
-    main:                EigenDFT.hs
-    source-dirs:         test/EigenDFT
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is EigenDFT
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  STCPinwheel-test:
-    main:                STCPinwheel.hs
-    source-dirs:         test/STCPinwheel
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is STCPinwheel
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  STCPinwheelCorner-test:
-    main:                STCPinwheelCorner.hs
-    source-dirs:         test/STCPinwheelCorner
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is STCPinwheelCorner
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    - -fllvm
-    - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  DFTPinwheel-test:
-    main:                DFTPinwheel.hs
-    source-dirs:         test/DFTPinwheel
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is DFTPinwheel
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  IllusoryContourShapePinwheelBasis-test:
-    main:                IllusoryContourShapePinwheelBasis.hs
-    source-dirs:         test/IllusoryContourShapePinwheelBasis
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is IllusoryContourShapePinwheelBasis
+    - -main-is IllusoryContourEdge
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
@@ -1248,158 +1474,21 @@ tests:
     - m
     dependencies:
     - Stochastic-Completion-Field
-  HollowPinwheel-test:
-    main:                HollowPinwheel.hs
-    source-dirs:         test/HollowPinwheel
+  IllusoryContourEdgeCorner-test:
+    main:                IllusoryContourEdgeCorner.hs
+    source-dirs:         test/IllusoryContourEdgeCorner
     ghc-options:
     - -threaded
     - -rtsopts
     - -O2
     - -j4
-    - -main-is HollowPinwheel
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  EnvelopeTest-test:
-    main:                EnvelopeTest.hs
-    source-dirs:         test/EnvelopeTest
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is EnvelopeTest
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  AsteriskGaussian-test:
-    main:                AsteriskGaussian.hs
-    source-dirs:         test/AsteriskGaussian
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is AsteriskGaussian
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  AsteriskGaussianConvolution-test:
-    main:                AsteriskGaussianConvolution.hs
-    source-dirs:         test/AsteriskGaussianConvolution
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is AsteriskGaussianConvolution
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  HankelTransform-test:
-    main:                HankelTransform.hs
-    source-dirs:         test/HankelTransform
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is HankelTransform
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  PlotGabor-test:
-    main:                PlotGabor.hs
-    source-dirs:         test/PlotGabor
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is PlotGabor
+    - -main-is IllusoryContourEdgeCorner
     - -fno-liberate-case
     - -funfolding-use-threshold1000
     - -funfolding-keeness-factor1000
     - -fllvm
     - -optlo-O3
-    extra-libraries:
-    - stdc++
-    - lapack
-    - fftw3
-    - fftw3f
-    - fftw3l
-    - m
-    dependencies:
-    - Stochastic-Completion-Field
-  GaussianPinwheel-test:
-    main:                GaussianPinwheel.hs
-    source-dirs:         test/GaussianPinwheel
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -O2
-    - -j4
-    - -main-is GaussianPinwheel
-    - -fno-liberate-case
-    - -funfolding-use-threshold1000
-    - -funfolding-keeness-factor1000
-    # - -fllvm
-    # - -optlo-O3
+    - -feager-blackholing
     extra-libraries:
     - stdc++
     - lapack

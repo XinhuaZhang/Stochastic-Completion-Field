@@ -31,7 +31,7 @@ import FourierPinwheel.GaussianEnvelopePinwheel
 import Filter.Utils
 
 main = do
-  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:tauStr:numTrailsStr:deltaTStr:poissonWeightStr:numR2FreqStr:periodR2Str:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:histFilePathCorner:stdR2Str:stdThetaStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
+  args@(deviceIDsStr:numPointsStr:deltaStr:thresholdStr:numPointsReconStr:deltaReconStr:numOrientationStr:numScaleStr:thetaSigmaStr:scaleSigmaStr:tauStr:numTrailsStr:deltaTStr:poissonWeightStr:numR2FreqStr:periodR2Str:deltaFreqStr:phiFreqsStr:rhoFreqsStr:thetaFreqsStr:scaleFreqsStr:initDistStr:initScaleStr:histFilePath:histFilePathCorner:stdR2Str:stdThetaStr:stdRStr:numBatchR2Str:numBatchR2FreqsStr:numBatchOriStr:batchSizeStr:sStr:writeFlagStr:numIterationStr:shape2DStr:radiusStr:numThreadStr:_) <-
     getArgs
   let deviceIDs = read deviceIDsStr :: [Int]
       numPoints = read numPointsStr :: Int
@@ -49,14 +49,15 @@ main = do
       poissonWeight = read poissonWeightStr :: Double
       numR2Freq = read numR2FreqStr :: Int
       periodR2 = read periodR2Str :: Double
+      deltaFreq = read deltaFreqStr :: Double
       phiFreq = read phiFreqsStr :: Int
       phiFreqs = getListFromNumber phiFreq
       rhoFreq = read rhoFreqsStr :: Int
-      rhoFreqs = getListFromNumber rhoFreq
+      rhoFreqs = L.map (* deltaFreq) . getListFromNumber' $ rhoFreq
       thetaFreq = read thetaFreqsStr :: Int
       thetaFreqs = getListFromNumber thetaFreq
       scaleFreq = read scaleFreqsStr :: Int
-      scaleFreqs = getListFromNumber scaleFreq
+      scaleFreqs = L.map (* deltaFreq) . getListFromNumber' $ scaleFreq
       initScale = read initScaleStr :: Double
       initDist = read initDistStr :: [(Double, Double, Double, Double)]
       initPoints = L.map (\(x, y, t, s) -> Point x y t s) initDist
@@ -84,7 +85,7 @@ main = do
       Circle _ _ ->
         if flag
           then do
-            printCurrentTime "read coefficients from file"
+            printCurrentTime $ "read coefficients from file \n" L.++ histFilePath
             decodeFile histFilePath
           else do
             printCurrentTime "Start computing coefficients..."
@@ -104,10 +105,10 @@ main = do
               tau
               threshold
               s
-              phiFreq
-              rhoFreq
-              thetaFreq
-              scaleFreq
+              phiFreqs
+              rhoFreqs
+              thetaFreqs
+              scaleFreqs
               stdR2
       KoffkaCross _ _ ->
         if flagCorner
@@ -132,10 +133,10 @@ main = do
               tau
               threshold
               s
-              phiFreq
-              rhoFreq
-              thetaFreq
-              scaleFreq
+              phiFreqs
+              rhoFreqs
+              thetaFreqs
+              scaleFreqs
               stdR2
               poissonWeight
   printCurrentTime "Done"
@@ -161,8 +162,8 @@ main = do
               periodR2
               stdR2
               10
-              thetaFreq
-              scaleFreq
+              thetaFreqs
+              scaleFreqs
               stdTheta
               stdR
           KoffkaCross _ _ ->
@@ -171,8 +172,8 @@ main = do
               periodR2
               stdR2
               10
-              thetaFreq
-              scaleFreq
+              thetaFreqs
+              scaleFreqs
               stdTheta
               stdR
   harmonicsArray <-
@@ -182,13 +183,14 @@ main = do
       rhoFreq
       thetaFreq
       scaleFreq
+      deltaFreq
       (-s)
       periodR2
       coefficients
   M.mapM_
     (\shape2D -> do
        let points =
-             L.map (\(x, y) -> Point (x) (y) 0 1) .
+             L.map (\(x, y) -> Point (x) (y) 0 1) . -- L.map (translate (0.7, 0)) . L.map (rotateNdilate 30 1) .
              getShape2DIndexList' . makeShape2D $
              shape2D
        printCurrentTime (show points)
@@ -230,6 +232,19 @@ main = do
                thetaFreq
                scaleFreq
                bias
+       initialise []
+       devs <- M.mapM device deviceIDs
+       ctxs <- M.mapM (\dev -> CUDA.create dev []) devs
+       ptxs <- M.mapM createTargetFromContext ctxs
+       arr <-plotFPArrayAcc
+               ptxs
+               (folderPath </> (show . getShape $ shape2D) L.++ "_Source.png" )
+               numPointsRecon
+               deltaRecon
+               periodR2
+               numBatchR2
+               initDist
+       plotRThetaDist (folderPath </> ("Theta_Source.png" )) (folderPath </> ("R_Source.png" ))  numPointsRecon 180 90 (exp (2*pi)) (36, 2) arr
        computeContourFourierPinwheel
          plan
          folderPath

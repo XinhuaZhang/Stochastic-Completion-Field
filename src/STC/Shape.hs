@@ -293,3 +293,24 @@ makeShape2DContrast rows cols (ContrastArea whiteBackgroundFlag (PacMan thetaDeg
           else 0
 makeShape2DContrast rows cols s =
   error $ "makeShape2DContrast: shape is not implemented.\n" L.++ show s
+
+{-# INLINE rotateNdilate #-}
+rotateNdilate :: (Floating a) => a -> a -> (a,a) -> (a,a)
+rotateNdilate angleDegree a (x, y) =
+  let angleRad = angleDegree / 180 * pi
+      cosTheta = cos angleRad
+      sinTheta = sin angleRad
+   in (a * (x * cosTheta - y * sinTheta), a * (x * sinTheta + y * cosTheta))
+
+{-# INLINE translate #-}
+translate :: (Floating a) => (a, a) -> (a,a) -> (a,a)
+translate (dx, dy) (x, y) = (x - dx, y - dy)
+  
+          
+{-# INLINE reflect #-}
+reflect :: (Floating a) => a -> (a,a) -> (a,a)
+reflect angleDegree (x, y) =
+  let angleRad = angleDegree / 180 * pi
+      cosTheta = cos (2 * angleRad)
+      sinTheta = sin (2 * angleRad)
+   in ((x * cosTheta + y * sinTheta), (x * sinTheta - y * cosTheta))

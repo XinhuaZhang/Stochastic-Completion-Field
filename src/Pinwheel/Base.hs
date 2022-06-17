@@ -29,11 +29,14 @@ fourierMellinInv :: (Eq e, RealFloat e) => e -> Int -> Int -> (e, e) -> Complex 
 fourierMellinInv sigma angularFreq radialFreq (!x, !y) =
   if x == 0 && y == 0
     then 0
-    else (x :+ y) ** (fromIntegral angularFreq :+ 0) *
-         ((x ^ 2 + y ^ 2) :+ 0) **
-         (((-(fromIntegral angularFreq) - sigma) :+ fromIntegral radialFreq) /
-          2)
-          
+    else -- (x :+ y) ** (fromIntegral angularFreq :+ 0) *
+         -- ((x ^ 2 + y ^ 2) :+ 0) **
+         -- (((-(fromIntegral angularFreq) + sigma) :+ fromIntegral radialFreq) /
+         --  2)
+                  let r = sqrt $ x^2 + y^2
+                      theta = atan2 y x
+                  in ((r :+ 0) ** (sigma :+ fromIntegral radialFreq)) * cis (fromIntegral angularFreq * theta)
+
 
 {-# INLINE fourierMellinInvPeriod #-}
 fourierMellinInvPeriod ::
@@ -43,5 +46,6 @@ fourierMellinInvPeriod sigma periodEnv angularFreq radialFreq (!x, !y) =
     then 0
     else (x :+ y) ** (fromIntegral angularFreq :+ 0) *
          ((x ^ 2 + y ^ 2) :+ 0) **
-         (((-(fromIntegral angularFreq) - sigma) :+ 2 * pi * fromIntegral radialFreq / (log periodEnv)) /
+         (((-(fromIntegral angularFreq) + sigma) :+ 2 * pi * fromIntegral radialFreq / (log periodEnv)) /
           2)
+

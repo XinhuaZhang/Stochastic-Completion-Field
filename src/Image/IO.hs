@@ -240,56 +240,85 @@ plotImageRepa :: (Unbox e, Ord e, RealFrac e) => FilePath -> ImageRepa e -> IO (
 plotImageRepa filePath img@(ImageRepa depth x) = do
   normalizedImg <- imageContent <$> normalizeImageRepaPar img
   let Z :. nfp' :. nxp' :. nyp' = extent x
-      -- normalizedImg = imageContent . normalizeImageRepa $ img
       w =
-        case nfp' of
-          1
-            -- ImageY8 $
-            -- generateImage
-            --   (\x y ->
-            --      let v =
-            --            fromIntegral . round $
-            --            normalizedImg R.! (Z :. 0 :. x :. y)
-            --       in v)
-            --   nxp'
-            --   nyp'
-           ->
-            ImageRGB8 $
-            generateImage
-              (\x y ->
-                 let r =
-                       fromIntegral . round $
-                       normalizedImg R.! (Z :. 0 :. x :. y)
-                     g =
-                       fromIntegral . round $
-                       normalizedImg R.! (Z :. 0 :. x :. y)
-                     b =
-                       fromIntegral . round $
-                       normalizedImg R.! (Z :. 0 :. x :. y)
-                  in PixelRGB8 r g b)
-              nxp'
-              nyp'
-          3 ->
-            ImageRGB8 $
-            generateImage
-              (\x y ->
-                 let r =
-                       fromIntegral . round $
-                       normalizedImg R.! (Z :. 0 :. x :. y)
-                     g =
-                       fromIntegral . round $
-                       normalizedImg R.! (Z :. 1 :. x :. y)
-                     b =
-                       fromIntegral . round $
-                       normalizedImg R.! (Z :. 2 :. x :. y)
-                  in PixelRGB8 r g b)
-              nxp'
-              nyp'
-          _ ->
-            error $
-            "ImageRepa is neither a gray image nor a color image. There are " L.++
-            show nfp' L.++
-            " channels."
+        case depth of
+          8 ->
+            case nfp' of
+              1 ->
+                ImageRGB8 $
+                generateImage
+                  (\x y ->
+                     let r =
+                           fromIntegral . round $
+                           normalizedImg R.! (Z :. 0 :. x :. y)
+                         g =
+                           fromIntegral . round $
+                           normalizedImg R.! (Z :. 0 :. x :. y)
+                         b =
+                           fromIntegral . round $
+                           normalizedImg R.! (Z :. 0 :. x :. y)
+                      in PixelRGB8 r g b)
+                  nxp'
+                  nyp'
+              3 ->
+                ImageRGB8 $
+                generateImage
+                  (\x y ->
+                     let r =
+                           fromIntegral . round $
+                           normalizedImg R.! (Z :. 0 :. x :. y)
+                         g =
+                           fromIntegral . round $
+                           normalizedImg R.! (Z :. 1 :. x :. y)
+                         b =
+                           fromIntegral . round $
+                           normalizedImg R.! (Z :. 2 :. x :. y)
+                      in PixelRGB8 r g b)
+                  nxp'
+                  nyp'
+              _ ->
+                error $
+                "ImageRepa is neither a gray image nor a color image. There are " L.++
+                show nfp' L.++
+                " channels."
+          16 -> case nfp' of
+                  1 ->
+                    ImageRGB16 $
+                    generateImage
+                      (\x y ->
+                         let r =
+                               fromIntegral . round $
+                               normalizedImg R.! (Z :. 0 :. x :. y)
+                             g =
+                               fromIntegral . round $
+                               normalizedImg R.! (Z :. 0 :. x :. y)
+                             b =
+                               fromIntegral . round $
+                               normalizedImg R.! (Z :. 0 :. x :. y)
+                          in PixelRGB16 r g b)
+                      nxp'
+                      nyp'
+                  3 ->
+                    ImageRGB16 $
+                    generateImage
+                      (\x y ->
+                         let r =
+                               fromIntegral . round $
+                               normalizedImg R.! (Z :. 0 :. x :. y)
+                             g =
+                               fromIntegral . round $
+                               normalizedImg R.! (Z :. 1 :. x :. y)
+                             b =
+                               fromIntegral . round $
+                               normalizedImg R.! (Z :. 2 :. x :. y)
+                          in PixelRGB16 r g b)
+                      nxp'
+                      nyp'
+                  _ ->
+                    error $
+                    "ImageRepa is neither a gray image nor a color image. There are " L.++
+                    show nfp' L.++
+                    " channels."
   savePngImage filePath w
 
 -- Plot Complex Image

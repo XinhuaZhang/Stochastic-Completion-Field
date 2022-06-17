@@ -39,3 +39,36 @@ parseEdgeFile filePath =
     M.replicateM num $ do
       str <- TL.hGetLine h
       return . parseEdge $ str
+      
+  
+{-# INLINE parseEdge' #-}
+parseEdge' :: Text -> (Double, Double)
+parseEdge' txt =
+  let (x, txt1) = parseDouble txt
+      (y, txt2) = parseDouble txt1
+      -- (theta, _) = parseDouble txt2
+   in (x, y)
+
+parseEdgeFile' :: FilePath -> IO [(Double,Double)]
+parseEdgeFile' filePath =
+  withFile filePath ReadMode $ \h -> do
+    numStr <- TL.hGetLine h
+    let (num, _) = parseInt numStr
+    M.replicateM num $ do
+      str <- TL.hGetLine h
+      return . parseEdge' $ str
+
+{-# INLINE parseEdge'' #-}
+parseEdge'' :: Text -> Double
+parseEdge'' txt =
+  let (x, txt1) = parseInt txt
+   in fromIntegral x
+
+parseEdgeFile'' :: FilePath -> IO [Double]
+parseEdgeFile'' filePath =
+  withFile filePath ReadMode $ \h -> do
+    numStr <- TL.hGetLine h
+    let (num, _) = parseInt numStr
+    M.replicateM num $ do
+      str <- TL.hGetLine h
+      return . parseEdge'' $ str

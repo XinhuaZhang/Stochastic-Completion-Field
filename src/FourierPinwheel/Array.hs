@@ -5,7 +5,7 @@
 module FourierPinwheel.Array where
 
 import qualified Data.Array.Accelerate                  as A
-import qualified Data.Array.Accelerate.LLVM.PTX as A
+-- import qualified Data.Array.Accelerate.LLVM.PTX as A
 import           Data.Array.Repa                        as R
 import           Data.Complex
 import           Data.List                              as L
@@ -16,11 +16,12 @@ import           Filter.Utils
 import           Graphics.Rendering.Chart.Backend.Cairo
 import           Graphics.Rendering.Chart.Easy
 import           Image.IO
+import           Image.Transform
 import           Text.Printf
 import           Utils.Array
 import           Utils.BLAS
 import           Utils.Parallel
-import FourierMethod.FourierSeries2D
+-- import FourierMethod.FourierSeries2D
 
 data FPArray vector = FPArray
   { getFPArrayNumXFreq     :: Int
@@ -88,54 +89,91 @@ plotFPArray plan filePath arr = do
   arr1 <-
     R.sumP . R.sumS . R.map (\x -> magnitude x Prelude.^ 2) . rotate4D2 $ arrR2
   plotImageRepa filePath .
-    ImageRepa 8 .
+    ImageRepa 16 .
     R.fromUnboxed
       (R.Z R.:. (1 :: Int) R.:. getFPArrayNumXFreq arr R.:.
        getFPArrayNumYFreq arr) .
     -- VG.map (\x -> log (x + 1)) .
     R.toUnboxed $ arr1
   return arrR2
+  
+plotFPArray' ::
+     DFTPlan
+  -> FilePath
+  -> FPArray (VS.Vector (Complex Double))
+  -> Double
+  -> (Double, Double)
+  -> IO (R.Array R.U R.DIM4 (Complex Double))
+plotFPArray' plan filePath arr scaleFactor (centerX, centerY) = do
+  let planIDBackward =
+        DFTPlanID
+          IDFT1DG
+          [ getFPArrayNumThetaFreq arr
+          , getFPArrayNumXFreq arr
+          , getFPArrayNumYFreq arr
+          ]
+          [1, 2]
+  vecsR2 <- dftExecuteBatchP plan planIDBackward . getFPArray $ arr
+  arrR2 <-
+    R.computeUnboxedP .
+    makeFilter2DInverse .
+    R.fromUnboxed
+      (R.Z R.:. getFPArrayNumRFreq arr R.:. getFPArrayNumThetaFreq arr R.:.
+       getFPArrayNumXFreq arr R.:.
+       getFPArrayNumYFreq arr) .
+    VS.convert . VS.concat $
+    vecsR2
+  arr1 <-
+    R.sumP . R.sumS . R.map (\x -> magnitude x Prelude.^ 2) . rotate4D2 $ arrR2
+  plotImageRepa filePath .
+    ImageRepa 16 .
+    R.fromUnboxed
+      (R.Z R.:. (1 :: Int) R.:. getFPArrayNumXFreq arr R.:.
+       getFPArrayNumYFreq arr) .
+    -- VG.map (\x -> log (x + 1)) .
+    R.toUnboxed . computeS . scaleShift2D scaleFactor (-centerX, -centerY) (0, 2 ^ 15 - 1) $ arr1
+  return arrR2
 
   
-plotFPArrayAcc ::
-     (A.Elt (Complex Double))
-  => [A.PTX]
-  -> FilePath
-  -> Int
-  -> Double
-  -> Double
-  -> Int
-  -> FPArray (VS.Vector (Complex Double))
-  -> IO (R.Array R.U R.DIM4 (Complex Double))
-plotFPArrayAcc ptxs filePath numPoints delta periodR2 numBatch arr@(FPArray numXFreq numYFreq numRFreq numThetaFreq _ _ vecs) = do
-  let rows = numRFreq * numThetaFreq
-      cols = numXFreq * numYFreq
-      arrMat =
-        A.transpose .
-        A.use .
-        A.fromList (A.Z A.:. rows A.:. cols) .
-        R.toList .
-        makeFilter2DInverse .
-        fromUnboxed (Z :. rows :. numXFreq :. numXFreq) . VG.convert . VG.concat $
-        vecs
-  arrR2 <-
-    computeFourierSeriesR2StreamAcc
-      ptxs
-      numXFreq
-      numPoints
-      rows
-      periodR2
-      delta
-      numBatch
-      arrMat
-  (sumP . R.map (\x -> magnitude x ** 2) . rotate3D $ arrR2) >>=
-    plotImageRepa filePath .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) . toUnboxed
-  return .
-    computeS .
-    R.reshape (Z :. numRFreq :. numThetaFreq :. numPoints :. numPoints) $
-    arrR2
+-- plotFPArrayAcc ::
+--      (A.Elt (Complex Double))
+--   => [A.PTX]
+--   -> FilePath
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Int
+--   -> FPArray (VS.Vector (Complex Double))
+--   -> IO (R.Array R.U R.DIM4 (Complex Double))
+-- plotFPArrayAcc ptxs filePath numPoints delta periodR2 numBatch arr@(FPArray numXFreq numYFreq numRFreq numThetaFreq _ _ vecs) = do
+--   let rows = numRFreq * numThetaFreq
+--       cols = numXFreq * numYFreq
+--       arrMat =
+--         A.transpose .
+--         A.use .
+--         A.fromList (A.Z A.:. rows A.:. cols) .
+--         R.toList .
+--         makeFilter2DInverse .
+--         fromUnboxed (Z :. rows :. numXFreq :. numXFreq) . VG.convert . VG.concat $
+--         vecs
+--   arrR2 <-
+--     computeFourierSeriesR2StreamAcc
+--       ptxs
+--       numXFreq
+--       numPoints
+--       rows
+--       periodR2
+--       delta
+--       numBatch
+--       arrMat
+--   (sumP . R.map (\x -> magnitude x ** 2) . rotate3D $ arrR2) >>=
+--     plotImageRepa filePath .
+--     ImageRepa 8 .
+--     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) . toUnboxed
+--   return .
+--     computeS .
+--     R.reshape (Z :. numRFreq :. numThetaFreq :. numPoints :. numPoints) $
+--     arrR2
 
 plotFPArrayFreqency ::
      FilePath

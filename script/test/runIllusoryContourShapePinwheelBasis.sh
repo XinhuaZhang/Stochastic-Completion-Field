@@ -1,21 +1,22 @@
 #!/bin/bash
-GPUID="[0,1]"
+GPUID="[0]"
 Size=512  #2047
 Delta=0.25 #0.03125
-SizeRecon=512
-DeltaRecon=0.16666666666666667
+SizeRecon=256
+DeltaRecon=1 #0.6 # 0.16666666666666667
 Threshold=0.000001
 Orientations=90
 Scales=1
-ThetaSigma=0.015 #0.012
+ThetaSigma=0.018 #0.018 #0.012
 ScaleSigma=0.0
-Tau=10
+Tau=9
 NumTrails=1000000
 BatchSize=1000000
 DeltaT=0.125
-PoissonWeight=0.000017
-NumR2Freq=192
-PeriodR2=192
+PoissonWeight=0.000015
+NumR2Freq=256
+PeriodR2=256
+DeltaFreq=0.5 #1 #0.5
 PhiFreqs=32
 RhoFreqs=32
 ThetaFreqs=32
@@ -34,15 +35,15 @@ HistPathCorner=/scratch/users/xinhuazhang/Pinwheel/Z2S1R+/${HistFileNameCorner}
 NumBatchR2=16
 NumBatchR2Freqs=1
 NumBatchOri=1
-WriteFlag=False
-Iterations=15
-Circle="(Circle{circleNum=8,circleRadius=24})"
+WriteFlag=True
+Iterations=20
+Circle="(Circle{circleNum=8,circleRadius=$1})"
 KoffkaCross1="(KoffkaCross{koffkaCrossW=24,koffkaCrossD=48})"
 KoffkaCross2="(KoffkaCross{koffkaCrossW=12,koffkaCrossD=48})"
-# Shape2D="[Points(0,0)2${KoffkaCross2},Points(0,0)2${KoffkaCross1}]"
+Shape2D="[Points(0,0)2${KoffkaCross1},Points(0,0)2${KoffkaCross2}]"
 Shape2D="[Points(0,0)2${Circle}]"
 Radius=1.5 #.015625
-Threads=10
+Threads=20
 
-time stack test :IllusoryContourShapePinwheelBasis-test --test-arguments "${GPUID} ${Size} ${Delta} ${Threshold} ${SizeRecon} ${DeltaRecon} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${Tau} ${NumTrails} ${DeltaT} ${PoissonWeight} ${NumR2Freq} ${PeriodR2} ${PhiFreqs} ${RhoFreqs} ${ThetaFreqs} ${ScaleFreqs} ${InitDist} ${InitScale} ${HistPath} ${HistPathCorner} ${STDR2} ${STDTheta} ${STDR} ${NumBatchR2} ${NumBatchR2Freqs} ${NumBatchOri} ${BatchSize} ${S} ${WriteFlag} ${Iterations} ${Shape2D} ${Radius} ${Threads} +RTS -N${Threads} -RTS"
+time stack test :IllusoryContourShapePinwheelBasis-test --test-arguments "${GPUID} ${Size} ${Delta} ${Threshold} ${SizeRecon} ${DeltaRecon} ${Orientations} ${Scales} ${ThetaSigma} ${ScaleSigma} ${Tau} ${NumTrails} ${DeltaT} ${PoissonWeight} ${NumR2Freq} ${PeriodR2} ${DeltaFreq} ${PhiFreqs} ${RhoFreqs} ${ThetaFreqs} ${ScaleFreqs} ${InitDist} ${InitScale} ${HistPath} ${HistPathCorner} ${STDR2} ${STDTheta} ${STDR} ${NumBatchR2} ${NumBatchR2Freqs} ${NumBatchOri} ${BatchSize} ${S} ${WriteFlag} ${Iterations} ${Shape2D} ${Radius} ${Threads} +RTS -N${Threads} -RTS"
 

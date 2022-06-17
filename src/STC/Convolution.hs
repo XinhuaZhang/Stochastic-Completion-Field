@@ -21,10 +21,10 @@ import           Image.IO
 import           STC.DFTArray
 import           Types
 import           Utils.Parallel
-import FokkerPlanck.GPUKernel
+-- import FokkerPlanck.GPUKernel
 import qualified Data.Array.Accelerate              as A
 import qualified Data.Array.Accelerate.Data.Complex as A
-import           Data.Array.Accelerate.LLVM.PTX
+-- import           Data.Array.Accelerate.LLVM.PTX
 import Debug.Trace
 import Utils.List
 import Utils.BLAS

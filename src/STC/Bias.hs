@@ -16,9 +16,9 @@ import           STC.Utils
 import           Utils.List
 import FourierPinwheel.AsteriskGaussian
 import Filter.Utils
-import           Data.Array.Accelerate.LLVM.PTX as A
-import qualified Data.Array.Accelerate          as A
-import FourierMethod.FourierSeries2D
+-- import           Data.Array.Accelerate.LLVM.PTX as A
+-- import qualified Data.Array.Accelerate          as A
+-- import FourierMethod.FourierSeries2D
 import Image.IO
 import Utils.Array
 import System.FilePath
@@ -233,7 +233,7 @@ computeBiasFourierPinwheelFull plan numR2Freqs thetaFreq rFreq alpha periodR2  r
           rdeepseq
           (\(freqY, freqX) ->
              L.foldl'
-               (\b (Point x y theta scale) ->
+               (\b (Point x y _ _) ->
                   b + cis (-(freqX * x + freqY * y) * 2 * pi / periodR2))
                0
                points) $

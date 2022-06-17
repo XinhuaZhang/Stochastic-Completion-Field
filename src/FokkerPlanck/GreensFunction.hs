@@ -4,7 +4,8 @@ module FokkerPlanck.GreensFunction where
 
 import           Control.DeepSeq
 import           Control.Monad                  as M
-import           Data.Array.Accelerate.LLVM.PTX
+-- import           Data.Array.Accelerate.LLVM.PTX
+import           Data.Array.Accelerate.LLVM.Native       as A
 import           Data.Array.IArray              as IA
 import           Data.Array.Repa                as R
 import           Data.Binary
@@ -15,8 +16,8 @@ import           Data.Vector.Unboxed            as VU
 import           FokkerPlanck.Analytic
 import           FokkerPlanck.FourierSeriesGPU
 import           FokkerPlanck.Histogram
-import           Foreign.CUDA.Driver            as CUDA
-import           FourierMethod.FourierSeries2D
+-- import           Foreign.CUDA.Driver            as CUDA
+-- import           FourierMethod.FourierSeries2D
 import           Image.IO
 import           Pinwheel.FourierSeries2D
 import           Pinwheel.Transform
@@ -28,27 +29,29 @@ import           Utils.List
 import           Utils.Parallel
 import           Utils.SimpsonRule
 import           Utils.Time
-import Text.Printf
+import           Text.Printf
 import           Utils.Distribution
 
+       
 sampleCartesian ::
      FilePath
   -> FilePath
-  -> [PTX]
-  -> Int
-  -> Double
-  -> Int
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Double
   -> Int
   -> Int
+  -> Double
   -> Int
-  -> Int -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> [Int]
+  -> [Double]
+  -> [Int]
+  -> [Double]
+  -> Double
   -> IO (Histogram (Complex Double))
-sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreq rhoFreq thetaFreq rFreq stdR2 = do
+sampleCartesian filePath folderPath numThread numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreqs rhoFreqs thetaFreqs rFreqs stdR2 = do
   let center = div numPoints 2
       deltaTheta = 2 * pi / fromIntegral oris
       origin = R2S1RP 0 0 0 gamma
@@ -56,8 +59,8 @@ sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma t
         L.filter
           (\(R2S1RP c r _ g) -> (sqrt (c ^ 2 + r ^ 2) > 0) && g > 0)
           [ R2S1RP
-            ((fromIntegral $ c - center) * delta)
-            ((fromIntegral $ r - center) * delta)
+            (fromIntegral (c - center) * delta)
+            (fromIntegral (r - center) * delta)
             0
             gamma
           | c <- [0 .. numPoints - 1]
@@ -76,7 +79,7 @@ sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma t
                       let v =
                             computePji thetaSigma tau origin (R2S1RP x y ori g)
                           phi = atan2 y x
-                          rho = sqrt $ (x ^ 2 + y ^ 2)
+                          rho = sqrt (x ^ 2 + y ^ 2)
                        in ( phi
                           , log rho
                           , ori
@@ -84,40 +87,28 @@ sampleCartesian filePath folderPath ptxs numPoints delta oris gamma thetaSigma t
                           , v * (1 - gaussian2DPolar rho stdR2))) $
                  idx)
           [0 .. oris - 1]
-  let
   printCurrentTime $
     printf
       "Sparsity: %f%%\n"
       (100 * (fromIntegral . L.length $ xs) /
-       (fromIntegral $ oris * numPoints ^ 2) :: Double)
-  let phiFreqs = getListFromNumber' phiFreq
-      rhoFreqs = getListFromNumber' rhoFreq
-      thetaFreqs = getListFromNumber' thetaFreq
-      rFreqs = getListFromNumber' rFreq
-      hist =
-        L.foldl1' (addHistogram) .
-        parZipWith
-          rdeepseq
-          (\ptx ys ->
-             computeFourierCoefficientsGPU'
-               r2Sigma
-               phiFreqs
-               rhoFreqs
-               thetaFreqs
-               rFreqs
-               ptx
-               ys)
-          ptxs .
-        divideListN (L.length ptxs) $
-        xs
+       fromIntegral (oris * numPoints ^ 2) :: Double)
+  native <- createTarget [0 .. (numThread - 1)] unbalancedParIO
+  let hist =
+        computeFourierCoefficients'
+          r2Sigma
+          (L.map fromIntegral phiFreqs)
+          rhoFreqs
+          (L.map fromIntegral thetaFreqs)
+          rFreqs
+          native
+          xs
   encodeFile filePath hist
   return hist
-  
+
 
 sampleCartesianCorner ::
      FilePath
-  -> FilePath
-  -> [PTX]
+  -> FilePath -> Int
   -> Int
   -> Double
   -> Int
@@ -126,14 +117,14 @@ sampleCartesianCorner ::
   -> Double
   -> Double
   -> Double
-  -> Int
-  -> Int
-  -> Int
-  -> Int
+  -> [Int]
+  -> [Double]
+  -> [Int]
+  -> [Double]
   -> Double
   -> Double
   -> IO (Histogram (Complex Double))
-sampleCartesianCorner filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreq rhoFreq thetaFreq rFreq stdR2 weight = do
+sampleCartesianCorner filePath folderPath numThread numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreqs rhoFreqs thetaFreqs rFreqs stdR2 weight = do
   let center = div numPoints 2
       deltaTheta = 2 * pi / fromIntegral oris
       logGamma = 0
@@ -177,28 +168,180 @@ sampleCartesianCorner filePath folderPath ptxs numPoints delta oris gamma thetaS
       "Sparsity: %f%%\n"
       (100 * (fromIntegral . L.length $ xs) /
        (fromIntegral $ oris * numPoints ^ 2) :: Double)
-  let phiFreqs = getListFromNumber' phiFreq
-      rhoFreqs = getListFromNumber' rhoFreq
-      thetaFreqs = getListFromNumber' thetaFreq
-      rFreqs = getListFromNumber' rFreq
-      hist =
-        L.foldl1' (addHistogram) .
-        parZipWith
-          rdeepseq
-          (\ptx ys ->
-             computeFourierCoefficientsGPU'
-               r2Sigma
-               phiFreqs
-               rhoFreqs
-               thetaFreqs
-               rFreqs
-               ptx
-               ys)
-          ptxs .
-        divideListN (L.length ptxs) $
-        xs
+  native <- createTarget [0 .. (numThread - 1)] unbalancedParIO
+  let hist =
+        computeFourierCoefficients'
+          r2Sigma
+          (L.map fromIntegral phiFreqs)
+          rhoFreqs
+          (L.map fromIntegral thetaFreqs)
+          rFreqs
+          native
+          xs
   encodeFile filePath hist
   return hist
+
+-- sampleCartesianGPU ::
+--      FilePath
+--   -> FilePath
+--   -> [PTX]
+--   -> Int
+--   -> Double
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> [Int]
+--   -> [Double]
+--   -> [Int]
+--   -> [Double]
+--   -> Double
+--   -> IO (Histogram (Complex Double))
+-- sampleCartesianGPU filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreqs rhoFreqs thetaFreqs rFreqs stdR2 = do
+--   let center = div numPoints 2
+--       deltaTheta = 2 * pi / fromIntegral oris
+--       origin = R2S1RP 0 0 0 gamma
+--       idx =
+--         L.filter
+--           (\(R2S1RP c r _ g) -> (sqrt (c ^ 2 + r ^ 2) > 0) && g > 0)
+--           [ R2S1RP
+--             (fromIntegral (c - center) * delta)
+--             (fromIntegral (r - center) * delta)
+--             0
+--             gamma
+--           | c <- [0 .. numPoints - 1]
+--           , r <- [0 .. numPoints - 1]
+--           ]
+--       logGamma = 0
+--       xs =
+--         L.concat $
+--         parMap
+--           rdeepseq
+--           (\o ->
+--              let ori = fromIntegral o * deltaTheta
+--               in L.filter (\(_, _, _, _, v) -> v > threshold) .
+--                  L.map
+--                    (\point@(R2S1RP x y _ g) ->
+--                       let v =
+--                             computePji thetaSigma tau origin (R2S1RP x y ori g)
+--                           phi = atan2 y x
+--                           rho = sqrt (x ^ 2 + y ^ 2)
+--                        in ( phi
+--                           , log rho
+--                           , ori
+--                           , logGamma
+--                           , v * (1 - gaussian2DPolar rho stdR2)
+--                            )) $
+--                  idx)
+--           [0 .. oris - 1]
+--   printCurrentTime $
+--     printf
+--       "Sparsity: %f%%\n"
+--       (100 * (fromIntegral . L.length $ xs) /
+--        fromIntegral (oris * numPoints ^ 2) :: Double)
+--   let hist =
+--         L.foldl1' addHistogram .
+--         parZipWith
+--           rdeepseq
+--           (\ptx ys ->
+--              computeFourierCoefficientsGPU'
+--                r2Sigma
+--                (L.map fromIntegral phiFreqs)
+--                rhoFreqs
+--                (L.map fromIntegral thetaFreqs)
+--                rFreqs
+--                ptx
+--                ys)
+--           ptxs .
+--         divideListN (L.length ptxs) $
+--         xs
+--   encodeFile filePath hist
+--   return hist
+  
+
+-- sampleCartesianCornerGPU ::
+--      FilePath
+--   -> FilePath
+--   -> [PTX]
+--   -> Int
+--   -> Double
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> [Int]
+--   -> [Double]
+--   -> [Int]
+--   -> [Double]
+--   -> Double
+--   -> Double
+--   -> IO (Histogram (Complex Double))
+-- sampleCartesianCornerGPU filePath folderPath ptxs numPoints delta oris gamma thetaSigma tau threshold r2Sigma phiFreqs rhoFreqs thetaFreqs rFreqs stdR2 weight = do
+--   let center = div numPoints 2
+--       deltaTheta = 2 * pi / fromIntegral oris
+--       logGamma = 0
+--       idxFunc c r o =
+--         ( fromIntegral o * deltaTheta
+--         , fromIntegral (c - center) * delta
+--         , fromIntegral (r - center) * delta)
+--   arr <-
+--     sampleR2S1Corner
+--       numPoints
+--       numPoints
+--       delta
+--       deltaTheta
+--       gamma
+--       thetaSigma
+--       tau
+--       threshold
+--       [0 .. oris - 1]
+--       weight
+--   let idx =
+--         [ idxFunc c r o
+--         | o <- [0 .. oris - 1]
+--         , c <- [0 .. numPoints - 1]
+--         , r <- [0 .. numPoints - 1]
+--         ]
+--       xs =
+--         L.map
+--           (\((ori, x, y), v) ->
+--              let phi = atan2 y x
+--                  rho = sqrt (x ^ 2 + y ^ 2)
+--               in ( phi
+--                  , log rho
+--                  , ori
+--                  , logGamma
+--                  , v * (1 - gaussian2DPolar rho stdR2))) .
+--         L.filter (\((_, x, y), v) -> v > threshold && (x /= 0 || y /= 0)) .
+--         L.zip idx . R.toList $
+--         arr
+--   printCurrentTime $
+--     printf
+--       "Sparsity: %f%%\n"
+--       (100 * (fromIntegral . L.length $ xs) /
+--        (fromIntegral $ oris * numPoints ^ 2) :: Double)
+--   let hist =
+--         L.foldl1' (addHistogram) .
+--         parZipWith
+--           rdeepseq
+--           (\ptx ys ->
+--              computeFourierCoefficientsGPU'
+--                r2Sigma
+--                (L.map fromIntegral phiFreqs)
+--                rhoFreqs
+--                (L.map fromIntegral thetaFreqs)
+--                rFreqs
+--                ptx
+--                ys)
+--           ptxs .
+--         divideListN (L.length ptxs) $
+--         xs
+--   encodeFile filePath hist
+--   return hist
 
 
 -- sampleLogpolar ::
@@ -445,227 +588,227 @@ cornerDistribution' delta gamma sigma tau threshold oris weight (x, y) ori = do
 
 
 
-computeFourierCoefficients ::
-     FilePath
-  -> [Int]
-  -> [PTX]
-  -> Int
-  -> Int
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Int
-  -> Double
-  -> Double
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> IO (Histogram (Complex Double))
-computeFourierCoefficients histFilePath deviceIDs ptxs numPoints oris delta deltaFreq gamma sigma tau numR2Freqs period std numBatchR2Freqs numBatchOri maxPhiFreq maxRhoFreq maxThetaFreq maxRFreq = do
-  when
-    (even oris)
-    (error "computeFourierCoefficients: the number of orientations is not odd.")
-  let deltaTheta = 2 * pi / fromIntegral oris
-      simpsonWeights =
-        computeUnboxedS $
-        (computeWeightArrFromListOfShape [numPoints, numPoints] :: R.Array D DIM2 (Complex Double))
-      oriIdxs = divideListN numBatchOri [0 .. oris - 1]
-  xs <-
-    M.mapM
-      (sampleR2S1 numPoints numPoints delta deltaTheta gamma sigma tau)
-      oriIdxs
-  let weightedVecs =
-        parMap
-          rdeepseq
-          (\arr ->
-             let (Z :. n :. m :. c) = extent arr
-             in CuMat (n * m) c .
-                CuVecHost .
-                VU.convert .
-                toUnboxed . computeS . R.traverse2 arr simpsonWeights const $ \f fW idx@(Z :. i :. j :. _) ->
-                  (f idx :+ 0) * fW (Z :. i :. j))
-          xs
-  coefficients <-
-    computeFourierCoefficientsR2Stream
-      deviceIDs
-      ptxs
-      numR2Freqs
-      numPoints
-      period
-      delta
-      deltaFreq
-      numBatchR2Freqs
-      weightedVecs
-  print "coefficients done"
-  let centerR2Freq = div numR2Freqs 2
-      centerPoints = div numPoints 2
-      logGamma = log gamma
-      gaussianWeightedCoef =
-        computeUnboxedS $ applyGaussian deltaFreq std coefficients
-      -- gaussianWeightedCoef = coefficients
-      simpsonWeightsOri =
-        computeUnboxedS $
-        (computeWeightArrFromListOfShape [oris] :: R.Array D DIM1 (Complex Double))
-      weightedCoef =
-        R.traverse2 gaussianWeightedCoef simpsonWeightsOri const $ \fG fS idx@(Z :. o :. _ :. _) ->
-          fG idx * fS (Z :. o)
-      folderPath = "output/test/STCPinwheel"
-  -- print . extent $ gaussianWeightedCoef
-  -- inverseR2Harmonics <-
-  --   createInverseHarmonicMatriesGPU ptxs 1 numPoints numR2Freqs period delta
-  -- sourceR2 <-
-  --   computeFourierSeriesR2
-  --     deviceIDs
-  --     numR2Freqs
-  --     numPoints
-  --     period
-  --     inverseR2Harmonics
-  --     [ CuMat oris (numR2Freqs ^ 2) . CuVecHost . VU.convert . toUnboxed $
-  --       gaussianWeightedCoef
-  --     ]
-  plotImageRepa (folderPath </> "Green.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (x) ** 2) . L.head $
-    xs
-  plotImageRepa (folderPath </> "Coefficients.png") .
-    ImageRepa 8 .
-    fromUnboxed (Z :. (1 :: Int) :. numR2Freqs :. numR2Freqs) .
-    VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-    gaussianWeightedCoef
-  -- plotImageRepa (folderPath </> "GreenRecon.png") .
-  --   ImageRepa 8 .
-  --   fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
-  --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
-  --   sourceR2
-  ys <-
-    (computeUnboxedP . R.traverse weightedCoef id $ \f idx@(Z :. o :. i :. j) ->
-       if i == centerR2Freq && j == centerR2Freq
-         then (0, 0, 0, 0, 0)
-         else let x = deltaFreq * (fromIntegral $ i - centerR2Freq)
-                  y = deltaFreq * (fromIntegral $ j - centerR2Freq)
-                  phi = atan2 y x
-                  logRho = log . sqrt $ (x ^ 2 + y ^ 2)
-              in (phi, logRho, fromIntegral o * deltaTheta, logGamma, f idx))
-  -- ys <-
-  --   (computeUnboxedP .
-  --    R.traverse
-  --      (R.traverse2 (L.head xs) simpsonWeightsOri const $ \fG fS idx@(Z :. _ :. _ :. o) ->
-  --         (fG idx :+ 0) * fS (Z :. o))
-  --      id $ \f idx@(Z :. i :. j :. o) ->
-  --      if i == centerPoints && j == centerPoints
-  --        then (0, 0, 0, 0, 0)
-  --        else let x = delta * (fromIntegral $ i - centerPoints)
-  --                 y = delta * (fromIntegral $ j - centerPoints)
-  --                 phi = atan2 x y
-  --                 logRho = log . sqrt $ (x ^ 2 + y ^ 2)
-  --             in ( phi
-  --                , logRho
-  --                , fromIntegral o * deltaTheta
-  --                , logGamma
-  --                , f idx))
-  let hist =
-        L.foldl1' (addHistogram) .
-        parZipWith
-          rdeepseq
-          (\ptx ->
-             computePinwheelCoefficients
-               maxPhiFreq
-               maxRhoFreq
-               maxThetaFreq
-               maxRFreq
-               ptx)
-          ptxs .
-        divideListN (L.length ptxs) . R.toList $
-        ys
-  encodeFile histFilePath hist
-  return hist
+-- computeFourierCoefficients ::
+--      FilePath
+--   -> [Int]
+--   -> [PTX]
+--   -> Int
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> IO (Histogram (Complex Double))
+-- computeFourierCoefficients histFilePath deviceIDs ptxs numPoints oris delta deltaFreq gamma sigma tau numR2Freqs period std numBatchR2Freqs numBatchOri maxPhiFreq maxRhoFreq maxThetaFreq maxRFreq = do
+--   when
+--     (even oris)
+--     (error "computeFourierCoefficients: the number of orientations is not odd.")
+--   let deltaTheta = 2 * pi / fromIntegral oris
+--       simpsonWeights =
+--         computeUnboxedS $
+--         (computeWeightArrFromListOfShape [numPoints, numPoints] :: R.Array D DIM2 (Complex Double))
+--       oriIdxs = divideListN numBatchOri [0 .. oris - 1]
+--   xs <-
+--     M.mapM
+--       (sampleR2S1 numPoints numPoints delta deltaTheta gamma sigma tau)
+--       oriIdxs
+--   let weightedVecs =
+--         parMap
+--           rdeepseq
+--           (\arr ->
+--              let (Z :. n :. m :. c) = extent arr
+--              in CuMat (n * m) c .
+--                 CuVecHost .
+--                 VU.convert .
+--                 toUnboxed . computeS . R.traverse2 arr simpsonWeights const $ \f fW idx@(Z :. i :. j :. _) ->
+--                   (f idx :+ 0) * fW (Z :. i :. j))
+--           xs
+--   coefficients <-
+--     computeFourierCoefficientsR2Stream
+--       deviceIDs
+--       ptxs
+--       numR2Freqs
+--       numPoints
+--       period
+--       delta
+--       deltaFreq
+--       numBatchR2Freqs
+--       weightedVecs
+--   print "coefficients done"
+--   let centerR2Freq = div numR2Freqs 2
+--       centerPoints = div numPoints 2
+--       logGamma = log gamma
+--       gaussianWeightedCoef =
+--         computeUnboxedS $ applyGaussian deltaFreq std coefficients
+--       -- gaussianWeightedCoef = coefficients
+--       simpsonWeightsOri =
+--         computeUnboxedS $
+--         (computeWeightArrFromListOfShape [oris] :: R.Array D DIM1 (Complex Double))
+--       weightedCoef =
+--         R.traverse2 gaussianWeightedCoef simpsonWeightsOri const $ \fG fS idx@(Z :. o :. _ :. _) ->
+--           fG idx * fS (Z :. o)
+--       folderPath = "output/test/STCPinwheel"
+--   -- print . extent $ gaussianWeightedCoef
+--   -- inverseR2Harmonics <-
+--   --   createInverseHarmonicMatriesGPU ptxs 1 numPoints numR2Freqs period delta
+--   -- sourceR2 <-
+--   --   computeFourierSeriesR2
+--   --     deviceIDs
+--   --     numR2Freqs
+--   --     numPoints
+--   --     period
+--   --     inverseR2Harmonics
+--   --     [ CuMat oris (numR2Freqs ^ 2) . CuVecHost . VU.convert . toUnboxed $
+--   --       gaussianWeightedCoef
+--   --     ]
+--   plotImageRepa (folderPath </> "Green.png") .
+--     ImageRepa 8 .
+--     fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+--     VU.map sqrt . toUnboxed . sumS . R.map (\x -> (x) ** 2) . L.head $
+--     xs
+--   plotImageRepa (folderPath </> "Coefficients.png") .
+--     ImageRepa 8 .
+--     fromUnboxed (Z :. (1 :: Int) :. numR2Freqs :. numR2Freqs) .
+--     VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+--     gaussianWeightedCoef
+--   -- plotImageRepa (folderPath </> "GreenRecon.png") .
+--   --   ImageRepa 8 .
+--   --   fromUnboxed (Z :. (1 :: Int) :. numPoints :. numPoints) .
+--   --   VU.map sqrt . toUnboxed . sumS . R.map (\x -> (magnitude x) ** 2) . rotate3D $
+--   --   sourceR2
+--   ys <-
+--     (computeUnboxedP . R.traverse weightedCoef id $ \f idx@(Z :. o :. i :. j) ->
+--        if i == centerR2Freq && j == centerR2Freq
+--          then (0, 0, 0, 0, 0)
+--          else let x = deltaFreq * (fromIntegral $ i - centerR2Freq)
+--                   y = deltaFreq * (fromIntegral $ j - centerR2Freq)
+--                   phi = atan2 y x
+--                   logRho = log . sqrt $ (x ^ 2 + y ^ 2)
+--               in (phi, logRho, fromIntegral o * deltaTheta, logGamma, f idx))
+--   -- ys <-
+--   --   (computeUnboxedP .
+--   --    R.traverse
+--   --      (R.traverse2 (L.head xs) simpsonWeightsOri const $ \fG fS idx@(Z :. _ :. _ :. o) ->
+--   --         (fG idx :+ 0) * fS (Z :. o))
+--   --      id $ \f idx@(Z :. i :. j :. o) ->
+--   --      if i == centerPoints && j == centerPoints
+--   --        then (0, 0, 0, 0, 0)
+--   --        else let x = delta * (fromIntegral $ i - centerPoints)
+--   --                 y = delta * (fromIntegral $ j - centerPoints)
+--   --                 phi = atan2 x y
+--   --                 logRho = log . sqrt $ (x ^ 2 + y ^ 2)
+--   --             in ( phi
+--   --                , logRho
+--   --                , fromIntegral o * deltaTheta
+--   --                , logGamma
+--   --                , f idx))
+--   let hist =
+--         L.foldl1' (addHistogram) .
+--         parZipWith
+--           rdeepseq
+--           (\ptx ->
+--              computePinwheelCoefficients
+--                maxPhiFreq
+--                maxRhoFreq
+--                maxThetaFreq
+--                maxRFreq
+--                ptx)
+--           ptxs .
+--         divideListN (L.length ptxs) . R.toList $
+--         ys
+--   encodeFile histFilePath hist
+--   return hist
 
 
 
-computePinwheelTransformCoefficients ::
-     Int
-  -> FilePath
-  -> [Int]
-  -> [PTX]
-  -> Int
-  -> Int
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Double
-  -> Int
-  -> Double
-  -> Double
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Double
-  -> IO (Histogram (Complex Double))
-computePinwheelTransformCoefficients numThread histFilePath deviceIDs ptxs numPoints oris delta threshold gamma sigma tau numR2Freqs periodR2 std numBatchR2 numBatchPinwheelFreqs maxPhiFreq maxRhoFreq maxThetaFreq maxRFreq batchSize s = do
-  printCurrentTime "compute pinwheelArr"
-  pinwheelArr <-
-    pinwheelFourierSeries
-      deviceIDs
-      ptxs
-      numPoints -- numR2Freqs
-      numPoints
-      delta
-      periodR2
-      maxPhiFreq
-      maxRhoFreq
-      maxThetaFreq
-      maxRFreq
-      s
-      numBatchR2
-      numBatchPinwheelFreqs :: IO (IA.Array (Int, Int) (VU.Vector (Complex Double)))
-  printCurrentTime "pinwheelArr done"
-  let folderPath = "output/test/STCPinwheel"
-  let deltaTheta = 2 * pi / (fromIntegral oris)
-      greensFunc =
-        parMap
-          rdeepseq
-          (\o ->
-             let theta = fromIntegral o * deltaTheta
-                 vec =
-                   toUnboxed $
-                   sampleR2S1' numPoints numPoints delta gamma sigma tau theta
-             in PinwheelTransformData (log gamma) theta .
-                uncurry SparseVector .
-                VU.unzip .
-                VU.map (\(i, v) -> (i, v :+ 0)) .
-                VU.filter (\(_, v) -> v > threshold) $
-                vec)
-          [0 .. oris - 1]
-      len =
-        L.foldl'
-          (\s (PinwheelTransformData _ _ (SparseVector vec _)) ->
-             s + VU.length vec)
-          0
-          greensFunc
-  printCurrentTime $
-    printf
-      "Sparsity: %f%%\n"
-      (100 * (fromIntegral len) / (fromIntegral $ oris * numPoints ^ 2) :: Double)
-  let hist =
-        pinwheelTransform
-          numThread
-          maxPhiFreq
-          maxRhoFreq
-          maxThetaFreq
-          maxRFreq
-          s
-          pinwheelArr
-          greensFunc
-  encodeFile histFilePath hist
-  return hist
+-- computePinwheelTransformCoefficients ::
+--      Int
+--   -> FilePath
+--   -> [Int]
+--   -> [PTX]
+--   -> Int
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Double
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Double
+--   -> IO (Histogram (Complex Double))
+-- computePinwheelTransformCoefficients numThread histFilePath deviceIDs ptxs numPoints oris delta threshold gamma sigma tau numR2Freqs periodR2 std numBatchR2 numBatchPinwheelFreqs maxPhiFreq maxRhoFreq maxThetaFreq maxRFreq batchSize s = do
+--   printCurrentTime "compute pinwheelArr"
+--   pinwheelArr <-
+--     pinwheelFourierSeries
+--       deviceIDs
+--       ptxs
+--       numPoints -- numR2Freqs
+--       numPoints
+--       delta
+--       periodR2
+--       maxPhiFreq
+--       maxRhoFreq
+--       maxThetaFreq
+--       maxRFreq
+--       s
+--       numBatchR2
+--       numBatchPinwheelFreqs :: IO (IA.Array (Int, Int) (VU.Vector (Complex Double)))
+--   printCurrentTime "pinwheelArr done"
+--   let folderPath = "output/test/STCPinwheel"
+--   let deltaTheta = 2 * pi / (fromIntegral oris)
+--       greensFunc =
+--         parMap
+--           rdeepseq
+--           (\o ->
+--              let theta = fromIntegral o * deltaTheta
+--                  vec =
+--                    toUnboxed $
+--                    sampleR2S1' numPoints numPoints delta gamma sigma tau theta
+--              in PinwheelTransformData (log gamma) theta .
+--                 uncurry SparseVector .
+--                 VU.unzip .
+--                 VU.map (\(i, v) -> (i, v :+ 0)) .
+--                 VU.filter (\(_, v) -> v > threshold) $
+--                 vec)
+--           [0 .. oris - 1]
+--       len =
+--         L.foldl'
+--           (\s (PinwheelTransformData _ _ (SparseVector vec _)) ->
+--              s + VU.length vec)
+--           0
+--           greensFunc
+--   printCurrentTime $
+--     printf
+--       "Sparsity: %f%%\n"
+--       (100 * (fromIntegral len) / (fromIntegral $ oris * numPoints ^ 2) :: Double)
+--   let hist =
+--         pinwheelTransform
+--           numThread
+--           maxPhiFreq
+--           maxRhoFreq
+--           maxThetaFreq
+--           maxRFreq
+--           s
+--           pinwheelArr
+--           greensFunc
+--   encodeFile histFilePath hist
+--   return hist

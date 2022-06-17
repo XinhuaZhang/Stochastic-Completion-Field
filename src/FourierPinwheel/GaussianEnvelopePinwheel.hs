@@ -22,20 +22,20 @@ gaussianPinwheelFourierCoefficients ::
   -> a
   -> a
   -> Int
-  -> Int
+  -> a
   -> a
   -> a
   -> Complex a
 gaussianPinwheelFourierCoefficients numR2Freqs periodR2 a sigma angularFreq radialFreq phi rho =
   let piRhoPConst = pi * rho / periodR2
       real = pi / periodR2 ^ 2 * piRhoPConst ^ abs angularFreq
-      mu =
-        (2 + sigma + fromIntegral (abs angularFreq)) :+ fromIntegral (-radialFreq)
+      mu = (2 + sigma + fromIntegral (abs angularFreq)) :+ (-radialFreq)
       alpha = mu / 2
       beta = fromIntegral (1 + abs angularFreq) :+ 0
       z = ((-1) * (piRhoPConst / a) ^ 2) :+ 0
       img =
-        (0 :+ (-1)) ^ abs angularFreq * cis (fromIntegral (-angularFreq) * phi) *
+        (0 :+ (-1)) ^ abs angularFreq *
+        cis (fromIntegral (-angularFreq) * phi) *
         gamma alpha /
         gamma beta *
         (a :+ 0) ** (-mu) *
@@ -54,12 +54,12 @@ gaussianPinwheel ::
   -> a
   -> a
   -> a
-  -> Int
-  -> Int
+  -> [Int]
+  -> [a]
   -> a
   -> a
   -> vector (Complex a)
-gaussianPinwheel numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq stdTheta stdR =
+gaussianPinwheel numR2Freqs periodR2 stdR2 sigma thetaFreqs rFreqs stdTheta stdR =
   let zeroVec = VG.replicate (numR2Freqs ^ 2) 0
       a = 1 / (stdR2 * sqrt 2)
    in VG.concat .
@@ -79,16 +79,13 @@ gaussianPinwheel numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq stdTheta stdR =
                           radialFreq
                       arr =
                         R.map
-                          (* (gaussian1DFourierCoefficients
-                                (fromIntegral radialFreq)
-                                stdR :+
-                              0))
+                          (* gaussian1DLaplaceCoefficients radialFreq stdR)
                           pinwheel
                    in VG.convert . toUnboxed . computeS $ arr
              else zeroVec) $
       [ (radialFreq, angularFreq)
-      | radialFreq <- getListFromNumber rFreq
-      , angularFreq <- getListFromNumber thetaFreq
+      | radialFreq <- rFreqs
+      , angularFreq <- thetaFreqs
       ]
       
 
@@ -105,12 +102,12 @@ gaussianPinwheelDiscontinuity ::
   -> a
   -> a
   -> a
-  -> Int
-  -> Int
+  -> [Int]
+  -> [a]
   -> a
   -> a
   -> vector (Complex a)
-gaussianPinwheelDiscontinuity numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq stdTheta stdR =
+gaussianPinwheelDiscontinuity numR2Freqs periodR2 stdR2 sigma thetaFreqs rFreqs stdTheta stdR =
   let a = 1 / (stdR2 * sqrt 2)
    in VG.concat .
       parMap
@@ -129,14 +126,11 @@ gaussianPinwheelDiscontinuity numR2Freqs periodR2 stdR2 sigma thetaFreq rFreq st
                       radialFreq)
                arr =
                  R.map
-                   (* ((gaussian1DFreq (fromIntegral angularFreq) stdTheta *
-                        gaussian1DFourierCoefficients
-                          (fromIntegral radialFreq)
-                          stdR) :+
-                       0)) $
+                   (* ((gaussian1DFreq (fromIntegral angularFreq) stdTheta :+ 0) *
+                       gaussian1DLaplaceCoefficients radialFreq stdR)) $
                  centerHollowArray numR2Freqs pinwheel
             in VG.convert . toUnboxed . computeS $ arr) $
       [ (radialFreq, angularFreq)
-      | radialFreq <- getListFromNumber rFreq
-      , angularFreq <- getListFromNumber thetaFreq
+      | radialFreq <- rFreqs
+      , angularFreq <- thetaFreqs
       ]
